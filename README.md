@@ -1,8 +1,6 @@
 # Beamlet
 
-> Light on device, smart on the mesh.
-
-***WIP***
+> Distributed Effect-Driven Compute Engine
 
 ## Build
 
@@ -12,7 +10,6 @@ nix develop
 
 # Package
 mix local.hex
-mix local.rebar
 mix deps.get
 mix deps.update --all
 
@@ -28,5 +25,12 @@ mix test
 
 ## Thanks
 
+- [Erlang/OTP](https://www.erlang.org/)
 - [Elixir](https://elixir-lang.org/)
+- [Gleam](https://gleam.run/)
+
+- [Phoenix](https://www.phoenixframework.org/)
+- [Elixir Desktop](https://github.com/elixir-desktop/desktop)
+- [Mob Framework](https://github.com/GenericJam/mob)
+
 - [Nix](https://nixos.org/)
