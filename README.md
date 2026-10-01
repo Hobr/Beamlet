@@ -1,8 +1,6 @@
 # Beamlet
 
-> Light on device, smart on the mesh.
-
-***WIP***
+> Distributed runtime for persistent and portable agents.
 
 ## Build
 
