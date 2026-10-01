@@ -75,10 +75,6 @@ rebar3.crashdump
 
 # End of https://www.toptal.com/developers/gitignore/api/linux,direnv,visualstudiocode,erlang,elixir
 
-# spec-kit
-.specify/**/*.py
-.specify/**/*.sh
-
 # Dev
 .nix-mix/
 .nix-hex/
