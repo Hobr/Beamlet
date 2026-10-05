@@ -22,8 +22,9 @@
             (with pkgs; [
             ])
             ++ (with beam; [
-              elixir
               erlang
+              elixir
+              hex
               expert
             ]);
 

@@ -27,7 +27,6 @@ mix test
 
 - [Erlang/OTP](https://www.erlang.org/)
 - [Elixir](https://elixir-lang.org/)
-- [Gleam](https://gleam.run/)
 
 - [Phoenix](https://www.phoenixframework.org/)
 - [Elixir Desktop](https://github.com/elixir-desktop/desktop)
