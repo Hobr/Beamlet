@@ -16,7 +16,7 @@ Preserve existing README.md, flake.lock, scaffold guideline and bootstrap-task c
 
 - [x] Review gate: present the latest architecture, requirements, limits and deferred validation to the user.
 - [x] After a subsequent explicit approval, activate this task with task.py start.
-- [x] Publish .trellis/spec/architecture/index.md with status/read order and coverage.
+- [x] Publish spec/architecture/index.md with status/read order and coverage.
 - [x] Publish glossary.md from the resolved task glossary.
 - [x] Publish boundaries.md for generic/domain separation and acyclic logical responsibilities.
 - [x] Publish computation-and-effects.md for complete data/authoring/control interface contracts.
@@ -88,7 +88,7 @@ from pathlib import Path
 
 repo = Path.cwd()
 task = repo / ".trellis/tasks/10-07-runtime-architecture"
-spec = repo / ".trellis/spec/architecture"
+spec = repo / "spec/architecture"
 files = list(task.rglob("*.md")) + list(spec.rglob("*.md"))
 assert spec.joinpath("index.md").is_file()
 for path in files:

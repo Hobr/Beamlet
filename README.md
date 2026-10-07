@@ -4,20 +4,6 @@
 
 **WIP**, with broken changes before the first release.
 
-## Concept
-
-- Beamlet-lib: Engine.
-  - Beamlet-core: Core runtime for Beamlet-lib.
-  - Beamlet-effect: Effect system for Beamlet-lib.
-  - Beamlet-durable: Durable effects for Beamlet-lib.
-
-- Cordex: OTP-native implementation of Cordis for spatiotemporal composability.
-
-- Beamlet-agent: Agent based on Beamlet-lib.
-- Beamlet-{cli, tui, web, desktop, android, node}: A set of frontends for Beamlet-agent.
-
-These dependencies will be sperated into separate projects in the future.
-
 ## Build
 
 ```bash
@@ -38,6 +24,24 @@ mix compile
 # Test
 mix test
 ```
+
+## Concept
+
+- Beamlet-lib: Engine.
+  - Beamlet-core: Core runtime for Beamlet-lib.
+  - Beamlet-effect: Effect system for Beamlet-lib.
+  - Beamlet-durable: Durable effects for Beamlet-lib.
+
+- Cordex: OTP-native implementation of Cordis for spatiotemporal composability.
+
+- Beamlet-agent: Agent based on Beamlet-lib.
+- Beamlet-{cli, tui, web, desktop, android, node}: A set of frontends for Beamlet-agent.
+
+These dependencies will be sperated into separate projects in the future.
+
+## Specifications
+
+The [specification library](./spec/README.md) documents the target runtime contracts, module boundaries, recovery semantics and architecture decisions. Start with the [architecture index](./spec/architecture/index.md).
 
 ## Thanks
 

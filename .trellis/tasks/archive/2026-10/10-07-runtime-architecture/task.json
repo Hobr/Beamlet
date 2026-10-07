@@ -21,15 +21,15 @@
   "children": [],
   "parent": null,
   "relatedFiles": [
-    ".trellis/spec/architecture/index.md",
-    ".trellis/spec/architecture/boundaries.md",
-    ".trellis/spec/architecture/computation-and-effects.md",
-    ".trellis/spec/architecture/authority-and-recovery.md",
-    ".trellis/spec/architecture/capability-composition.md",
-    ".trellis/spec/architecture/lifecycle-and-archives.md",
-    ".trellis/spec/architecture/platforms-and-trust.md",
-    ".trellis/spec/architecture/decisions.md",
-    ".trellis/spec/architecture/glossary.md"
+    "spec/architecture/index.md",
+    "spec/architecture/boundaries.md",
+    "spec/architecture/computation-and-effects.md",
+    "spec/architecture/authority-and-recovery.md",
+    "spec/architecture/capability-composition.md",
+    "spec/architecture/lifecycle-and-archives.md",
+    "spec/architecture/platforms-and-trust.md",
+    "spec/architecture/decisions.md",
+    "spec/architecture/glossary.md"
   ],
   "notes": "Architecture-v1 published after explicit final review approval; all documentation AC satisfied. Runtime/backend/platform implementation and validation remain future work.",
   "meta": {
