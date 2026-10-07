@@ -1,0 +1,40 @@
+{
+  "id": "runtime-architecture",
+  "name": "runtime-architecture",
+  "title": "Durable Runtime Architecture and Core Contracts",
+  "description": "Design the generic Elixir/OTP durable computation runtime, its core abstractions and distributed semantics, and a maintained spec library validated by an effect-unaware agent runtime.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "hobr",
+  "assignee": "hobr",
+  "createdAt": "2026-10-07",
+  "completedAt": null,
+  "branch": "codex/runtime-architecture",
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/spec/architecture/index.md",
+    ".trellis/spec/architecture/boundaries.md",
+    ".trellis/spec/architecture/computation-and-effects.md",
+    ".trellis/spec/architecture/authority-and-recovery.md",
+    ".trellis/spec/architecture/capability-composition.md",
+    ".trellis/spec/architecture/lifecycle-and-archives.md",
+    ".trellis/spec/architecture/platforms-and-trust.md",
+    ".trellis/spec/architecture/decisions.md",
+    ".trellis/spec/architecture/glossary.md"
+  ],
+  "notes": "Architecture-v1 published after explicit final review approval; all documentation AC satisfied. Runtime/backend/platform implementation and validation remain future work.",
+  "meta": {
+    "architecture_review_approved_at": "2026-10-07",
+    "documentation_quality_gate": "passed",
+    "runtime_validation": "not_run_documentation_task"
+  }
+}
