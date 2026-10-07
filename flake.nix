@@ -20,6 +20,7 @@
         {
           packages =
             (with pkgs; [
+              quint
             ])
             ++ (with beam; [
               erlang

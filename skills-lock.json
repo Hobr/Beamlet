@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "quint-execute-spec": {
+      "source": "quint-co/quint-llm-kit",
+      "sourceType": "github",
+      "skillPath": "quint-llm-kit-plugin/skills/quint-execute-spec/SKILL.md",
+      "computedHash": "f3b31d464f928c5c91ec11619dc6ae86206b52521b94525528e07915870399a2"
+    },
+    "quint-lang": {
+      "source": "quint-co/quint-llm-kit",
+      "sourceType": "github",
+      "skillPath": "quint-llm-kit-plugin/skills/quint-lang/SKILL.md",
+      "computedHash": "36f0537bdad934309064e01c12182174e037ac9452cf95430d832361d4596132"
+    },
+    "quint-modeling": {
+      "source": "quint-co/quint-llm-kit",
+      "sourceType": "github",
+      "skillPath": "quint-llm-kit-plugin/skills/quint-modeling/SKILL.md",
+      "computedHash": "6dbc289c299a0697903182baf8f34aa1b9417867d02efa2b2e390767f3cb8b05"
+    }
+  }
+}
