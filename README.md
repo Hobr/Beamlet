@@ -28,12 +28,7 @@ mix test
 ## Concept
 
 - Beamlet-lib: Engine.
-  - Beamlet-core: Core runtime for Beamlet-lib.
-  - Beamlet-effect: Effect system for Beamlet-lib.
-  - Beamlet-durable: Durable effects for Beamlet-lib.
-
 - Cordex: OTP-native implementation of Cordis for spatiotemporal composability.
-
 - Beamlet-agent: Agent based on Beamlet-lib.
 - Beamlet-{cli, tui, web, desktop, android, node}: A set of frontends for Beamlet-agent.
 

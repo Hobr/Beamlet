@@ -1,6 +1,6 @@
 # 能力组合与执行路径
 
-状态：已评审的目标契约。不承诺完全兼容 Cordis API。
+状态：`architecture-v1` 已评审基线；本次协议补充待评审，见[架构索引](./index.md)。不承诺完全兼容 Cordis API。
 
 ## 1. 适用范围
 
@@ -14,6 +14,8 @@ Scope.describe(scope_ref) -> versioned_descriptor
 Scope.resolve(descriptor, operation_ref, constraints) -> eligible_binding | unavailable
 Effect.invoke(binding, intent, execution_context) -> observation
 ExecutionController.dispatch(effect_ref, orchestration_permission) -> admission_result
+
+admission_result = {:ok, receipt_with_attempt_ref} | {:error, error}
 ~~~
 
 接口使用可移植描述符和已注册的本地代码。执行上下文可以包含提供者本地的运行时句柄，但不得持久化或放入归档。
@@ -35,18 +37,18 @@ ExecutionController.dispatch(effect_ref, orchestration_permission) -> admission_
 
 执行尝试时解析兼容的运行中实现。仅操作名称匹配或本地文件路径相同，不足以证明资源或语义标识相同。兼容性由已注册声明保证；运行时不负责证明实现等价。
 
-工作进程在调用前预检已授权的提供者代次与资源约束。代次变化时，必须重新解析与授权，不得在同一次执行尝试中静默替换。可证明发生在调用前的拒绝可以确立未执行；后续丢失则保持不确定。
+工作进程在调用前预检已授权的执行主体、提供者代次与资源约束，并按[执行主体契约](./authority-and-recovery.md)抑制重复分发。代次变化时，必须重新解析与授权，不得在同一次执行尝试中静默替换。可证明发生在调用前的拒绝可以确立该 Attempt 未执行；后续丢失则保持不确定，不能凭新实例的预检证明旧实例未执行。提供者内部重试同样受已捕获声明、稳定请求令牌与实际去重保障约束。
 
 ### 外部执行控制器
 
 1. 创建 Effect，提交 pending 意图。
 2. 配置的控制器协调就绪条件与审核，并解析提供者。
-3. 控制器通过正常权威接口请求执行授权。
-4. 工作进程调用提供者并记录观测。
+3. Durable 创建待命工作进程实例；控制器使用其 execution_owner_ref、稳定 command_id、预期 execution_revision 和当前编排权限，通过正常权威接口请求执行授权。
+4. 已绑定的原工作进程预检授权后，至多进入一次提供者调用并记录观测；失败恢复按声明申请新 Attempt。
 
 默认控制器自动执行。替换某个作用域路径的控制器后，应禁用该路径上的自动绕过机制。每个控制器仍受 active 模式、当前编排权限、不可变意图、提供者资格和重试约束限制。
 
-外部审核自行管理其 UI、持久化决策与等待语义。Effect / Durable 不包含 awaiting_approval 状态、approve / reject 决策 API 或 Agent 专属流程。被动事件观察者无法建立可靠的执行前关卡。
+外部审核自行管理其 UI、持久化决策与等待语义。Effect / Durable 不包含 awaiting_approval 状态、approve / reject 决策 API 或 Agent 专属流程。ResolveInvocation 只用于已存在调用的证据与不确定性裁定，不是执行前审批接口；控制器不得借此跳过暂停、终态或提供者资格。被动事件观察者无法建立可靠的执行前关卡。
 
 控制器变更或暂停不会追溯撤销已经授予的执行尝试。这属于普通的作用域组合，不引入新的中间件 DSL。
 
@@ -59,6 +61,7 @@ ExecutionController.dispatch(effect_ref, orchestration_permission) -> admission_
 | 依赖或提供者不可用 | 没有合格绑定；返回 pending / unavailable 投影，不伪造结果 |
 | 名称相同，但契约、模式或资源不兼容 | 拒绝绑定 |
 | 授权后提供者代次改变 | 操作未开始时预检拒绝；否则保留不确定性 |
+| 重复分发或执行主体被替换 | 同一实例不重复调用；替代实例不能继承旧 Attempt |
 | 创建后 Scope 设置改变 | 已存储参数与生效配置不变 |
 | 重试选择新的去重域 | 不自动重试，除非存在具有独立充分依据的明确重复执行权限 |
 | 安装外部控制器，但自动路径可以绕过 | 配置或契约违规 |
@@ -75,17 +78,31 @@ ExecutionController.dispatch(effect_ref, orchestration_permission) -> admission_
 
 ## 6. 必需测试
 
+<a id="s9"></a>
+
 ### S9 — Scope 与提供者生命周期
 
 断言不同作用域可以隔离或选择实现、依赖阻止就绪、卸载清理运行时注册，以及待处理或运行中的工作获得定义的 unavailable / unknown 结果，不宣称撤销已发生的操作。
+
+<a id="s12"></a>
 
 ### S12 — 不可变捕获与替换
 
 创建意图，改变 Scope 配置与提供者代次，再执行。断言保留已保存参数与配置、进行兼容匹配、明确处理资源缺失，并执行工作进程预检。去重重试不得静默跨越去重域或已过期保留期。
 
+| 初始条件 / 事件 | 必须提交或保留 | 禁止行为 |
+| --- | --- | --- |
+| 已授权绑定的提供者代次改变，原主体尚未调用 | 该 Attempt 的 not_executed 证据；重新解析后申请新 Attempt | 在原 Attempt 内替换绑定 |
+| 旧主体状态未知，新主体完成预检 | 保留旧 unknown；按恢复条件决定是否重新授权 | 用新预检结果消除旧执行的不确定性 |
+| 同一 Effect 在相同有效去重域内创建恢复 Attempt | 相同稳定请求令牌、原参数与配置，新主体与 Attempt 标识 | 因更换主体生成新的提供者去重键 |
+
+<a id="s14"></a>
+
 ### S14 — 历史检查与外部执行关卡
 
 通过投影检查状态、请求与结果、执行尝试和分支差异。安装外部控制器：持久化 Effect，由外部暂不分发，断言自动路径不能执行它。通过正常执行授权 API 放行。断言 Durable 模式不包含审批专属状态或决策流程。
+
+两个控制器竞争同一个 execution_revision 时，至多产生一个 admitted Attempt。控制器被替换后，旧编排权限不能申请新授权，已绑定的 Attempt 仍可完成。断言追加审计证据或允许重复执行的裁定均不能绕过实际控制器路径、暂停或终态条件。
 
 ## 7. 错误与正确做法
 

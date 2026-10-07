@@ -1,6 +1,6 @@
 # 逻辑边界
 
-状态：已评审的目标契约。实体软件包与代码尚未实现。
+状态：`architecture-v1` 已评审基线；本次协议补充待评审，见[架构索引](./index.md)。实体软件包与代码尚未实现。
 
 ## 1. 适用范围
 
@@ -13,7 +13,7 @@
 | Beamlet-core | DefinitionRef、RunRef、Invocation、Reply 与可移植数据契约 | OTP/Elixir |
 | Cordex | Scope 描述符、服务选择、提供者代次与资源生命周期 | OTP/Elixir；不包含 Agent 或持久化计算逻辑 |
 | Beamlet-effect | 意图规范化、提供者资格检查与单次提供者调用 | Core 与有限的 Cordex 集成 |
-| Beamlet-durable | 权威命令、计算宿主、分发与工作进程协议、控制及归档 | Core、Effect、Cordex 集成与选定存储 |
+| Beamlet-durable | 权威命令、计算宿主、输入调度、执行主体与重复分发协议、控制及归档 | Core、Effect、Cordex 集成与选定存储 |
 | Beamlet-lib | Beamlet 公共门面接口与按角色启动 | 通用模块组 |
 | Beamlet-agent | Agent 定义，以及 LLM、工具、设置和子 Agent 的门面接口与提供者 | 通用公共契约 |
 | 交互界面 | 交互、投影、经过认证的适配器与配置的宿主角色 | Agent 与通用公共控制接口 |
@@ -37,7 +37,7 @@ flowchart TD
     H --> S["权威状态 + 收件箱 + Effect"]
     S --> C["配置的控制器与 Scope 解析"]
     C -->|"条件执行授权"| S
-    S --> W["Durable 工作进程"]
+    S -->|"已绑定的 Attempt 授权"| W["Durable 工作进程实例"]
     W --> E["Effect 调用"]
     E --> P["本地能力提供者"]
     P --> W
@@ -45,7 +45,7 @@ flowchart TD
     S -->|"普通能力 Reply"| H
 ~~~
 
-Durable 工作进程调用 Effect 执行接口并记录观测。Effect 执行层不导入 Durable，因此不需要引入形成循环依赖的结果接收抽象。
+Durable 工作进程实例负责执行主体身份、同一 Attempt 的重复分发抑制和观测记录；Effect 负责单次提供者调用。Effect 执行层不导入 Durable，因此不需要引入形成循环依赖的结果接收抽象。纯步骤故障、输入顺序与终态由 Durable 权威命令处理，不移入 Agent 门面或提供者。
 
 基础记录可以包含不透明的应用数据或元数据，但不得定义 model、effort、conversation、tool 或 subagent 字段与分支。这些内容属于应用自行管理的模式中的操作参数和状态。
 
@@ -74,9 +74,13 @@ Cordex 在本地管理运行中的服务。Durable 管理逻辑描述符，不�
 
 ## 6. 必需测试
 
+<a id="s1"></a>
+
 ### S1 — 通用层与 Agent 边界
 
 依赖与 API 断言必须证明：Agent 状态转换仅依赖可移植状态、Invocation 和 Reply。通用状态机不得依据 Agent 操作名称分支。跟踪 UI 输入经过权威层、解析、工作进程，直至已提交 Reply 的完整路径。
+
+<a id="s6"></a>
 
 ### S6 — 非 Agent 场景的契约一致性
 

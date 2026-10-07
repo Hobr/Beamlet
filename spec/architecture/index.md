@@ -1,6 +1,6 @@
 # 架构规范
 
-状态：已评审的目标契约。规范版本：`architecture-v1`。
+状态：`architecture-v1` 已评审基线与待评审协议补充。本次补充的选择理由见 [ADR-008](./decisions.md#adr-008)；不表示实现或运行时验证已经完成。
 
 本规范指导通用 Elixir/OTP 运行时及其使用方。下文中的 API 表示法与载荷均为目标契约，不表示相关模块、存储后端或平台已经实现。
 
@@ -21,20 +21,20 @@
 
 ## 需求与场景覆盖
 
-需求与场景标识保持稳定。编号中的空缺是有意保留的；本索引覆盖运行时需求及其验证场景。
+需求与场景标识保持稳定。编号中的空缺是有意保留的；本索引覆盖运行时需求及其验证场景。场景标题前定义显式短锚点，链接不依赖完整标题的自动生成锚点。
 
 | 需求 | 目标行为 | 场景 / 断言归属 |
 | --- | --- | --- |
 | R1 | 通用计算基础 | [S1](./boundaries.md#s1), [S6](./boundaries.md#s6) |
 | R2 | Agent 使用能力，无需了解 Effect | [S1](./boundaries.md#s1), [S2](./computation-and-effects.md#s2) |
 | R3 | 远程执行，并在计算宿主不可用时恢复 | [S3](./authority-and-recovery.md#s3) |
-| R4 | 明确的生命周期语义 | [S5](./lifecycle-and-archives.md#s5) |
+| R4 | 明确的生命周期、终态与定义故障语义 | [S5](./lifecycle-and-archives.md#s5) |
 | R5 | CLI / TUI / 桌面 / Web / Android / 服务端节点目标 | [S15](./platforms-and-trust.md#s15) |
 | R6 | 确认、故障与不确定性契约 | [S4](./authority-and-recovery.md#s4) |
-| R8 | 显式、可恢复的状态推进 | [S2](./computation-and-effects.md#s2) |
+| R8 | 显式、可恢复的状态推进与有序输入处置 | [S2](./computation-and-effects.md#s2) |
 | R9 | 动态的作用域能力组合 | [S9](./capability-composition.md#s9) |
 | R10 | 指定权威节点与集群持久性 | [S10](./authority-and-recovery.md#s10) |
-| R11 | 按操作声明执行恢复 | [S11](./authority-and-recovery.md#s11) |
+| R11 | 按操作声明恢复、显式裁定与一次性重复执行许可 | [S11](./authority-and-recovery.md#s11) |
 | R12 | 不可变意图与执行时提供者解析 | [S12](./capability-composition.md#s12) |
 | R13 | 从稳定边界创建分支，后续工作具有独立标识 | [S13](./lifecycle-and-archives.md#s13) |
 | R14 | 历史检查与外部执行前审核 | [S14](./capability-composition.md#s14) |
@@ -44,9 +44,20 @@
 | R18 | 受限、版本化的 ETF 数据 | [S18](./lifecycle-and-archives.md#s18) |
 | R19 | 暂停新工作，保留已获执行授权工作的结果 | [S19](./lifecycle-and-archives.md#s19) |
 
+## 协议补充与验收归属
+
+| 补充 | 主契约 | 必需场景 |
+| --- | --- | --- |
+| 执行主体绑定、重复分发与授权回执恢复 | [权威层](./authority-and-recovery.md) | [S4](./authority-and-recovery.md#s4)、[S12](./capability-composition.md#s12) |
+| 观测分类、裁定竞态与一次性权限 | [调用裁定](./authority-and-recovery.md#invocation-resolution) | [S11](./authority-and-recovery.md#s11)、[S16](./platforms-and-trust.md#s16) |
+| 统一输入顺序、通知去重与过期处置 | [计算契约](./computation-and-effects.md) | [S2](./computation-and-effects.md#s2) |
+| finish 前置条件、FailRun 与终态结果保留 | [计算契约](./computation-and-effects.md) | [S2](./computation-and-effects.md#s2)、[S5](./lifecycle-and-archives.md#s5)、[S17](./lifecycle-and-archives.md#s17) |
+| 新提案隔离与已提交授权保留 | [生命周期](./lifecycle-and-archives.md) | [S14](./capability-composition.md#s14)、[S19](./lifecycle-and-archives.md#s19) |
+
 ## 契约状态与版本管理
 
 - **已评审目标**：架构基线接受的必需行为与不变量。
+- **待评审补充**：本次明确化的协议、记录与断言；评审通过前不声称已有评审或实现证据。
 - **实现建议**：具体实现方案，必须通过其列出的可行性检查。
 - **暂缓事项**：明确排除的工作或未来验证，不得暗示已经支持。
 
