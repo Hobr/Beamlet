@@ -1,6 +1,22 @@
 # Beamlet
 
-> Distributed Effect-Driven Compute Engine
+> Durable computation runtime where effects are persisted, resolved to capabilities, and executed across a BEAM cluster. && Agent runtime built on composable capabilities and durable effects.
+
+**WIP**, with broken changes before the first release.
+
+## Concept
+
+- Beamlet-lib: Engine.
+  - Beamlet-core: Core runtime for Beamlet-lib.
+  - Beamlet-effect: Effect system for Beamlet-lib.
+  - Beamlet-durable: Durable effects for Beamlet-lib.
+
+- Cordex: OTP-native implementation of Cordis for spatiotemporal composability.
+
+- Beamlet-agent: Agent based on Beamlet-lib.
+- Beamlet-{cli, tui, web, desktop, android, node}: A set of frontends for Beamlet-agent.
+
+These dependencies will be sperated into separate projects in the future.
 
 ## Build
 
