@@ -1,6 +1,6 @@
 # Specification Publication Plan
 
-Status: approved on 2026-10-07; specification publication and document checks complete; Git/bookkeeping wrap-up follows.
+Status: approved on 2026-10-07; specification publication and document checks complete.
 Task: .trellis/tasks/10-07-runtime-architecture.
 Inputs: [PRD](./prd.md), [design](./design.md), [glossary](./GLOSSARY.md), [research](./research/initial-evidence.md), [authority research](./research/authority-storage.md).
 
@@ -27,8 +27,10 @@ Preserve existing README.md, flake.lock, scaffold guideline and bootstrap-task c
 - [x] Publish decisions.md with concise rationale and rejected alternatives; retain the storage backend recommendation as proposed/gated.
 - [x] Run the whole-library consistency, boundary/scenario, link and manifest checks below.
 - [x] Repair only specification/task issues, then repeat the affected check.
-- [ ] Present the reviewed result and remaining implementation gates accurately.
-- [ ] Commit only the owned task/spec changes, record the session, and archive this task using the finish-work workflow when its document acceptance criteria are actually satisfied.
+- [x] Present the reviewed result and remaining implementation gates accurately.
+- [x] Commit only the owned task/spec changes in the Phase 3.4 work batch.
+
+The finish-work workflow archives the accepted document task and records its session journal after the work commits. These are bookkeeping operations, not unfinished runtime implementation.
 
 ## Contract Completeness Checklist
 
