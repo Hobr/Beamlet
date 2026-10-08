@@ -150,7 +150,6 @@ Primary/historical reports, coverage, architecture review links, task attributio
 
 `research/commit-plan.json` is an exact122-file eligible proposal (95 verification/guideline/ignore/pack files,27 architecture/task files), retaining the existing two messages and newly authorized `.gitignore`. It is explicitly unapproved; no staging/commit/push/archive occurred. Section6.1 writer activities are complete; fresh independent packaging checker and parent acceptance remain pending. I1–I4 runtime adoption, queued distinct-ID monitor/audit behavior, full-composition depth10 and general liveness remain unresolved as before.
 
-
 ## Latest LOCAL-ONLY / Chinese packaging checkpoint
 
 The latest user instruction excludes ALL verification evidence from Git, including retained artifacts. Previous735-file full-raw and122-file compact-pack inventories are superseded, never approved. All local artifacts remain available for audit/reproduction; fresh checkouts rely on authored Chinese reports/source/commands and cannot inspect excluded original logs.

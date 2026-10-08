@@ -5,8 +5,6 @@
 
 ---
 
-
-
 ## Session 1: Durable runtime architecture-v1 baseline
 <!-- trellis-session: v=2 fp=a3e6a491d7b9c2dc -->
 

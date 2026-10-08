@@ -49,7 +49,7 @@ The supervising main session owns commits. Report the post-fix state; do not com
 
 ## Report Format
 
-```
+```text
 ## Self-Check Complete
 
 ### Files Checked

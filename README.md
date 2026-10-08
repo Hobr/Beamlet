@@ -42,10 +42,8 @@ The [specification library](./spec/README.md) documents the target runtime contr
 
 - [Erlang/OTP](https://www.erlang.org/)
 - [Elixir](https://elixir-lang.org/)
-
 - [Phoenix](https://www.phoenixframework.org/)
 - [Elixir Desktop](https://github.com/elixir-desktop/desktop)
 - [Mob Framework](https://github.com/GenericJam/mob)
-
 - [Quint](https://github.com/quint-co/quint)
 - [Nix](https://nixos.org/)

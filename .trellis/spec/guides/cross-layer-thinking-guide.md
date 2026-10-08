@@ -22,7 +22,7 @@ Common cross-layer bugs:
 
 Draw out how data moves:
 
-```
+```text
 Source → Transform → Store → Retrieve → Transform → Display
 ```
 
@@ -198,7 +198,7 @@ could return empty Phase 2.1 detail.
 
 When a CLI auto-detects a mode by probing a remote resource (e.g., checking if `index.json` exists to decide marketplace vs direct download):
 
-### Before implementing:
+### Before implementing
 
 - [ ] Probe runs in **ALL** code paths that use the result (interactive, `-y`, `--flag` combos)
 - [ ] 404 vs transient error are distinguished — don't treat both as "not found"
@@ -206,7 +206,7 @@ When a CLI auto-detects a mode by probing a remote resource (e.g., checking if `
 - [ ] Shared state (caches, prefetched data) is **reset** when context changes (e.g., user switches source)
 - [ ] **Shortcut paths** (e.g., `--template` skipping picker) must have the same error-handling quality as the probed path — check that downstream functions don't call catch-all wrappers
 
-### After implementing:
+### After implementing
 
 - [ ] Trace every path from probe result to the mode-decision branch — no fallthrough
 - [ ] External format contracts (giget URI, raw URLs) are tested or at least documented as comments
@@ -268,14 +268,16 @@ could return empty Phase 2.1 detail.
 
 When a CLI auto-detects a mode by probing a remote resource (e.g., checking if `index.json` exists to decide marketplace vs direct download):
 
-### Before implementing:
+### Before implementing
+
 - [ ] Probe runs in **ALL** code paths that use the result (interactive, `-y`, `--flag` combos)
 - [ ] 404 vs transient error are distinguished — don't treat both as "not found"
 - [ ] Transient errors **abort or retry**, never silently switch modes
 - [ ] Shared state (caches, prefetched data) is **reset** when context changes (e.g., user switches source)
 - [ ] **Shortcut paths** (e.g., `--template` skipping picker) must have the same error-handling quality as the probed path — check that downstream functions don't call catch-all wrappers
 
-### After implementing:
+### After implementing
+
 - [ ] Trace every path from probe result to the mode-decision branch — no fallthrough
 - [ ] External format contracts (giget URI, raw URLs) are tested or at least documented as comments
 - [ ] Metadata reads consume a complete response or use a streaming parser — never parse a fixed-size prefix as full JSON
@@ -303,7 +305,7 @@ Create detailed flow docs when:
 
 Append-only logs are cross-layer contracts. A single event travels through:
 
-```
+```text
 CLI input → event writer → events.jsonl → reader → filter → reducer → display
 ```
 

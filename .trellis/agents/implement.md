@@ -52,7 +52,7 @@ The supervising main session owns commits. Report what changed; do not commit on
 
 ## Report Format
 
-```
+```text
 ## Implementation Complete
 
 ### Files Modified

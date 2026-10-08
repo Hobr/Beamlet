@@ -29,7 +29,6 @@ the rest conversationally.
 
 ## Spec files to populate
 
-
 ### Backend guidelines
 
 | File | What to document |
@@ -39,7 +38,6 @@ the rest conversationally.
 | `.trellis/spec/backend/error-handling.md` | How errors are caught, logged, and returned |
 | `.trellis/spec/backend/logging-guidelines.md` | Log levels, format, what to log |
 | `.trellis/spec/backend/quality-guidelines.md` | Code review standards, testing requirements |
-
 
 ### Frontend guidelines
 
@@ -51,7 +49,6 @@ the rest conversationally.
 | `.trellis/spec/frontend/state-management.md` | State library, patterns, what goes where |
 | `.trellis/spec/frontend/type-safety.md` | TypeScript conventions, type organization |
 | `.trellis/spec/frontend/quality-guidelines.md` | Linting, testing, accessibility |
-
 
 ### Thinking guides (already populated)
 
@@ -86,6 +83,7 @@ usually much faster than documenting from scratch.
 ### Step 2: Analyze the codebase for anything not covered by existing docs
 
 Scan real code to discover patterns. Before writing each spec file:
+
 - Find 2-3 real examples of each pattern in the codebase.
 - Reference real file paths (not hypothetical ones).
 - Document anti-patterns the team clearly avoids.

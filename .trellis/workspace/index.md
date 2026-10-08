@@ -10,7 +10,7 @@ This directory tracks records for all developers working with AI Agents on this 
 
 ### File Structure
 
-```
+```text
 workspace/
 |-- index.md              # This file - main index
 +-- {developer}/          # Per-developer directory
@@ -42,6 +42,7 @@ python3 ./.trellis/scripts/init_developer.py <your-name>
 ```
 
 This will:
+
 1. Create your identity file (gitignored)
 2. Create your progress directory
 3. Create your personal index
@@ -50,11 +51,13 @@ This will:
 ### For Returning Developers
 
 1. Get your developer name:
+
    ```bash
    python3 ./.trellis/scripts/get_developer.py
    ```
 
 2. Read your personal index:
+
    ```bash
    cat .trellis/workspace/$(python3 ./.trellis/scripts/get_developer.py)/index.md
    ```
@@ -72,6 +75,7 @@ This will:
 ### Session Record Format
 
 Each session should include:
+
 - Summary: One-line description
 - Branch: Which branch the work was done on
 - Main Changes: What was modified

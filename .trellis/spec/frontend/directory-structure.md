@@ -22,7 +22,7 @@ Questions to answer:
 
 ## Directory Layout
 
-```
+```text
 <!-- Replace with your actual structure -->
 src/
 ├── ...
