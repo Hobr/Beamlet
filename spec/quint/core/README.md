@@ -5,17 +5,17 @@
 [model.qnt](model.qnt)保留权威、主体绑定执行、计算与控制、稳定历史前缀四个边界。[composition.qnt](composition.qnt)只实例化一次：两个 Run，每个 Run 一个逻辑 Effect，每个 Effect 两个 Attempt，两个主体实例，每个 Run 的 FIFO 容量为6。初始化时只有 Run0；Run1 从选定稳定边界创建。[small.qnt](small.qnt)使用同一 step，限制为一个 Run / FIFO4，仅用于诊断。
 
 ```sh
-spec/quint/core/check.sh quick     # 六项类型检查、确定性竞态/变异及恢复路径
-spec/quint/core/check.sh simulate  # quick 加10,000条组合抽样
-spec/quint/core/check.sh verify    # quick 加实际 depth10 后端尝试
-spec/quint/core/check.sh           # 默认执行全部检查
+mix quint.quick     # 六项类型检查、确定性竞态/变异及恢复路径
+mix quint.simulate  # quick 加10,000条组合抽样
+mix quint.verify    # quick 加实际 depth10 后端尝试
+mix quint           # 默认执行全部检查
 ```
 
-使用现有 Quint0.32.0 / 随附 Apalache0.56.1 / Java21 环境。`CORE_LOG_DIR` 指定本地证据目录；默认创建 `/tmp/beamlet-quint-core.*`。`CORE_VERIFY_TIMEOUT` 默认240秒，`CORE_SERVER_PORT` 默认8842。执行器记录命令、域、哈希、退出码与耗时，并要求每个请求的 witness 均有正计数。超时返回非零，后端包装器停止自身进程组；所选端口应专用。
+使用现有 Quint0.32.0 / 随附 Apalache0.56.1 / Java21 环境。`CORE_LOG_DIR` 指定本地证据目录；默认创建 `/tmp/beamlet-quint-core-*`。`CORE_VERIFY_TIMEOUT` 默认240秒，`CORE_SERVER_PORT` 默认8842。Mix 使用[单一 Elixir 执行器](../check.exs)，也可直接运行 `elixir spec/quint/check.exs quick`。执行器记录独立 argv、域、版本/BEAM 环境、每项日志/退出码与耗时。每个请求的 witness 必须出现且计数正，工具/配置失败也返回非零，各项检查失败后仍继续汇总。日志目录须为空且位于 `/tmp` 或被忽略 evidence 树，独占标记防止共用/覆盖。超时返回非零，后端包装器停止自身进程组；所选端口应专用。核心 backend 在日志目录内的 `depth10.work/` 执行，保留相对 argv，新 `_apalache-out/` 产物也只写入该本地目录。
 
-验证证据用于审计、检查来源身份与复现诊断，**全部只保留在本地，不纳入 Git**，包括 `spec/quint/core/evidence/retained/`。新检出从[验证报告](verification-report.md)读取准确结果、配置和限制，并通过上述命令生成自己的证据；不能从新检出独立检查未提交的原日志。本轮只整理文件与文档，没有重新执行模型、抽样或后端。
+运行日志仅保存在本地，Git 不包含原始捕获。新检出从[验证报告](verification-report.md)读取结果、配置与限制，并通过上述命令生成自己的日志。
 
-修复阶段澄清保留证据归约，使其他已授权工作阻止过早终局失败。随后单独授权的[协议设计评审](../../architecture/protocol-review-2026-10-08.md)接受了修订后的 ADR-008 技术设计；ADR-007 中 Ra 仍是条件候选，实际采用验证未执行。Mnesia / disk_log 仅是已有决策中的解释性替代比较，没有新增依赖、运行时实现或多后端设计。
+[协议设计评审](../../architecture/protocol-review-2026-10-08.md#disposition)接受了 ADR-008 技术设计；ADR-007 中 Ra 仍是条件候选，采用验证未执行。
 
 <a id="questions-and-correspondence"></a>
 
@@ -69,4 +69,4 @@ ID 不复用，计数不回绕。FIFO 满、Attempt 用尽、目标 Run 已存�
 
 当前[报告](verification-report.md)记录46测试、24转换代表路径、10,000 depth60/seed20261014抽样及十个正 witness。消费5/恢复消费1仍稀疏。组合 depth10/240秒在 State5 超时，不能推出任何较小界限；受限恢复 depth14 NoError 只适用于明确调度。新增三个 monitor 测试只检查 guard/事实，不执行不同键的排队报告或审计持久化；实际行为仍归属 I2/I3。
 
-原始执行证据、历史报告和反例保留在本地 Git 忽略的两个 evidence 目录中。大型探索套件属于历史/补充，旧 serializer 失败、不完整界限与模型缺口不因核心技术验收而关闭。工具包、运行时与历史 architecture-v1/ADR-001–006 选择保持；技术设计验收不等于完整形式或运行时验收。
+大型探索套件是[补充模型](../README.md)，其序列化失败、未完成界限与覆盖缺口另有范围限定。技术设计接受不等于完整形式或运行时验证。

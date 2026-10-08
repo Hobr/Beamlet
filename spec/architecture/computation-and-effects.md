@@ -1,7 +1,5 @@
 # 计算、Invocation 与 Effect 契约
 
-状态：`architecture-v1` 已评审基线；ADR-008 协议补充技术设计已评审并接受，见[评审记录](./protocol-review-2026-10-08.md#disposition)。最终门禁及运行时验证另行归属。接口签名与载荷用于指导后续实现。
-
 ## 1. 适用范围
 
 定义面向业务的状态转换、引用标识、共享记录模式与通用公共接口。权威层转换由[权威存储与恢复](./authority-and-recovery.md)定义。
@@ -107,7 +105,7 @@ finish 只在提交该步骤后，Run 创建的所有 Effect 均为 consumed、�
 
 ### 已评审补充：failed 的证据保留边界
 
-本节属于 [ADR-008](./decisions.md#adr-008) 的已评审补充，技术处置见[评审记录](./protocol-review-2026-10-08.md#disposition)。FailRun 关闭业务推进入口，不改变既有 Effect 意图、原始授权、已记录观测或最后业务状态。failed 不可 resume、CommitStep、创建新 Attempt、settle 或 allow_repeat；追加有来源的审计证据仍遵循原裁定条件。
+FailRun 关闭业务推进入口，不改变既有 Effect 意图、原始授权、已记录观测或最后业务状态。failed 不可 resume、CommitStep、创建新 Attempt、settle 或 allow_repeat；追加有来源的审计证据仍遵循原裁定条件。
 
 原始授权主体可以在 failed 后首次进入已授权调用或补充迟到观测。有效观测仍按[证据归约](./authority-and-recovery.md#3-契约)决定是否记录唯一终局结果。其回复保留为 unprocessed / run_failed，不调用定义、不记为成功消费、不使原来未消费的 Effect 变为 consumed。unknown 或仅局部失败可以长期作为可检查的审计事实存在；不得为了清空待处理列表而删除证据、伪造失败、恢复业务或赋予终态人工裁定 / 取消功能。终态人工 settlement 仍属暂缓事项。
 

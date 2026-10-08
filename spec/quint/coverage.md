@@ -1,17 +1,8 @@
 # 覆盖审计
 
-当前主结果是[核心 C1–C6 组合](core/verification-report.md)。本文件保留范围缩减前的 R/S/P 与88行源矩阵，只作历史/补充映射，不能用行数替代当前核心问题或未完成 BMC。用户缩减旧全契约目标是明确范围变更，不表示原 AC 门禁已通过。
+主验证范围是[核心 C1–C6](core/verification-report.md)。本文件保留详细模型的18项需求、17项场景和88行断言/错误矩阵对应，用于查找源契约与测试；行数不能替代组合有界检查。
 
-“抽象内覆盖”指对应旧模型断言与确定路径覆盖，不是无界证明或实际实现；“部分覆盖”保留缺失条款；“待运行时验证”须真实代码/平台/数据证据。下列初期映射按原检查点保留；后续保真修复另列，不把旧 gap probe 通过算作修复验收。
-
-所有 evidence 都只在本地、Git 忽略，包括 compact pack。新检出从报告、[源码](architecture.qnt)和[历史命令说明](README.md)理解结果并生成新证据，不能独立查看未提交的旧日志/哈希文件。原 source line 归属旧快照，当前契约按链接读取；本轮没有模型/测试/运行时变化或昂贵重跑。
-
-<a id="independent-review-qualification"></a>
-<a id="retry-checkpoint-qualification-historical"></a>
-
-## 历史检查阶段的限定
-
-重试阶段六 typecheck、53旧场景/13协议/9负控通过；500条/depth60/seed20261010 只是诊断，完整组合 depth1 在 JSON serializer 失败。独立检查阶段修复捕获/失败前态/结果回复原子性/G08分类后，七 typecheck/82测试通过，其中三个坏行为 gap probe 仍不计修复验收。三组各10,000抽样无采样反例：default/recovery完整step depth60，条件调度depth40；恢复消费分别0/17/10,000。默认0仍是缺口，fixture与同一路径重复不是一般活性。后续保真模型依赖变化，旧抽样不能验证新源；最终97确定测试/九typecheck也没有完成组合界限。精确阶段、哈希与超时见[历史报告](verification-report.md)。
+“抽象内覆盖”表示相应模型断言与确定路径已检查；“部分覆盖”表示仍缺条款；“待运行时验证”需要真实代码、平台或数据证据。初期映射和后续修复分别列出，故意展示坏行为的 probe 不计为修复通过。结果的版本与配置限定见[补充报告](verification-report.md)，当前契约按链接读取。
 
 <a id="indexed-requirements-18"></a>
 
@@ -310,7 +301,7 @@
 
 回执不是新进入许可；授权与进入单独记录。晚完成不把旧不稳定边界追溯变稳定。typed有效类别是接口前提，不是ETF/安全证明；G07只检查模型图，不检查不存在的产品import。
 
-<a id="current-fidelity-checkpoint-scenario-references"></a>
+<a id="model-regression-mappings"></a>
 
 ## 后续保真检查点的对应修复
 
@@ -328,4 +319,4 @@
 | S16查询/导出/资源 | queryExportResourceAuthorizationTest | 真实认证/安全接入 |
 | 命令/历史独立性 | receiptHistoryMutationTest、reference receipt/history差量检查 | 原子线性化权威仍前提 |
 
-旧gap probe后来转拒绝/检测回归，不能改写原历史坏行为日志的归属。最终97测试/九typecheck通过，无该最终详细模型新抽样/backend/compile；旧原始日志仅本地。原全文gate被用户核心范围取代，没有被算成通过；实际核心結果及其有限域、稀疏消费、depth10无结论与恢复调度界限见[核心报告](core/verification-report.md)。Ra仍是条件候选，Mnesia/disk_log只是既有比较，没有新增依赖或运行时。
+旧 gap probe 后来转为拒绝/检测回归。详细模型最近的九项 typecheck 与97项确定性测试通过，但后续修复未进行新的最终抽样或后端检查，早期结果不能验证后来变化的依赖。实际核心结果及有限域、稀疏消费、depth10无结论与受限恢复调度见[核心报告](core/verification-report.md)。所有运行时义务仍须相应实现测试。

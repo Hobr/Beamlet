@@ -1,6 +1,6 @@
 # 架构规范
 
-状态：`architecture-v1` 历史已评审基线保持；ADR-008 协议补充技术设计已单独评审并接受，见[评审记录](./protocol-review-2026-10-08.md#disposition)与[选择理由](./decisions.md#adr-008)。最终独立检查及[父会话设计验收](./protocol-review-2026-10-08.md#parent-acceptance)已完成，未发现剩余范围内设计阻塞；技术接受不表示完整形式检查、实现或运行时验证已经完成。
+状态：`architecture-v1` 为已评审历史基线；ADR-008 协议补充技术设计已评审并接受，见[技术处置](./protocol-review-2026-10-08.md#disposition)与[选择理由](./decisions.md#adr-008)。ADR-007 为条件候选；技术接受不表示完整形式检查、实现或运行时验证已经完成。
 
 本规范指导通用 Elixir/OTP 运行时及其使用方。下文中的 API 表示法与载荷均为目标契约，不表示相关模块、存储后端或平台已经实现。
 
@@ -16,7 +16,7 @@
 | [生命周期与归档](./lifecycle-and-archives.md) | 后续推进、暂停与恢复、稳定分支、ETF 与兼容性 |
 | [平台与信任](./platforms-and-trust.md) | 终端角色、安全接入边界与可信成员前提 |
 | [架构决策](./decisions.md) | 选择理由、替代方案与待完成的实现验证 |
-| [协议补充评审记录](./protocol-review-2026-10-08.md) | 逐项技术处置、P1 / P2 修订、来源身份与剩余验证边界 |
+| [协议补充评审记录](./protocol-review-2026-10-08.md) | 逐项技术处置、协议修订与剩余验证边界 |
 
 修改契约前，先阅读负责该契约的文档，并遵循其“必需测试”部分。UI 使用方不得重复实现解码器、状态解释或授权策略。
 
@@ -45,7 +45,7 @@
 | R18 | 受限、版本化的 ETF 数据 | [S18](./lifecycle-and-archives.md#s18) |
 | R19 | 暂停新工作，保留已获执行授权工作的结果 | [S19](./lifecycle-and-archives.md#s19) |
 
-## 协议补充与验收归属
+## 协议补充与验证场景
 
 | 补充 | 主契约 | 必需场景 |
 | --- | --- | --- |
@@ -55,12 +55,12 @@
 | finish 前置条件、FailRun 与终态结果保留 | [计算契约](./computation-and-effects.md) | [S2](./computation-and-effects.md#s2)、[S5](./lifecycle-and-archives.md#s5)、[S17](./lifecycle-and-archives.md#s17) |
 | 新提案隔离与已提交授权保留 | [生命周期](./lifecycle-and-archives.md) | [S14](./capability-composition.md#s14)、[S19](./lifecycle-and-archives.md#s19) |
 
-本次已评审细化还覆盖[版本化失败声明](./capability-composition.md#failure-declaration)、[保留证据归约与恢复职责](./authority-and-recovery.md#3-契约)、failed 的长期审计及[接口前提验证义务](./boundaries.md#3-契约与数据流)。它们及原 ADR-008 补充的技术处置见[逐项评审](./protocol-review-2026-10-08.md#disposition)。形式模型仅验证对接口前提的使用，完整组合 depth10 仍不确定；运行时验收仍归属对应模块与必需场景。
+协议细化还覆盖[版本化失败声明](./capability-composition.md#failure-declaration)、[保留证据归约与恢复职责](./authority-and-recovery.md#3-契约)、failed 的长期审计及[接口前提验证义务](./boundaries.md#3-契约与数据流)。它们及原 ADR-008 补充的技术处置见[逐项评审](./protocol-review-2026-10-08.md#disposition)。形式模型仅验证对接口前提的使用，完整组合 depth10 仍无结论；运行时验证须覆盖对应模块与必需场景。
 
 ## 契约状态与版本管理
 
 - **已评审目标**：架构基线接受的必需行为与不变量。
-- **已评审补充**：通过独立源 / 设计评审及串行修订、具有单独记录的技术处置；不改写历史基线，不等于最终门禁或运行时通过。
+- **已评审补充**：具有单独记录的技术设计处置；不改写历史基线，不等于形式证明或运行时通过。
 - **待评审补充**：尚未有逐项技术处置的新提案；不得通过其他补充的接受状态自动提升。
 - **实现建议**：具体实现方案，必须通过其列出的可行性检查。
 - **暂缓事项**：明确排除的工作或未来验证，不得暗示已经支持。

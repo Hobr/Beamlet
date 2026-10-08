@@ -17,10 +17,10 @@
 | 终端角色、授权与可信节点 | [平台与信任](./architecture/platforms-and-trust.md) |
 | 架构选择与替代方案 | [架构决策](./architecture/decisions.md) |
 | 核心抽象与设计的可执行验证 | [Quint 核心模型](./quint/core/README.md) |
-| 历史详细模型与补充验证证据 | [Quint 探索记录](./quint/README.md) |
+| 详细模型与补充验证范围 | [Quint 探索记录](./quint/README.md) |
 
 ## 规范状态
 
-保留 `architecture-v1` 已评审目标基线，并补充待评审的执行主体、调用裁定、输入顺序与终态协议，选择理由见 [ADR-008](./architecture/decisions.md#adr-008)。这些内容尚不代表实现已经完成。候选存储方案、编解码限制和平台支持仍须满足各自明确列出的验证要求。
+保留 `architecture-v1` 已评审目标基线，执行主体、调用裁定、输入顺序与终态协议补充的技术设计已评审并接受，见[评审记录](./architecture/protocol-review-2026-10-08.md#disposition)，选择理由见 [ADR-008](./architecture/decisions.md#adr-008)。这些内容尚不代表实现已经完成。候选存储方案、编解码限制和平台支持仍须满足各自明确列出的验证要求。
 
 每份契约文档负责定义其接口、不变量、错误行为和必需的验证场景。架构决策说明选择理由与替代方案。修改行为时，应更新负责该行为的文档，并同步更新关联场景和索引条目。

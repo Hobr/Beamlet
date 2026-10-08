@@ -1,27 +1,31 @@
 # 架构验证
 
-当前主入口是[核心抽象](core/README.md)：C1–C6、显式接口前提、开放代表组合、确定性变异、固定 seed 抽样与实际 bounded 尝试。运行 `spec/quint/core/check.sh`，阅读[核心报告](core/verification-report.md)了解来源绑定结果和限制。核心是新抽象，不是大型模型的等价优化或证明。
+当前主入口是[核心抽象](core/README.md)：C1–C6、显式接口前提、开放代表组合、确定性变异、固定 seed 抽样与实际 bounded 尝试。运行 `mix quint`，阅读[核心报告](core/verification-report.md)了解来源绑定结果和限制。核心是新抽象，不是大型模型的等价优化或证明。
 
-用户的核心设计范围取代了原来的全文穷举覆盖目标。本目录其余模型与下文属于**历史/补充探索**；旧结果只适用于原哈希，不是当前核心验收清单，核心验收不关闭它们的未完成界限和缺口。
+本目录其余模型用于补充探索，展开 command/receipt、Scope、资源与角色等有界维度。已有结果须按模型版本解释，详见[补充报告](verification-report.md)与[覆盖映射](coverage.md)。核心 C1–C6 结果不能补全详细模型的未完成界限。
 
-所有验证证据（包括 compact pack、元数据、日志、哈希记录、原模型/probe/ITF 副本）都只保留在本地、Git 忽略。`spec/quint/evidence/` 与 `spec/quint/core/evidence/` 都不提交。保留是为了审计和复现，不代表加入 Git。新检出读取人工[报告](verification-report.md)、[覆盖审计](coverage.md)与源码，并运行命令产生自己的本地证据；不能检查未提交的旧日志。
+运行日志仅保存在本地，Git 不包含原始捕获；新检出可以阅读源码、结果摘要与命令，并生成自己的日志。
 
-<a id="historical-detailed-exploration"></a>
+<a id="detailed-model"></a>
 
-## 历史详细探索
+## 详细模型
 
 [architecture.qnt](architecture.qnt)把[架构契约](../architecture/index.md)组合为一个状态机：输入/授权、权威、求值/提交、控制器/Scope/提供者、主体进入/观测、FIFO、生命周期、历史 fork/import 共同交错。[types.qnt](types.qnt)提供封闭变体和完整 map 域，测试独立存放，没有把各组件独立状态机当成组合证据。
 
 [reference.qnt](reference.qnt)投影输入、不可变意图、授权、实际进入、终局选择、输入处置与派生。`allowed(before, after)` 独立检查保留事实、合法执行、FIFO 原子提交与选定前缀来源；本地转换可不改变投影。没有无条件 stutter。
 
 ```sh
-spec/quint/check.sh quick      # 全部类型检查与确定性/负控测试
-spec/quint/check.sh simulate   # quick 加三组10,000条固定 seed 抽样
-spec/quint/check.sh verify     # 组合与条件恢复的实际 bounded 尝试
-spec/quint/check.sh all        # 默认执行全部
+mix quint.supplemental quick      # 全部类型检查与确定性/负控测试
+mix quint.supplemental simulate   # quick 加三组10,000条固定 seed 抽样
+mix quint.supplemental verify     # 组合与条件恢复的实际 bounded 尝试
+mix quint.supplemental all        # 默认执行全部
 ```
 
-历史执行器使用现有 Quint0.32.0、随附 Apalache0.56.1 / OpenJDK21，默认输出到 `/tmp/beamlet-quint-check.*`。`QUINT_LOG_DIR` 可指定本地目录；`QUINT_VERIFY_TIMEOUT` 默认600秒。违例、超时或任何 witness 为零都返回非零，各独立检查仍继续；不能把单项模拟 exit0 当作 `all` 通过。
+当前补充入口与核心共用[单一 Elixir 执行器](check.exs)，可直接运行 `elixir spec/quint/check.exs quick --suite supplemental`。它沿用历史命令参数，使用现有 Quint0.32.0、随附 Apalache0.56.1 / OpenJDK21，默认输出到 `/tmp/beamlet-quint-supplemental-*`。`QUINT_LOG_DIR` 可指定 `/tmp` 或被忽略 evidence 树中的空目录；`QUINT_VERIFY_TIMEOUT` 默认600秒，也接受 GNU timeout 的正数时长（如 `10m`）。`quick` 是全部补充类型检查与确定测试，`simulate` 先 quick 再三组抽样；补充 `verify` 与历史行为一致，不先 quick。
+
+违例、工具/配置失败、超时或任何请求 witness 缺失/为零都返回非零，各独立检查仍继续；不能把单项模拟 exit0 当作 `all` 通过。
+
+补充 bounded 继续使用历史 `timeout` 命令，它不保证回收另起会话的后代进程；不能把这个入口当作核心 Python 包装器的专属进程组保证。每个补充 backend 命令使用日志目录下自己的工作目录，只读取该目录产生的检查点，未产生日志会明确记录；不会挑选仓库中其他任务的最新 backend 日志。检查点只表示进度，不建立完成界限；补充成功不清除核心无结论。执行器回归中的假工具只检查编排行为，不属于补充模型抽样或 BMC。
 
 | 配置 | Run / Effect / Attempt | FIFO | init / step | 用途 |
 | --- | --- | --- | --- | --- |
@@ -43,9 +47,9 @@ finished/failed、waiting 空队列、写入/资源不可用、暂停和 unknown
 
 所有模型命令具有不可变 envelope：原 revision/epoch/cursor、意图/绑定、分支边界、裁定来源/证据/载荷。先授权再查回执，同键同载荷返回原回执，先于当前生命周期/写入条件。input/observation 独立冲突表；每个新命令历史只增加一次，原键重试不增加。共同 `step` 将权威操作通过该协议；本地 evaluate/entry/complete/故障仍分开。
 
-<a id="historical-detailed-suite-fidelity-checkpoint"></a>
+<a id="model-regressions"></a>
 
-## 历史保真修复检查点
+## 详细模型与回归范围
 
 旧观察键缺失原绑定字段、恢复复用旧主体和终态控制盲点的 gap probe，已经改为要求拒绝/检测的回归。原始坏行为日志仍仅本地保留。正常观察键比较包含 Attempt/owner/provider/resource/generation/domain/intent/payload。恢复排除相关 unknown 工作的旧实例；重连保持原实例与标记，可以原 Attempt 重投，不使其成为新的恢复主体。
 
@@ -57,7 +61,7 @@ finished/failed、waiting 空队列、写入/资源不可用、暂停和 unknown
 
 扩展测试容量32容纳41转换路径；bounded 配置10命令键可支撑其最多十步新命令探索，但不是完整路径可容纳或界限完成证据。G08 检查所有 guarded 返回变体及真实阻塞；无 blanket permission/queue fallback。新 Definition 暴露的 continue/finish usefulEnabled 遗漏已修复。
 
-历史最后 checkpoint 为九项 typecheck、97确定测试通过（54场景、13协议、9原变异、8形式维度、1 envelope scheduler、12 review 回归/变异）。模型哈希和旧抽样的来源对应见[历史报告](verification-report.md)。保真修复后没有新的最终10,000抽样或 backend/compile；完整组合 depth1 曾在 JSON serializer 失败，depth10 未完成。旧抽样不验证后来的模型依赖，核心结果不清除这些历史缺口。
+详细模型最近的检查结果为九项 typecheck、97确定测试通过（54场景、13协议、9原变异、8形式维度、1 envelope scheduler、12 review 回归/变异）。各版本结果与旧抽样的适用范围见[历史报告](verification-report.md)。保真修复后没有新的最终10,000抽样或 backend/compile；完整组合 depth1 曾在 JSON serializer 失败，depth10 未完成。旧抽样不验证后来的模型依赖，核心结果不清除这些历史缺口。
 
 ```sh
 quint test spec/quint/architecture_test.qnt --main architecture_test \
@@ -65,6 +69,6 @@ quint test spec/quint/architecture_test.qnt --main architecture_test \
   --out-itf '/tmp/beamlet_{test}_{seq}.itf.json'
 ```
 
-此复现命令本轮未执行。长 `then`/`expect` 曾触发 Rust JSON recursion limit，确定测试使用正式 TypeScript evaluator，模拟使用 Rust。witness 证明可达，抽样无反例不是穷举，超时不是任何已完成较小界限。
+此命令用于复现确定性路径。长 `then`/`expect` 曾触发 Rust JSON recursion limit，确定测试使用正式 TypeScript evaluator，模拟使用 Rust。witness 证明可达，抽样无反例不是穷举，超时不是任何已完成较小界限。
 
-Mnesia / disk_log 仅保留在 ADR-007 的替代解释，本轮不新增依赖/后端/运行时。Ra 仍是唯一条件候选。
+存储实现的候选条件与替代方案见[ADR-007](../architecture/decisions.md#adr-007-review)。
