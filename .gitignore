@@ -78,3 +78,9 @@ rebar3.crashdump
 # Dev
 .nix-mix/
 .nix-hex/
+
+# Quint
+_apalache-out/
+# 验证证据仅保留在本地，用于审计与复现，不纳入版本控制
+/spec/quint/evidence/
+/spec/quint/core/evidence/

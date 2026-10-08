@@ -1,0 +1,43 @@
+// All components share these types. IDs are opaque finite-domain values.
+module architectureTypes {
+  type Mode = Active | Suspended
+  type Lifetime = Open | Finished | Failed
+  type Progress = Ready | Waiting | FinishedProgress | FailedProgress
+  type Phase = Pending | Executing | Unknown | OutcomeRecorded | Consumed
+  type AttemptPhase = Unused | Admitted | UnknownAttempt | ObservationRecorded
+  type Kind = External | Continuation | Uncertainty | TerminalReply
+  type Disposition = Queued | Applied | StaleContinuation | ObsoleteUncertainty | RunFinished | RunFailed
+  type Policy = NonRepeatable | Idempotent | Deduplicated
+  type Observation = NoObservation | Success | Failure | NotExecuted | Lost
+  type Result = NoResult | OkResult | ErrorResult
+  type ProposalKind = InvokeStep | ContinueStep | WaitStep | FinishStep | FaultStep
+  type Role = InteractionRole | ComputeRole | ExecuteRole | AuthorityRole
+  type Scope = { parent: int, isolated: bool, provider: int }
+  type Resource = { available: bool, permitted: bool }
+  type Operation = CreateOp | ResourceOp | InputOp | ControlOp | AdmitOp | ObserveOp | AuditOp | SettleOp | RepeatOp | ForkOp | InspectOp | ExportOp
+  type Error = NoError | Forbidden | Unauthenticated | InvalidData | KeyConflict | StalePermission | InvalidTransition | AlreadyResolved | CommitUnknown | AuthorityUnavailable | NotStable | IncompatibleVersion | UnavailableResource | ResourceLimit
+  type ImportCheck = ValidImport | MissingData | BadVersion | MissingResource | BadData | ExcessiveData | MissingPermission
+  type ProviderFault = ProviderAbsent | IncompatibleProvider | DependencyAbsent | ProtectionExpired
+  type EffectId = (int, int)
+  type AttemptId = (EffectId, int)
+  type Input = { kind: Kind, effect: EffectId, revision: int, disposition: Disposition, key: int }
+  type Boundary = { valid: bool, app: int, revision: int, cursor: int, progress: Progress, lifetime: Lifetime, result: int, definition: int, prefix: Set[EffectId], results: Set[(EffectId, Result, int)], events: Set[(int, Kind, EffectId, Disposition)] }
+  type Run = { exists: bool, definition: int, scope: int, requiredResource: int, app: int, revision: int, history: int, host: int, controller: int, externalController: bool, controllerReady: bool, mode: Mode, lifetime: Lifetime, progress: Progress, inbox: List[Input], cursor: int, result: int, boundaries: List[Boundary], parent: int, origin: Boundary }
+  type Effect = { exists: bool, operation: int, resource: int, intent: int, token: EffectId, policy: Policy, failureConclusive: bool, phase: Phase, revision: int, result: Result, resultPayload: int, provenance: Observation, settled: bool, notifications: int, permit: int, permitsIssued: int, permitsUsed: Set[int], replyCount: int }
+  type Attempt = { phase: AttemptPhase, provider: int, resource: int, owner: int, generation: int, domain: int, entered: bool, calls: int, actual: Observation, observed: Set[Observation], permit: int, hostAtGrant: int, controllerAtGrant: int, activeAtGrant: bool, intentAtGrant: int }
+  type Owner = { alive: bool, reachable: bool }
+  type Provider = { resource: int, generation: int, domain: int, present: bool, compatible: bool, dependencies: bool, protection: bool, configuration: int, failureConclusive: bool }
+  type Proposal = { valid: bool, runId: int, host: int, revision: int, cursor: int, kind: ProposalKind, operation: int, resource: int, slot: int, policy: Policy, intent: int, failureConclusive: bool }
+  type Receipt = { valid: bool, operation: Operation, target: int, payload: int, revision: int }
+  type CommitFact = { runId: int, cursor: int, oldRevision: int, newRevision: int, host: int, currentHost: int, kind: Kind, disposition: Disposition, active: bool, appBefore: int, appAfter: int, created: Set[EffectId], effect: EffectId, terminalAtCommit: Result, inputRevision: int }
+  type Grant = { attempt: AttemptId, provider: int, resource: int, revision: int, owner: int, generation: int, domain: int, intent: int, token: EffectId, permit: int, active: bool, controller: int, currentController: int, policy: Policy, priorUnknownDomains: Set[int], protection: bool, externalController: bool, controllerReady: bool }
+  type Entry = { attempt: AttemptId, provider: int, resource: int, owner: int, generation: int, domain: int, intent: int, token: EffectId }
+  type OutcomeFact = { effect: EffectId, result: Result, payload: int, provenance: Observation, settled: bool, unresolvedAtChoice: Set[AttemptId] }
+  type CommandKind = CreationCommand | InputCommand | AdmissionCommand | ObservationCommand | LossCommand | ResolutionCommand | ModeCommand | HostCommand | ControllerCommand | BusinessCommand | FailureCommand | DispositionCommand | BranchCommand | ArchiveCommand
+  type Command = { tag: CommandKind, definition: int, progress: Progress, provider: int, resource: int, operation: int, runId: int, slot: int, attempt: int, owner: int, generation: int, domain: int, intent: int, revision: int, epoch: int, cursor: int, inputId: int, observationId: int, payload: int, observation: Observation, decision: Operation, source: int, evidence: int, mode: Mode, dst: int, boundary: int, validation: ImportCheck, stepKind: ProposalKind, policy: Policy, failureConclusive: bool }
+  type CommandReceipt = { valid: bool, body: Command, history: int, stateRevision: int, executionRevision: int }
+  type InputKey = { valid: bool, payload: int, sequence: int }
+  type ObservationKey = { valid: bool, provider: int, resource: int, attempt: AttemptId, owner: int, generation: int, domain: int, intent: int, observation: Observation, payload: int }
+  type ResolutionFact = { effect: EffectId, operation: Operation, revision: int, source: int, evidence: int, payload: int }
+  type State = { roles: Set[Role], scopes: int -> Scope, resources: int -> Resource, queryReads: int, exports: Set[(int, Boundary)], runs: int -> Run, effects: EffectId -> Effect, attempts: AttemptId -> Attempt, owners: int -> Owner, providers: int -> Provider, proposals: int -> Proposal, receipts: int -> Receipt, commandReceipts: int -> CommandReceipt, inputIds: (int, int) -> InputKey, observationIds: int -> ObservationKey, resolutions: Set[ResolutionFact], writes: bool, authenticated: bool, permissions: Set[Operation], ui: bool, error: Error, acknowledged: bool, receiptReads: int, commits: Set[CommitFact], grants: Set[Grant], entries: Set[Entry], outcomes: Set[OutcomeFact], performed: Set[str] }
+}

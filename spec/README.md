@@ -16,6 +16,8 @@
 | 暂停、分支与可移植归档 | [生命周期与归档](./architecture/lifecycle-and-archives.md) |
 | 终端角色、授权与可信节点 | [平台与信任](./architecture/platforms-and-trust.md) |
 | 架构选择与替代方案 | [架构决策](./architecture/decisions.md) |
+| 核心抽象与设计的可执行验证 | [Quint 核心模型](./quint/core/README.md) |
+| 历史详细模型与补充验证证据 | [Quint 探索记录](./quint/README.md) |
 
 ## 规范状态
 

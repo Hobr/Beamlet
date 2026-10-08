@@ -1,0 +1,130 @@
+module core_test {
+  import core(RUNS = Set(0, 1), QUEUE_LIMIT = 6).* from "./model"
+  run pending = init.then(evaluate(0, Invoke, false, true)).expect(safety).then(commit(0)).expect(safety)
+  run granted = pending.then(admit(0, 0, 0)).expect(safety)
+  run unknownPrefix = granted.then(enter(0, 0, 0)).expect(safety).then(disconnect(0, false)).expect(safety).then(lose(0, 0)).expect(safety)
+  run firstTransitionTest = init.then(evaluate(0, Invoke, false, true)).expect(safety and not(effect.get(0).exists))
+  run suspendBeforeAdmissionTest = pending.then(setActive(0, false)).expect(safety and not(canAdmit(0, 0, 0)))
+  run oldGrantAfterSuspendTest = granted.then(setActive(0, false)).expect(safety).then(enter(0, 0, 0)).expect(safety)
+    .then(complete(0, 0, Succeeded)).expect(safety).then(record(0, 0)).expect(safety)
+    .then(setActive(0, true)).then(evaluate(0, Wait, false, true)).then(commit(0)).expect(safety and consumedWitness)
+  run failedRunLateResultTest = granted.then(addInput(0)).then(evaluate(0, Fault, false, true)).then(failRun(0)).expect(safety)
+    .then(enter(0, 0, 0)).then(complete(0, 0, Succeeded)).then(record(0, 0)).expect(safety and effect.get(0).phase == Outcome and control.get(0).life == Failed and inbox.get(0).nth(2).disposition == Unprocessed and not(canAdmit(0, 1, 1)))
+  run duplicateDispatchTest = granted.then(enter(0, 0, 0)).then(duplicate(0, 0)).then(duplicate(0, 0)).expect(safety and attempt.get((0, 0)).entries == 1)
+  run recoveryFailureTest = unknownPrefix.then(repeat(0)).then(admit(0, 1, 1)).then(enter(0, 1, 1)).then(complete(0, 1, FailedCall)).then(record(0, 1))
+    .expect(safety and attempt.get((0, 0)).knowledge == Unknown and effect.get(0).result == NoResult and effect.get(0).phase == Uncertain)
+  run recoveryNotExecutedTest = unknownPrefix.then(repeat(0)).then(admit(0, 1, 1)).then(precheck(0, 1)).then(record(0, 1))
+    .expect(safety and attempt.get((0, 0)).knowledge == Unknown and effect.get(0).result == NoResult)
+  run reconnectIsSameIncarnationTest = unknownPrefix.then(reconnect(0)).then(repeat(0)).expect(safety and not(canAdmit(0, 1, 0)) and canAdmit(0, 1, 1))
+  run inconclusiveFailureTest = init.then(evaluate(0, Invoke, false, false)).then(commit(0)).then(admit(0, 0, 0)).then(enter(0, 0, 0)).then(complete(0, 0, FailedCall)).then(record(0, 0))
+    .expect(safety and effect.get(0).phase == Uncertain and effect.get(0).result == NoResult and not(canAdmit(0, 1, 1)))
+  run inconclusiveThenNotExecutedTest = init.then(evaluate(0, Invoke, false, false)).then(commit(0)).then(admit(0, 0, 0)).then(enter(0, 0, 0)).then(complete(0, 0, FailedCall)).then(record(0, 0))
+    .then(repeat(0)).then(admit(0, 1, 1)).then(precheck(0, 1)).then(record(0, 1))
+    .expect(safety and effect.get(0).phase == Uncertain and effect.get(0).result == NoResult)
+  run settlementLateResultTest = unknownPrefix.then(setActive(0, false)).then(settle(0)).expect(safety)
+    .then(complete(0, 0, FailedCall)).then(record(0, 0)).expect(safety and effect.get(0).result == Ok)
+    .then(setActive(0, true)).then(dispose(0)).then(evaluate(0, Finish, false, true)).then(commit(0)).expect(safety and effect.get(0).phase == Consumed and control.get(0).life == Finished)
+  run fifoAndObsoleteProposalTest = unknownPrefix.then(addInput(0)).then(evaluate(0, Wait, false, true)).then(complete(0, 0, Succeeded)).then(record(0, 0))
+    .expect(safety and not(canCommit(0))).then(dispose(0)).then(evaluate(0, Wait, false, true)).then(commit(0)).expect(safety)
+    .then(evaluate(0, Finish, false, true)).then(commit(0)).expect(safety and consumedWitness)
+  run combinedTest = unknownPrefix.then(takeover(0)).expect(safety).then(setActive(0, false)).expect(safety)
+    .then(repeat(0)).expect(safety).then(setActive(0, true)).expect(safety).then(admit(0, 1, 1)).expect(safety)
+    .then(enter(0, 1, 1)).expect(safety).then(complete(0, 1, Succeeded)).expect(safety).then(record(0, 1)).expect(safety)
+    .then(complete(0, 0, FailedCall)).expect(safety).then(record(0, 0)).expect(safety)
+    .then(dispose(0)).expect(safety).then(evaluate(0, Wait, false, true)).then(commit(0)).expect(safety and recoveryConsumedWitness)
+    .then(fork(0, 1, 0)).expect(safety).then(setActive(1, true)).then(addInput(1)).then(evaluate(1, Invoke, false, true)).then(commit(1)).expect(safety and branchWorkWitness)
+    .expect(not(boundaries.get(0).nth(1).stable) and boundaries.get(0).nth(2).stable and control.get(1).app == 1 and effect.get(1).token != effect.get(0).token)
+  run concurrentBranchWorkTest = init.then(evaluate(0, Continue, false, true)).then(commit(0)).expect(safety)
+    .then(evaluate(0, Invoke, false, true)).then(commit(0)).expect(safety and not(boundaries.get(0).nth(2).stable))
+    .then(fork(0, 1, 1)).expect(safety and control.get(1).ready and inbox.get(1).nth(0).kind == Continuation)
+    .then(admit(0, 0, 0)).then(setActive(1, true)).then(evaluate(1, Invoke, false, true)).then(commit(1)).then(admit(1, 0, 1))
+    .expect(safety and branchWorkWitness and effect.get(0).phase == Executing and effect.get(1).phase == Executing)
+    .then(enter(0, 0, 0)).then(complete(0, 0, Succeeded)).then(record(0, 0)).then(evaluate(0, Wait, false, true)).then(commit(0))
+    .expect(safety and not(boundaries.get(0).nth(2).stable) and effect.get(1).phase == Executing and attempt.get((1, 0)).owner == 1)
+  run finishedBranchHistoryTest = granted.then(enter(0, 0, 0)).then(complete(0, 0, Succeeded)).then(record(0, 0)).then(evaluate(0, Finish, false, true)).then(commit(0))
+    .then(fork(0, 1, 2)).expect(safety and control.get(1).life == Finished and control.get(1).origin.result == Ok and not(effect.get(1).exists) and inbox.get(1).length() == 0)
+  // These bypass real transition guards and must fail independent properties.
+  run noGrantMutationTest = init.then(enterUpdate(0, 0, 0)).expect(not(C2))
+  run ownerInheritanceMutationTest = granted.then(enterUpdate(0, 0, 1)).expect(not(C2))
+  run staleProposalMutationTest = init.then(evaluate(0, Invoke, false, true)).then(takeover(0)).then(commitUpdate(0)).expect(not(C4))
+  action duplicateReply = all {noteRun(Settle, 0), inbox' = inbox.setBy(0, q => q.append(input(Reply, 0))), control' = control, effect' = effect, attempt' = attempt, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run duplicateReplyMutationTest = unknownPrefix.then(settle(0)).then(duplicateReply).expect(not(C3))
+  action reusePermit = all {note(Admit, 0, 0, 0, 0, emptyBoundary), attempt' = attempt.setBy((0, 0), at => {...at, permit: 1, knowledge: Admitted}), control' = control, effect' = effect, inbox' = inbox, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run permissionReuseMutationTest = unknownPrefix.then(repeat(0)).then(admit(0, 1, 1)).then(reusePermit).expect(not(C3) and not(C2))
+  action inheritedBranchGrant = all {note(Fork, 1, 0, 0, 0, boundaries.get(0).nth(0)), control' = control.set(1, {...emptyControl(true), active: false, parent: 0, origin: boundaries.get(0).nth(0)}), attempt' = attempt.set((1, 0), attempt.get((0, 0))), effect' = effect, inbox' = inbox, owner' = owner, held' = held, boundaries' = boundaries.set(1, List(boundaries.get(0).nth(0))), writes' = writes}
+  run branchActivationMutationTest = granted.then(inheritedBranchGrant).expect(not(C6))
+  action admitKeepingPermit = all {note(Admit, 0, 1, 1, 0, emptyBoundary), attempt' = attempt.set((0, 1), {...emptyAttempt, knowledge: Admitted, owner: 1, permit: effect.get(0).permit}), effect' = effect.setBy(0, e => {...e, phase: Executing}), control' = control, inbox' = inbox, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run permissionNotConsumedMutationTest = unknownPrefix.then(repeat(0)).then(admitKeepingPermit).expect(C2 and not(C3))
+  action incompleteCommit(invoke: bool): bool = all {
+    noteRun(Commit, 0), control' = control.setBy(0, c => {...c, app: c.app + 1, revision: c.revision + 1, cursor: if (invoke) 1 else 2}),
+    inbox' = inbox.setBy(0, q => q.foldl(List(), (acc, i) => acc.append({...i, disposition: Applied}))), effect' = effect,
+    attempt' = attempt, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run missingIntentMutationTest = init.then(evaluate(0, Invoke, false, true)).then(incompleteCommit(true)).expect(not(C4))
+  run fifoSkipMutationTest = init.then(addInput(0)).then(evaluate(0, Wait, false, true)).then(incompleteCommit(false)).expect(not(C4))
+  action eraseEarlierUncertainty = all {note(Record, 0, 1, 1, 0, emptyBoundary), attempt' = attempt.setBy((0, 1), at => {...at, knowledge: Recorded}), effect' = effect.setBy(0, e => {...e, phase: Dormant}), control' = control, inbox' = inbox, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run uncertaintyResetMutationTest = init.then(evaluate(0, Invoke, false, false)).then(commit(0)).then(admit(0, 0, 0)).then(enter(0, 0, 0)).then(complete(0, 0, FailedCall)).then(record(0, 0))
+    .then(repeat(0)).then(admit(0, 1, 1)).then(precheck(0, 1)).then(eraseEarlierUncertainty).expect(not(C3))
+  run terminalResumeMutationTest = init.then(evaluate(0, Finish, false, true)).then(commit(0)).then(setActiveUpdate(0, false)).expect(not(C5))
+  run heldDeclarationCaptureTest = init.then(evaluate(0, Invoke, false, false)).then(setActive(0, false)).expect(not(canCommit(0)))
+    .then(setActive(0, true)).then(evaluate(0, Invoke, false, false)).then(commit(0))
+    .then(addInput(0)).then(evaluate(0, Wait, true, true)).then(commit(0)).then(admit(0, 0, 0)).then(enter(0, 0, 0)).then(complete(0, 0, FailedCall)).then(record(0, 0))
+    .expect(safety and not(effect.get(0).conclusive) and effect.get(0).result == NoResult and attempt.get((0, 0)).evidence == FailureEvidence)
+  run retainedLogicalFailureReductionTest = granted.then(disconnect(0, false)).then(lose(0, 0)).then(repeat(0)).then(admit(0, 1, 1))
+    .then(enter(0, 1, 1)).then(complete(0, 1, FailedCall)).then(record(0, 1)).expect(safety and effect.get(0).result == NoResult)
+    .then(reconnect(0)).then(precheck(0, 0)).then(record(0, 0))
+    .expect(safety and effect.get(0).result == Error and effect.get(0).phase == Outcome and inbox.get(0).select(i => i.kind == Reply).length() == 1)
+  run failedUnknownAuditTest = unknownPrefix.then(evaluate(0, Fault, false, true)).then(failRun(0))
+    .expect(safety and effect.get(0).result == NoResult and attempt.get((0, 0)).evidence == LostContact and not(canAdmit(0, 1, 1)))
+    .then(complete(0, 0, FailedCall)).then(record(0, 0))
+    .expect(safety and effect.get(0).result == Error and effect.get(0).phase == Outcome and inbox.get(0).select(i => i.kind == Reply).nth(0).disposition == Unprocessed)
+  run failedInconclusiveAuditTest = init.then(evaluate(0, Invoke, false, false)).then(commit(0)).then(admit(0, 0, 0)).then(enter(0, 0, 0))
+    .then(addInput(0)).then(evaluate(0, Fault, false, false)).then(failRun(0)).then(complete(0, 0, FailedCall)).then(record(0, 0))
+    .expect(safety and control.get(0).life == Failed and effect.get(0).phase == Uncertain and effect.get(0).result == NoResult and attempt.get((0, 0)).evidence == FailureEvidence)
+  action forceFailure = all {note(Record, 0, 1, 1, 0, emptyBoundary), attempt' = attempt.setBy((0, 1), at => {...at, knowledge: Recorded, evidence: FailureEvidence}), effect' = effect.setBy(0, e => {...e, phase: Outcome, result: Error}), inbox' = inbox.setBy(0, q => q.append(delivery(control.get(0), Error, 0))), control' = control, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run earlierUnknownFailureMutationTest = unknownPrefix.then(repeat(0)).then(admit(0, 1, 1)).then(enter(0, 1, 1)).then(complete(0, 1, FailedCall)).then(forceFailure).expect(not(C3) and not(terminalChoice))
+  run genericFailureMutationTest = init.then(evaluate(0, Invoke, false, false)).then(commit(0)).then(admit(0, 1, 1)).then(enter(0, 1, 1)).then(complete(0, 1, FailedCall)).then(forceFailure).expect(not(C3) and not(terminalChoice))
+  action clearByRecordedTag = all {noteRun(Repeat, 0), effect' = effect.setBy(0, e => {...e, phase: Dormant}), attempt' = attempt, control' = control, inbox' = inbox, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run recordedTagMutationTest = inconclusiveFailureTest.then(clearByRecordedTag).expect(not(C3) and not(evidencePhase))
+  action terminalPermission = all {noteRun(Repeat, 0), effect' = effect.setBy(0, e => {...e, permit: e.issued + 1, issued: e.issued + 1}), attempt' = attempt, control' = control, inbox' = inbox, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run failedRepeatMutationTest = unknownPrefix.then(evaluate(0, Fault, false, true)).then(failRun(0)).then(terminalPermission).expect(not(C5))
+  action consumeFailedReply = all {noteRun(Dispose, 0), effect' = effect.setBy(0, e => {...e, phase: Consumed}), attempt' = attempt, control' = control, inbox' = inbox, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run failedConsumptionMutationTest = failedRunLateResultTest.then(consumeFailedReply).expect(not(C5) and not(C4))
+
+  // An admitted grant remains unresolved until its authoritative observation.
+  run admittedBlockerPrefix = unknownPrefix.then(repeat(0)).then(admit(0, 1, 1)).then(complete(0, 0, FailedCall)).expect(safety)
+  run admittedFailureBlockerTest = admittedBlockerPrefix.then(record(0, 0))
+    .expect(safety and effect.get(0).result == NoResult and effect.get(0).phase == Executing and attempt.get((0, 1)).entries == 0)
+    .then(enter(0, 1, 1)).then(complete(0, 1, Succeeded)).then(record(0, 1))
+    .expect(safety and effect.get(0).result == Ok and inbox.get(0).select(i => i.kind == Reply).length() == 1)
+  run unrecordedCompletionBlockerTest = admittedBlockerPrefix.then(enter(0, 1, 1)).then(complete(0, 1, Succeeded)).then(record(0, 0))
+    .expect(safety and effect.get(0).result == NoResult and effect.get(0).phase == Executing and attempt.get((0, 1)).knowledge == Admitted)
+    .then(record(0, 1)).expect(safety and effect.get(0).result == Ok)
+  run admittedThenNonexecutionTest = admittedBlockerPrefix.then(record(0, 0)).expect(safety and effect.get(0).result == NoResult)
+    .then(precheck(0, 1)).then(record(0, 1)).expect(safety and effect.get(0).result == Error and inbox.get(0).select(i => i.kind == Reply).length() == 1)
+  run admittedThenConclusiveFailureTest = admittedBlockerPrefix.then(record(0, 0)).expect(safety and effect.get(0).result == NoResult)
+    .then(enter(0, 1, 1)).then(complete(0, 1, FailedCall)).then(record(0, 1)).expect(safety and effect.get(0).result == Error)
+  run successWithAdmittedWorkTest = unknownPrefix.then(repeat(0)).then(admit(0, 1, 1)).then(complete(0, 0, Succeeded)).then(record(0, 0))
+    .expect(safety and effect.get(0).result == Ok and attempt.get((0, 1)).knowledge == Admitted)
+    .then(precheck(0, 1)).then(record(0, 1)).expect(safety and effect.get(0).result == Ok and inbox.get(0).select(i => i.kind == Reply).length() == 1)
+  run localFailureWithAdmittedWorkTest = init.then(evaluate(0, Invoke, false, false)).then(commit(0)).then(admit(0, 0, 0)).then(enter(0, 0, 0))
+    .then(disconnect(0, false)).then(lose(0, 0)).then(repeat(0)).then(admit(0, 1, 1)).then(complete(0, 0, FailedCall)).then(record(0, 0))
+    .expect(safety and effect.get(0).result == NoResult and effect.get(0).phase == Executing)
+    .then(precheck(0, 1)).then(record(0, 1)).expect(safety and effect.get(0).result == NoResult and effect.get(0).phase == Uncertain)
+  action ignoreAdmittedBlocker = all {note(Record, 0, 0, 0, 0, emptyBoundary), attempt' = attempt.setBy((0, 0), at => {...at, knowledge: Recorded, evidence: FailureEvidence}), effect' = effect.setBy(0, e => {...e, phase: Outcome, result: Error}), inbox' = inbox.setBy(0, q => q.append(delivery(control.get(0), Error, 0))), control' = control, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run admittedBlockerMutationTest = admittedBlockerPrefix.then(ignoreAdmittedBlocker).expect(not(C3) and not(terminalChoice))
+
+  action forgetRetainedFailure = all {note(Record, 0, 0, 0, 0, emptyBoundary), attempt' = attempt.setBy((0, 0), at => {...at, knowledge: Recorded, evidence: NonexecutionEvidence}), effect' = effect.setBy(0, e => {...e, phase: Dormant}), control' = control, inbox' = inbox, owner' = owner, held' = held, boundaries' = boundaries, writes' = writes}
+  run retainedFailureMutationTest = granted.then(disconnect(0, false)).then(lose(0, 0)).then(repeat(0)).then(admit(0, 1, 1)).then(enter(0, 1, 1)).then(complete(0, 1, FailedCall)).then(record(0, 1)).then(reconnect(0)).then(precheck(0, 0))
+    .then(forgetRetainedFailure).expect(not(C3) and not(normalReductionRequired))
+
+  // The abstraction rejects lose for non-Admitted work. These regressions do
+  // not deliver a queued monitor payload or persist its distinct-ID audit data.
+  run delayedMonitorAfterNonexecutionTest = granted.then(precheck(0, 0)).then(record(0, 0)).then(disconnect(0, false))
+    .expect(safety and attempt.get((0, 0)).knowledge == Recorded and attempt.get((0, 0)).evidence == NonexecutionEvidence and effect.get(0).result == NoResult and effect.get(0).phase == Dormant and inbox.get(0).length() == 1 and canAdmit(0, 1, 1))
+    .then(lose(0, 0).fail())
+  run delayedMonitorAfterLocalFailureTest = inconclusiveFailureTest.then(disconnect(0, false))
+    .expect(safety and attempt.get((0, 0)).knowledge == Recorded and attempt.get((0, 0)).evidence == FailureEvidence and effect.get(0).result == NoResult and effect.get(0).phase == Uncertain and inbox.get(0).length() == 2 and not(canAdmit(0, 1, 1)))
+    .then(lose(0, 0).fail())
+  run distinctAttemptUnknownAfterNonexecutionTest = granted.then(precheck(0, 0)).then(record(0, 0)).then(admit(0, 1, 1)).then(disconnect(1, false)).then(lose(0, 1))
+    .expect(safety and attempt.get((0, 0)).evidence == NonexecutionEvidence and attempt.get((0, 1)).knowledge == Unknown and attempt.get((0, 1)).evidence == LostContact and effect.get(0).phase == Uncertain and effect.get(0).result == NoResult and inbox.get(0).length() == 2)
+}
