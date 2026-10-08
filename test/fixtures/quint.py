@@ -24,6 +24,9 @@ elif args[0] == 'run':
         count = 0 if name == os.environ.get('QUINT_FIXTURE_ZERO') else 3
         print(f'{name} was witnessed in {count} trace(s) out of 10000 explored')
 elif args[0] == 'verify':
+    if os.environ.get('QUINT_FIXTURE_UNICODE') == '1':
+        os.write(sys.stdout.fileno(), '10月 下午 λ stdout\n'.encode())
+        os.write(sys.stderr.fileno(), '警告: 后端 stderr\n'.encode())
     backend = Path('_apalache-out/server/fixture/detailed.log')
     backend.parent.mkdir(parents=True, exist_ok=True)
     backend.write_text('fixture-local checkpoint; no model check\n')

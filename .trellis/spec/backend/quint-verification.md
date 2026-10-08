@@ -26,6 +26,8 @@ mix quint.supplemental quick
 
 命令使用 executable 和独立 argv，不能拼接 shell。保存命令、工具版本、BEAM 环境、域、逐项日志、退出与耗时。请求 witness 与 validator 共用列表，每项必须存在且为正；失败后继续后续检查并聚合非零。
 
+子进程 stdout/stderr 以原始字节保存：`File.open!(path, [:write], ...)` 配合 `IO.binstream(io, :line)`。不要在默认文件设备上使用 `IO.stream(io, :line)`：设备编码为 `:latin1`，中文 locale 下 Java 输出的“10月”“下午”“警告”等 Unicode 文本会触发 `:no_translation`，使日志写入失败并丢失真实后端退出码。两套入口的回归须注入 Unicode stdout/stderr，检查完整字节保留，以及 exit0/非零退出码和聚合结果。
+
 | 条件 | 行为 |
 | --- | --- |
 | 所选检查全部通过 | 执行器返回0 |

@@ -3,7 +3,7 @@ defmodule Beamlet.QuintTest do
   import ExUnit.CaptureIO
 
   @repo Path.expand("..", __DIR__)
-  @env ~w(PATH CORE_LOG_DIR CORE_VERIFY_TIMEOUT CORE_SERVER_PORT QUINT_LOG_DIR QUINT_VERIFY_TIMEOUT QUINT_FIXTURE_RECORD QUINT_FIXTURE_MISSING QUINT_FIXTURE_ZERO QUINT_FIXTURE_FAIL QUINT_FIXTURE_HANG QUINT_FIXTURE_PIDS)
+  @env ~w(PATH CORE_LOG_DIR CORE_VERIFY_TIMEOUT CORE_SERVER_PORT QUINT_LOG_DIR QUINT_VERIFY_TIMEOUT QUINT_FIXTURE_RECORD QUINT_FIXTURE_MISSING QUINT_FIXTURE_ZERO QUINT_FIXTURE_FAIL QUINT_FIXTURE_HANG QUINT_FIXTURE_PIDS QUINT_FIXTURE_UNICODE)
 
   setup do
     root =
@@ -163,6 +163,34 @@ defmodule Beamlet.QuintTest do
     end)
 
     assert File.read!(Path.join(log, "results.txt")) == original
+  end
+
+  test "verify preserves Unicode stdout, stderr and backend exit codes in both suites", ctx do
+    System.put_env("QUINT_FIXTURE_UNICODE", "1")
+
+    for failure <- [nil, "verify"] do
+      if failure,
+        do: System.put_env("QUINT_FIXTURE_FAIL", failure),
+        else: System.delete_env("QUINT_FIXTURE_FAIL")
+
+      expected = if failure, do: 1, else: 0
+      backend_exit = if failure, do: "7\n", else: "0\n"
+
+      for {args, suite, labels} <- [
+            {["verify"], "CORE", ["depth10"]},
+            {["verify", "--suite", "supplemental"], "QUINT",
+             ["composed-depth10", "conditional-depth8"]}
+          ] do
+        assert {^expected, log} = run(ctx.root, args, suite)
+
+        for label <- labels do
+          output = File.read!(Path.join(log, label <> ".log"))
+          assert output =~ "10月 下午 λ stdout\n警告: 后端 stderr\n"
+          assert File.read!(Path.join(log, label <> ".exit")) == backend_exit
+          refute output =~ "no_translation"
+        end
+      end
+    end
   end
 
   test "core verify timeout cleans owned child and leaves unrelated process alive", ctx do

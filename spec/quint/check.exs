@@ -150,11 +150,12 @@ defmodule Beamlet.Quint do
       try do
         File.open!(path, [:write], fn io ->
           # 独立 argv 保留空格和特殊字符原义；stderr 同入该项日志，便于归属失败。
+          # 按原始字节捕获，避免默认 latin1 文件设备转换 Unicode 输出失败。
           {_output, code} =
             System.cmd(executable, argv,
               cd: cwd || context.root,
               stderr_to_stdout: true,
-              into: IO.stream(io, :line)
+              into: IO.binstream(io, :line)
             )
 
           code
