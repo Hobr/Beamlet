@@ -78,7 +78,3 @@ rebar3.crashdump
 # Dev
 .nix-mix/
 .nix-hex/
-
-# Quint
-_apalache-out/
-spec/quint/**/evidence/

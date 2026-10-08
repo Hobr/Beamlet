@@ -1,8 +1,0 @@
-{"file": "spec/architecture/index.md", "reason": "Published canonical architecture-v1 contract; stable context path remains valid after task archive."}
-{"file": "spec/architecture/boundaries.md", "reason": "Published canonical architecture-v1 contract; stable context path remains valid after task archive."}
-{"file": "spec/architecture/computation-and-effects.md", "reason": "Published canonical architecture-v1 contract; stable context path remains valid after task archive."}
-{"file": "spec/architecture/authority-and-recovery.md", "reason": "Published canonical architecture-v1 contract; stable context path remains valid after task archive."}
-{"file": "spec/architecture/capability-composition.md", "reason": "Published canonical architecture-v1 contract; stable context path remains valid after task archive."}
-{"file": "spec/architecture/lifecycle-and-archives.md", "reason": "Published canonical architecture-v1 contract; stable context path remains valid after task archive."}
-{"file": "spec/architecture/platforms-and-trust.md", "reason": "Published canonical architecture-v1 contract; stable context path remains valid after task archive."}
-{"file": "spec/architecture/decisions.md", "reason": "Published canonical architecture-v1 contract; stable context path remains valid after task archive."}

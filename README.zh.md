@@ -1,7 +1,6 @@
 # Beamlet
 
-> 持久化计算运行时: 保存 Effect, 转为 Capabilitie，跨 BEAM 集群执行
-> 基于可组合能力与持久 Effect 构建的 Agent 运行时
+> 一个强大的 Agent
 
 **WIP**, 在首个 Release 前可能存在破坏性更改
 
@@ -24,25 +23,7 @@ mix compile
 
 # 测试
 mix test
-
-# Quint
-mix quint.quick     # 类型检查与确定性测试
-mix quint.simulate  # quick 加 10,000 条组合抽样轨迹
-mix quint.verify    # quick 加深度 10 的有界检查
-mix quint.verify --timeout 900  # 可选：每次后端检查最多等待 900 秒
-mix quint           # quick、simulate、verify 全部执行
-mix quint all       # 也可显式选择 all
-mix quint --cores 16 --timeout 0  # 完整核心套件，无后端时间截止
 ```
-
-## 概念
-
-- Beamlet-lib: 引擎
-- Cordex: 面向时空可组合性的 Cordis 的 OTP 原生实现
-- Beamlet-agent: 基于 Beamlet-lib 的 Agent
-- Beamlet-{cli, tui, web, desktop, android, node}: Beamlet-agent 的前端程序
-
-这些依赖项将来会被拆分为独立的项目
 
 ## 感谢
 
