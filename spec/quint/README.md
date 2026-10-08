@@ -21,7 +21,14 @@ mix quint.supplemental verify     # 组合与条件恢复的实际 bounded 尝�
 mix quint.supplemental all        # 默认执行全部
 ```
 
-补充与核心共用[薄命令入口](check.exs)，使用 Quint0.32.0 / 随附 Apalache0.56.1 / Java21。`--cores N` 指定 SMT 线程数，默认8；`--timeout N` 指定每次后端检查的等待秒数，默认0（不限时），如 `mix quint.supplemental verify --cores 4 --timeout 600`。不使用 `QUINT_LOG_DIR` / `QUINT_VERIFY_TIMEOUT` 环境变量。`quick` 运行全部补充类型检查与确定测试，`simulate` 先 quick 再三组抽样；补充 `verify` 不先 quick。
+补充与核心共用[薄命令入口](check.exs)，使用 Quint0.32.0 / 随附 Apalache0.56.1 / Java21。`--cores N` 指定 SMT 线程数，默认8；`--timeout N` 指定每次后端检查的等待秒数，默认0（不限时），如 `mix quint.supplemental verify --cores 4 --timeout 600`。还可设置 `--max-samples`、`--max-steps`、`--seed`、`--verbosity`、`--n-threads`、`--match` 和 `--server-endpoint`，适用范围与约束见[共用参数表](core/README.md)，或运行 `mix quint --help`。
+
+```sh
+mix quint.supplemental simulate --max-samples 20000 --max-steps 120 --seed 42 --n-threads 4
+mix quint.supplemental verify --max-steps 6 --cores 4 --timeout 600 --verbosity 1
+```
+
+未指定的值保持原默认值；覆盖参数应用于所有相关场景，`--max-steps` 同时覆盖 `all` 中的模拟与后端深度。低抽样量或深度下缺失 witness 仍返回非零。不使用 `QUINT_LOG_DIR` / `QUINT_VERIFY_TIMEOUT` 环境变量。`quick` 运行全部补充类型检查与确定测试，`simulate` 先 quick 再三组抽样；补充 `verify` 不先 quick。
 
 输出直接显示在终端。违例、工具/配置失败、超时或任何请求 witness 缺失/为零都返回非零，首个失败即停止；不能把单项模拟 exit0 当作 `all` 通过。
 

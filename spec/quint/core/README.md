@@ -12,7 +12,28 @@ mix quint           # 默认执行全部检查
 mix quint --cores 16 --timeout 0  # 完整核心套件，无后端时间截止
 ```
 
-使用 Quint0.32.0 / 随附 Apalache0.56.1 / Java21。Mix 使用[薄命令入口](../check.exs)，也可运行 `elixir spec/quint/check.exs quick`。`--cores N` 设置 Z3 SMT 求解线程数，须为正整数，默认8；`--timeout N` 设置每次后端检查的等待秒数，默认0（不限时），如 `mix quint.verify --cores 4 --timeout 900`。核心与补充共用参数。线程数不绑定具体 CPU 核心，也不保证固定倍数加速。
+使用 Quint0.32.0 / 随附 Apalache0.56.1 / Java21。Mix 使用[薄命令入口](../check.exs)，也可运行 `elixir spec/quint/check.exs quick`。核心与补充共用以下参数，`mix quint --help` 查看帮助：
+
+| 参数 | 适用范围 | 约束与默认值 |
+| --- | --- | --- |
+| `--suite core\|supplemental` | 全部模式 | 默认 `core` |
+| `--cores N` | 有界后端 | 正整数，Z3 SMT 线程数，默认8 |
+| `--timeout N` | 有界后端 | 非负整数秒，每次检查单独计时，默认0（不限时） |
+| `--max-samples N` | 确定性测试、模拟 | 正整数；模拟默认10,000，固定 seed 的测试默认1 |
+| `--max-steps N` | 模拟、有界后端 | 非负整数；核心模拟默认60，后端默认10 |
+| `--seed N` | 确定性测试、模拟 | 非负整数；核心默认20261014，补充保留各场景原 seed |
+| `--verbosity N` | 测试、模拟、有界后端 | 0–5；模拟要求至少1以校验 witness；模拟默认1，测试和后端默认2 |
+| `--n-threads N` | Rust 模拟 | 正整数，默认使用 Quint 的16线程 |
+| `--match REGEX` | 确定性测试 | 覆盖测试名筛选；默认保持各测试文件原筛选 |
+| `--server-endpoint HOST:PORT` | 有界后端 | Apalache 服务地址，默认 `localhost:8822`；端口1–65535 |
+
+```sh
+mix quint.simulate --max-samples 20000 --max-steps 80 --seed 42 --n-threads 4
+mix quint.verify --max-steps 6 --cores 4 --timeout 900 --verbosity 1 --server-endpoint localhost:8823
+mix quint.quick --match '.*Test' --seed 42 --max-samples 2
+```
+
+未指定的参数保留原默认值。参数仅传给支持它的 Quint 子命令：例如 `verify` 前置 quick 的测试会接收 `--seed` / `--match`，但不接收 `--max-steps`。`all` 的 `--max-steps` 同时覆盖模拟和后端深度，`--max-samples` 同时覆盖测试和模拟。补充模拟默认深度为100/100/40，后端为10/8；覆盖值应用到每个相关场景。Z3 `--cores` 与 Rust `--n-threads` 分别控制两个后端的并发，线程数不绑定具体 CPU 核心，也不保证固定倍数加速。并行后端检查可使用不同的 `--server-endpoint localhost:PORT`；Quint 自动启动本地服务。Quint0.32 的地址解析仅支持字母、数字和点组成的主机名或 IPv4。减少抽样或深度可能使 witness 缺失，入口仍返回非零；筛选测试通过只代表选中的测试。
 
 类型检查、测试和后端进度直接显示在终端，首个失败即停止。抽样结束显示原始输出并检查每个请求 witness 是否有正计数。限时后端调用使用系统 GNU `timeout`，超时仍是无结论。入口只临时生成线程配置并在调用结束后删除；不维护日志目录、逐项退出码/耗时文件或检查点汇总。Apalache 自己生成的 `_apalache-out/` 是工具原始产物，已由 Git 忽略。
 

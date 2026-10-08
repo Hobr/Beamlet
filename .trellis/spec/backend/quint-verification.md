@@ -22,6 +22,16 @@ mix quint.supplemental quick
 
 两套入口共用 `--cores N`（正整数，默认8，Z3 SMT 线程数）与 `--timeout N`（非负整数秒，默认0，取消每次后端检查的截止）。参数校验在启动工具前完成。不使用 `CORE_*` / `QUINT_*` 环境变量配置验证。线程数不绑定具体 CPU 核心，也不保证固定倍数加速。
 
+### 手动参数契约
+
+1. **范围与触发**：Mix 别名与直接 Elixir 入口共用解析、命令生成和参数覆盖，修改任一入口时检查两者。
+2. **签名**：`mix quint [quick|simulate|verify|all] [--suite core|supplemental] [--cores N] [--timeout N] [--max-samples N] [--max-steps N] [--seed N] [--verbosity N] [--n-threads N] [--match REGEX] [--server-endpoint HOST:PORT] [--help]`。
+3. **契约**：`--max-samples` / `--seed` 用于 test/run；`--max-steps` 用于 run/verify；`--verbosity` 用于 test/run/verify；`--n-threads` 只用于 Rust run；`--match` 只用于 test；`--server-endpoint` 只用于 verify（Quint 默认 localhost:8822），可用不同本地端口隔离并行 Apalache 检查。用户值替换原默认值，每个 flag 只出现一次；未设置时保留场景原 seed、深度、筛选与数量。类型检查不接收这些选项。`all` 中覆盖值用于每个支持该选项的场景，verify 前置测试同样接收测试选项。完整默认值见[参数表](../../../spec/quint/core/README.md)。`--help` 显示帮助、返回0且不启动工具。
+4. **校验与错误**：cores/max-samples/n-threads 必须为正整数；timeout/max-steps/seed 为非负整数；verbosity 为0–5，simulate/all 要求至少1以保留 witness 输出。server-endpoint 的主机名须为字母/数字/点，端口1–65535，与 Quint0.32 地址语法一致。未知参数、缺值、非法数值和模式在启动工具前抛出 `ArgumentError`，直接 CLI 返回2，Mix 返回1并报告 exit2。
+5. **正常、默认与错误用例**：`mix quint.verify --max-steps 2 --timeout 60` 请求较小界限；无选项保留核心 depth10；`mix quint.simulate --verbosity 0` 在运行前失败。低抽样量/深度仍执行全部 witness 正计数校验，筛选测试通过只代表选中范围。
+6. **必需测试**：检查核心/补充原默认值、用户值替换且无重复 flag、不支持选项的命令不收到该 flag、数值边界、帮助不启动工具、witness 缺失/零计数失败；真实 quick 与小界限调用确认工具接受 argv。
+7. **错误与正确做法**：不要把用户 flag 直接追加到已有同名 flag 后，或无差别传给 typecheck；先按子命令支持集合替换已有值，再用独立 argv 执行，避免重复参数被 Quint 解析成数组。
+
 命令使用独立 argv。类型检查、确定测试和后端进度通过 `IO.binstream(:stdio, :line)` 原样显示，避免 Unicode 编码转换；抽样输出在结束时显示并校验每个请求 witness 的正计数。首个失败即停止，保留子命令退出码；配置或工具启动异常返回2。Mix 将非零结果转为 CLI exit1，并保留原返回码。
 
 不维护自定义证据目录、日志/耗时文件、运行清单或检查点。后端只需要临时 JSON 线程配置，调用结束即删除。使用系统 GNU `timeout --kill-after=5s` 控制每次后端调用，超时返回124并明确标记无结论。Quint 自己管理启动的 Apalache 服务；不维护 Python 进程管理包装器或假 CLI 脚本。Apalache 的原始 `_apalache-out/` 保持工具行为并由 Git 忽略。
