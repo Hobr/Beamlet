@@ -179,3 +179,47 @@ Final resumed writer checks: exact54 scoped eligible files in the UNAPPROVED pla
 提交前重新核对HEAD、分支、54项路径、独立检查投影身份、767证据文件及15项排除文件/索引记录；将逐文件身份保存在本地`/tmp/beamlet-approved-commits-before.json`。首批已完成：`51e2800c404ef59f47ec7bdeb9288cdc9ce88abd`，实际27项提交路径与批准清单完全一致；其他文件字节与索引项保持，证据索引为零。第二批按同一批准清单执行，提交后再次检查两批范围、证据字节及排除项。
 
 本次提交不提升形式或运行时结论。完整组合depth10仍无结论，受限恢复仅覆盖指定调度，I1–I4与运行时验证仍未执行；任务保持in_progress。归档和日志记账不在本次两批提交内，也不包含其他任务或工作区的现有修改。
+
+## Elixir / Mix 执行器迁移：独立检查及父会话验收
+
+用户要求将两个 `.sh` 合并为Elixir脚本并把指令移入Mix。恢复工作流 `8db1e34d-2a86-4f15-b808-f05f4f8d059e` 已完成；writer `2289f816-5f90-41d1-957c-bff74620c5a9` 与fresh checker `d3f7ed48-7d77-4747-9486-f62914a9d6c2` 的报告和原始实际日志已由父会话完整核对。本轮验收通过：无依赖Mix薄入口调用唯一 `spec/quint/check.exs`，删除两份shell，默认核心及显式补充保留模式/参数。checker修复核心backend日志落点，使用本次本地目录的 `depth10.work/`；检测回归确实拒绝恢复旧cwd的负控。
+
+独立format/compile/10项执行器集成测试通过；真实 `ERL_FLAGS='+S 4:4' mix quint.quick` 完成六typecheck、恢复1、combined1、46核心测试与源哈希检查。8组旧/新参数比较、20个witness缺失/零值注入、假后端超时与所属进程清理均通过；假工具结果只属编排证据。父会话重复核对16模型/包装器及767历史证据字节、原完整index/HEAD、工具链文件与53文档链接，全部通过。入口SHA256为mix.exs `fb93386571a1baa5008b019fb7ca3d51b203ed0d693ab1c4761887519fb9204f`、check.exs `12fb1594a74f0581c8df13e5a51700710b7b44bbd553856173ccf3e14c08c91b`。实际证据目录 `/tmp/beamlet-quint-core-1791429487145356460-4` 仅本地；所有历史evidence继续Git忽略。
+
+按trellis-update-spec更新后端规范，保存入口/退出码、错误矩阵、日志隔离与必要回归；第6.2综合验收已勾选。LSP仅报告Mix动态加载脚本模块的静态未定义警告，实际编译及CLI已通过。未重跑真实抽样/BMC，历史完整组合depth10仍无结论，受限恢复depth14仍仅覆盖指定调度，I1–I4运行时义务不变。先前54文件提交批准已经使用，本轮新改动未暂存/提交/推送/归档；任务保持in_progress。
+
+## 执行器中文注释跟进：writer 检查
+
+四个指定脚本仅新增中文目的/边界注释（28行）及 formatter 所需空行（2行），说明模式阶段、复现参数、hash、witness、日志隔离、argv/错误传播、Python POSIX 清理与假工具边界；未改英文 docstring 或执行逻辑。与 `/tmp/beamlet-quint-comments-before.json` 比对，Python AST/非注释 token、Elixir 递归去节点元数据 AST 相同；语法与最终 format 检查通过。最初 format 只要求两处空行，已补齐。旧/新 SHA256 单独记录于[核心报告](../../../spec/quint/core/verification-report.md#runner-comments)，不改旧 quick/模型结果身份。无新增测试、真实 quick/抽样/BMC、安装或 Git 写操作；README、模型与本地历史证据保留。fresh checker 与父会话综合验收仍待后续完成。
+
+最终只读检查观察到索引在执行期间由启动时无暂存变为18项暂存，HEAD未变；完整索引不变断言失败，不能声称本轮索引保持或无暂存。writer 未执行 Git 写操作，不推断索引刷新作者，不回滚或重新暂存；父会话明确要求保留实际当前索引并单独记录。此观察与注释/AST/格式及原始字节保留结论分开，后续验收由父会话处理。
+
+## 中文注释：独立检查及父会话验收
+
+恢复流程 `8f3a1739-f477-4732-b157-50dd7c82e13f` 已完成：原 writer 恢复交接 `8032340c-8d89-4dc5-a740-dd4d9e26163e` 无新增仓库改动；fresh checker `189f0e00-e295-40d8-97b6-c7d634d9c237` 只读复核通过，父会话已完整消费报告并接受注释技术结论。四脚本仅新增28行中文注释和2行空行；Python AST/非注释 token/语法与递归去位置元数据的 Elixir AST 均与注释前相同，五份 formatter 输入通过。127份其他非忽略文件、15份.qnt、README.md/README.zh.md及767份历史证据/7,686,426字节保持，旧报告正文与旧运行身份未重写。
+
+原自动验收拒绝 `Acceptance rejected: Staged index changed after launch.` 保留。恢复和独立检查分别证明其自身启动至结束的完整18项暂存保持；不撤销原拒绝，也不表示索引为空。checker 指出恢复报告关于工作树已无 EOF 空行的判断不准确：当时工作树与索引相同且都有末尾空行，未暂存 diff 为空不能证明文件无空白问题。恢复报告将原保留失败字段带入恢复 pass 也有作用域问题；本次采用 fresh checker 的独立结论，保留原报告。父会话仅修正工作树 progress 的 EOF 空行并追加此验收，既有索引保持，不重新暂存。
+
+按 trellis-update-spec 保存注释专属 AST/token 检查、旧新 hash 归属、快照限制和工作树/索引分别检查的规则，并勾选 implement6.3。本轮不运行真实 quick/抽样/BMC，也不把新增注释字节归属旧模型执行。完整组合 depth10 仍无结论，受限恢复仅覆盖其调度，I1–I4 运行时义务未变。新提交、推送和归档未执行；任务保持 in_progress。
+
+## 开发者规范清理：writer 检查
+
+已完整读取16份公开规范文档，移除执行器源摘要生成/校验、对应fixture注入和测试，保留9项有意义的执行器集成回归。核心/补充说明、结果报告与13项协议技术处置改为开发者文档；清理过程归属、索引日记、本机捕获清单与过时链接，保留架构契约、ADR历史、I1–I4及有限验证结论。根README现有验证说明无需调整。
+
+实际format、warnings-as-errors compile、9项ExUnit及核心quick通过；quick含六typecheck、恢复1、combined1及46核心测试，未运行真实抽样/BMC。20份公开/相关Markdown的178个本地链接与锚点通过，公开内容扫描与Python语法通过；15份模型、767份历史捕获/7,686,426字节及其他非目标文件保留，实际启动时完整索引和HEAD保持。提供的较早基线仅在PRD/design/implement及其索引条目上已有最新授权差异，本轮保持实际状态，不还原。第6.4前三项writer活动已完成，最终独立检查留待后续。
+
+## 开发者规范清理：独立检查及综合验收
+
+父会话已完整读取工作流 `0a7601d7-7781-468d-8368-c236570dcf60` 的实现与独立检查报告，并接受6.4清理门禁。checker仅修正两处文档：Mix将非零runner返回值转换为CLI exit1，直接Elixir保留0/1/2；手动Python恢复检查由调用方建立本地独立工作目录。可执行依赖没有变化，复用实际通过的9项ExUnit与真实核心quick结果，无重复抽样或BMC。
+
+父会话再次运行本地字节/链接/内容检查：20份Markdown的178链接/锚点、15模型、767历史捕获/7,686,426字节、110项其他基线项目文件、完整启动索引字节/条目及HEAD全部保持，无必需链接依赖忽略证据。源摘要生成、校验与相关fixture/test分支已删除，无替代指纹机制；13项技术处置、产品Agent概念、归档完整性和内容寻址语义保留。按trellis-update-spec确认后端当前规范已覆盖开发者文档约定、退出码、argv、日志/超时与回归义务，不向公开spec追加验收日记。
+
+勾选implement6.4，仅任务记录发生后续变化；原18项暂存保留，不重写过去暂存区变化的失败结论。旧18文件提交计划已失效，改为本地29文件未批准计划；本轮未暂存、提交、推送或归档。完整组合depth10仍无结论，受限恢复仅覆盖其调度，I1–I4实际实现义务未变。
+
+## 工具迁移与开发者文档分批提交
+
+用户明确要求“分批提交”，授权提交当前已验收的29文件。提交启动时暂存区为空，未识别到范围外的非忽略改动；采用显式文件列表，三批分别为执行器与测试9文件、公开开发者文档15文件、任务与后端规范5文件。
+
+前两批已经完成并核对实际提交路径：`b62e010`（quint: migrate verification commands to Mix）迁移入口、保留9项回归与Python清理并移除旧shell；`4d02218`（spec: simplify developer verification documentation）清理公开技术文档与验证说明。第三批消息为 `chore(task): record verification tooling updates`，同步后端现行约定及本任务需求、设计、验收与授权记录。
+
+沿用已通过的格式/编译、9项集成回归、真实quick和独立检查；提交前再次检查执行器保留AST、模型与历史捕获字节及空白。仅两个任务文件追加当前提交归属，其余已验收文件保持。所有本地证据继续忽略，未推送或归档；整体depth10与I1–I4限制保持，任务仍为in_progress。

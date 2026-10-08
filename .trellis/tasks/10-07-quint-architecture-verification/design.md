@@ -81,6 +81,20 @@ The representative composition's safety is checked with all retained core action
 
 Run typecheck and a minimal real transition immediately, then add cohesive pieces incrementally. Typecheck/tests are not verification results. Final evidence consists of source-bound deterministic traces, >=10,000 seeded sampled traces at a meaningful depth, and attempted/completed depth-10 representative composition BMC. Report limits accurately. Core success does not retroactively resolve all detailed-suite gaps or establish Ra/ETF/security/platform behavior.
 
+## Elixir / Mix runner migration boundary
+
+最小行为差距是验证命令当前依赖两个shell执行器，根README没有Mix入口；执行编排行为属于验证工具，而不是Quint模型或运行时产品。添加无外部依赖的最小mix.exs，使用薄Mix入口调用一个Elixir脚本；不建立新的BEAM运行时应用、存储模块或通用任务框架。默认核心套件，显式补充套件保留历史范围。
+
+脚本负责模式/套件、顺序运行、日志和结果、源哈希、非零退出与完整witness列表；命令使用独立argv，不能拼接shell解释。保留spec/quint/core/verify.py的既有进程隔离与超时回收，避免把Port关闭误称为清理全部后代。保持两套既有环境变量和官方命令的参数含义，补充检查不消除核心无结论。源哈希覆盖新执行器/Mix入口及相应模型依赖；旧执行器哈希只能归属原始记录。
+
+预计修改mix.exs、新Elixir脚本及最小执行器测试，删除两个已迁移的check.sh；同步根README、两套说明、当前验证报告的复现入口与后端Quint规范。任务规划/检查记录只作本轮归属。文件位置由sole writer在现有结构中选择，不引入外部依赖。执行器测试通过隔离假工具验证命令编排、错误/覆盖缺口、源变化与清理；至少执行一次真实核心quick。保持全部.qnt、历史evidence与verify.py字节，不重复昂贵模型抽样/BMC。
+
+## 开发者规范清理与验证执行器简化
+
+按最新请求，移除执行器的源摘要记录与前后对比、对应失败分支、fixture 源修改注入和相关测试/注释/现行规范要求。其余模式、argv、抽样配置、witness 正计数、日志隔离、超时清理与退出聚合保持。根 README 中的验证说明同步。
+
+公开 `spec/` 以技术文档组织：说明契约与理由、模型范围与验证命令、实际结果和未验证事项。代理流程、会话验收、用户授权、暂存区观察、临时文件路径及文档整理历史不在其中保留。协议评审记录可重写为技术审查摘要，保留实质发现/修订、逐项处置、候选条件及运行时义务，更新引用。不改产品 Agent 概念、架构保证、ADR 技术处置、模型与已有本地原始日志。用字节基线检查非目标保留，不新增摘要机制。
+
 ## Latest packaging and language authority
 
 All execution evidence is local-only, including the existing compact retained pack. Ignore both complete evidence trees with rooted rules, no whitelist; preserve local captured bytes and correct model/probe pairing. Only models/tests/scripts and authored reports outside evidence are deliverable. Chinese reader/backend reports retain exact source identities, results, commands, limits and stable anchors; required links resolve without evidence. Original raw paths are code text explicitly labeled local-only/Git-ignored. Index-only cleanup is scoped to freshly inspected evidence paths; no unrelated index reset/staging. The735/122-file proposals are superseded and unapproved. No executable/runtime/dependency change or unchanged-source sampling/BMC repeat is part of this packaging refinement.

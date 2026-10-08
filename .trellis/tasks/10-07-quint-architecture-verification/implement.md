@@ -89,6 +89,41 @@ Rollback preserves all local artifacts and current unrelated index state. No fur
 
 父会话已完整读取恢复 writer 与独立 checker 报告，接受本次全部证据仅本地、指定读者文档中文的包装门禁。独立检查26项通过，修正报告哈希可用范围与5处残余英文；不含证据的投影30份文档/210个链接通过。父会话另行确认当前128个可提交文件与独立检查投影逐字一致，767个证据文件/7,686,426字节全部被忽略，HEAD/index证据均为零，54文件提交清单准确排除15项无关改动。后端中文与本地证据规范已持久记录，无需重复增加相同规范；仅更新任务验收归属，不新增模型执行、Git修改或运行时验收。提交仍待用户批准，任务保持in_progress。
 
+## 6.2. Elixir / Mix 验证执行器迁移
+
+- [x] 读取当前shell/有界包装器、README、flake与后端规范；确认尚无Mix项目，记录用户已授权的工具迁移范围。先前README-only流程已完成，后续迁移覆盖其命令。
+- [x] 唯一writer添加最小无外部依赖Mix入口与一个Elixir执行脚本，迁移核心/补充模式并删除两个check.sh；保持模型、包装器与历史证据。
+- [x] 同步当前README/说明/规范与复现入口，区分旧执行器身份和新运行，保留本地证据策略。
+- [x] 运行格式/编译、实际核心quick及执行器失败/witness/源变化/超时集成回归；所有新增日志仅/tmp或被忽略目录，假工具结果不是模型证据，不执行昂贵抽样/BMC。
+- [x] fresh checker独立检查等价编排、argv/退出/日志/哈希/witness、进程清理、文档与实际测试；父会话综合并按trellis-update-spec保留必要经验。
+
+writer迁移结果：`mix.exs` 薄别名调用唯一 `spec/quint/check.exs`，默认核心/显式supplemental，保留两个套件模式/参数与原Python包装器。最终10项ExUnit集成测试通过（十项witness的20个缺失/零值聚合注入、实际包装器假后端超时清理、不伤无关进程、CLI与argv/日志/哈希），真实核心quick六typecheck/恢复/combined/46测试及hash-validation均exit0。局部执行 `ERL_FLAGS='+S 4:4'`；最终本地证据 `/tmp/beamlet-quint-core-1791428971703335364-2`、`/tmp/beamlet-mix-tests-final.log`。模型/包装器/历史证据不变；无真实抽样/BMC，假工具只是编排证据。新的身份/限制见核心报告 `mix-runner-migration`。fresh checker与最终归属由父会话完成。
+
+fresh checker独立结果：修复核心bounded仍向仓库根写入新`_apalache-out/`的工作目录问题，改用日志目录`depth10.work/`，保留原argv/verify.py并更新timeout产物隔离回归；恢复旧行为的/tmp负控确实失败。独立format/compile/10项集成测试通过（15.2秒、seed33788），真实核心quick再次全部通过，证据`/tmp/beamlet-quint-core-1791429487145356460-4`。两套四模式的8组旧shell/new Mix实际Quint argv逐项一致（假工具），直接脚本在特殊路径/无关cwd运行通过；16模型/包装器、767历史evidence与完整index不变，53文档链接/锚点无需ignored evidence。范围内无剩余阻塞；无真实sampling/BMC、无暂存/提交。报告中新runner身份归属本次修复，旧运行身份保留；最后6.2复合验收checkbox仍留给父会话。
+
+父会话已完整读取恢复writer与fresh checker报告及实际quick/ExUnit日志，接受本轮工具迁移门禁。独立复查最终入口身份、16模型/包装器、767历史证据、完整index/HEAD与53文档链接通过；LSP主动检查仅见Mix动态加载模块的静态未定义警告，实际compile/CLI检查已通过。按trellis-update-spec补齐执行器接口、错误矩阵、工作目录隔离及回归义务，仅规范/任务文字变化，不改已执行依赖。恢复流程8db1e34d-2a86-4f15-b808-f05f4f8d059e的writer2289f816-5f90-41d1-957c-bff74620c5a9与checkerd3f7ed48-7d77-4747-9486-f62914a9d6c2均完成；原HTTP/2中断快照仅本地保留。
+
+本轮提交未批准；不安装依赖、不改flake、不暂存/提交/推送/归档。原始两个shell可从既有提交读取以核对行为，历史捕获逐字保留，撤回时恢复原入口而不删除本地日志。
+
+## 6.3. 执行器中文注释跟进
+
+- [x] 按用户请求说明 Python 包装器/fixture、Mix 阶段与 hash，并仅为四份脚本新增必要中文注释；记录注释前后独立来源身份。
+- [x] 唯一 writer 比较 Python AST/token 与递归去位置元数据的 Elixir AST，并完成语法/格式检查；无可执行变化、模型修改或新模型运行。
+- [x] 恢复原 writer 的交接后，由 fresh checker 只读复核注释、历史归属和文件保留；父会话接受技术结论，并按 trellis-update-spec 保存注释专属检查及索引/工作树空白检查规则。
+
+恢复流程 `8f3a1739-f477-4732-b157-50dd7c82e13f` 两个子运行完成；四脚本新增28行注释/2行空行，独立 AST/token/语法/五份 formatter 输入检查通过。15份模型、READMEs、767份历史证据保持原字节。原运行因启动后暂存区变化而遭自动验收拒绝，该结论保留；恢复和 fresh check 的18项既有暂存相对各自启动状态保持，不代表暂存区为空。checker 指出恢复报告关于 progress 空白及 acceptance 字段作用域的表述不准确，父会话采用独立检查结论，不重写原报告。父会话修正工作树 progress EOF 并追加验收，保留既有索引。只新增规范/任务文字，无需重复已检查的源码等同性或昂贵模型检查；新提交仍未批准。
+
+## 6.4. 移除源摘要机制与清理公开规范
+
+- [x] 唯一 writer 完整读取公开文档，移除验证执行器/测试/注释与现行说明中的源摘要机制；不改模型或核心验证参数。
+- [x] 清理 `spec/` 中的代理过程与本机记录，整理为开发者技术说明；保留契约、设计理由、实质修订与准确结果/限制，修复链接。
+- [x] 执行 format、compile、执行器集成测试和真实核心 quick，检查公开内容与字节保留；不重跑抽样/BMC，不修改现有索引。
+- [x] fresh checker 独立检查遗漏、技术含义、命令/测试、文档链接与保留；父会话接受综合结论，现行后端规范已同步。
+
+父会话已完整读取实现与独立检查报告，接受6.4清理门禁。独立检查修正Mix/直接Elixir退出码区别与手动恢复检查的工作目录隔离；未改已测试执行器或模型。9项执行器回归、真实核心quick（六typecheck、恢复1、combined1、核心46项测试）通过；178本地链接、15模型、767历史捕获及完整现有索引保留经父会话复查。按trellis-update-spec确认中文开发者文档约定与执行器错误/日志契约已记录，无需重复追加公开过程叙述。完整组合depth10与I1–I4实现验证仍未完成，本轮没有真实抽样/BMC或新提交。
+
+先前6.2/6.3源摘要要求属已被最新请求覆盖的历史。本轮字节基线 `/tmp/beamlet-spec-cleanup-before.json`，包含133项项目文件、767项本地证据及完整index；仅作为本地检查输入，不加入公开规范。用户明确要求“分批提交”，授权按执行器与测试、公开开发者文档、任务与后端规范三批提交当前29文件；不包含本地证据、推送或归档。
+
 ## 7. Finish
 
 - [x] Update durable modeling guidelines with evidenced conventions, following `trellis-update-spec`.
