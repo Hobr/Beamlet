@@ -28,10 +28,11 @@ mix test
 # Quint
 mix quint.quick     # 类型检查与确定性测试
 mix quint.simulate  # quick 加 10,000 条组合抽样轨迹
-mix quint.verify    # quick 加深度 10 的有界检查（默认预算 240 秒）
-CORE_VERIFY_TIMEOUT=900 mix quint.verify  # 可选：将后端预算设为 900 秒
+mix quint.verify    # quick 加深度 10 的有界检查
+mix quint.verify --timeout 900  # 可选：每次后端检查最多等待 900 秒
 mix quint           # quick、simulate、verify 全部执行
 mix quint all       # 也可显式选择 all
+mix quint --cores 16 --timeout 0  # 完整核心套件，无后端时间截止
 ```
 
 ## 概念

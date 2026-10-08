@@ -27,10 +27,11 @@ mix test
 # Quint
 mix quint.quick     # Type checking and determinism tests
 mix quint.simulate  # quick plus 10,000 combined sampling traces
-mix quint.verify    # quick plus bounded check with depth 10 (default budget 240 seconds)
-CORE_VERIFY_TIMEOUT=900 mix quint.verify  # Optional: set the backend budget to 900 seconds
+mix quint.verify    # quick plus bounded check with depth 10
+mix quint.verify --timeout 900  # Optional: limit each backend check to 900 seconds
 mix quint           # Runs quick, simulate, and verify
 mix quint all       # You can also explicitly select all
+mix quint --cores 16 --timeout 0  # Full core suite, no BMC time limit
 ```
 
 ## Concept

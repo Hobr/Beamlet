@@ -13,30 +13,18 @@
 ```sh
 mix quint.quick
 mix quint.simulate
-CORE_VERIFY_TIMEOUT=900 mix quint.verify
-mix quint
+mix quint.verify --timeout 900
+mix quint --cores 16 --timeout 0
 mix quint.supplemental quick
 ```
 
-`quick` 类型检查并运行确定性测试，`simulate` 加代表组合抽样，`verify` 调用正式有界后端，`all` 包含三者。`mix quint` 默认核心 all；补充显式选择 quick/simulate/verify/all，其 verify 保留不先 quick 的行为。Mix 薄别名调用单一 `spec/quint/check.exs`，直接入口为 `elixir spec/quint/check.exs quick`。
+`quick` 类型检查并运行确定性测试，`simulate` 加抽样，`verify` 调用有界后端，`all` 包含三者。`mix quint` 默认核心 all；补充 verify 不先 quick。Mix 薄别名调用 `spec/quint/check.exs`，直接入口为 `elixir spec/quint/check.exs quick`。
 
-`Beamlet.Quint.main(argv, root \\ repository_root)` 返回 `0 | 1 | 2`，直接 Elixir CLI 保留该退出码。Mix 别名将任何非零结果通过 `Mix.raise` 转为 CLI exit1，并在错误消息中保留执行器原返回码。
+两套入口共用 `--cores N`（正整数，默认8，Z3 SMT 线程数）与 `--timeout N`（非负整数秒，默认0，取消每次后端检查的截止）。参数校验在启动工具前完成。不使用 `CORE_*` / `QUINT_*` 环境变量配置验证。线程数不绑定具体 CPU 核心，也不保证固定倍数加速。
 
-`CORE_LOG_DIR` / `QUINT_LOG_DIR` 指定 `/tmp` 或被忽略 evidence 树内的空目录，默认输出到 `/tmp`。目录独占，防止并发共用或覆盖。`CORE_VERIFY_TIMEOUT` 为正整数秒，默认240；`CORE_SERVER_PORT` 为专用合法端口，默认8842。补充预算默认600秒，接受正 GNU duration。
+命令使用独立 argv。类型检查、确定测试和后端进度通过 `IO.binstream(:stdio, :line)` 原样显示，避免 Unicode 编码转换；抽样输出在结束时显示并校验每个请求 witness 的正计数。首个失败即停止，保留子命令退出码；配置或工具启动异常返回2。Mix 将非零结果转为 CLI exit1，并保留原返回码。
 
-命令使用 executable 和独立 argv，不能拼接 shell。保存命令、工具版本、BEAM 环境、域、逐项日志、退出与耗时。请求 witness 与 validator 共用列表，每项必须存在且为正；失败后继续后续检查并聚合非零。
-
-子进程 stdout/stderr 以原始字节保存：`File.open!(path, [:write], ...)` 配合 `IO.binstream(io, :line)`。不要在默认文件设备上使用 `IO.stream(io, :line)`：设备编码为 `:latin1`，中文 locale 下 Java 输出的“10月”“下午”“警告”等 Unicode 文本会触发 `:no_translation`，使日志写入失败并丢失真实后端退出码。两套入口的回归须注入 Unicode stdout/stderr，检查完整字节保留，以及 exit0/非零退出码和聚合结果。
-
-| 条件 | 行为 |
-| --- | --- |
-| 所选检查全部通过 | 执行器返回0 |
-| 子命令非零或 witness 缺失/零值 | 保存逐项日志、继续后续检查，聚合返回1 |
-| 找不到工具 | 该项 exit127，错误进入日志，聚合失败 |
-| 模式/套件/预算/端口无效，或输出目录不允许/非空 | 返回2，保存配置错误，不覆盖已有日志 |
-| 核心有界检查超时 | 该项 exit124，回收自己的进程组，聚合失败；界限无结论 |
-
-核心 Python 包装器管理 POSIX 专属进程组和截止清理，仅保证该组内的后代。核心与补充每条 backend 命令都在本次日志目录内独立工作目录执行，通过源码符号链接保留相对 argv，新 `_apalache-out/` 留在该目录。补充 GNU timeout 不保证清理另起会话的后代。checkpoint 只读该次产物，缺失明确记录，不从共享目录挑选其他运行的最新日志。
+不维护自定义证据目录、日志/耗时文件、运行清单或检查点。后端只需要临时 JSON 线程配置，调用结束即删除。使用系统 GNU `timeout --kill-after=5s` 控制每次后端调用，超时返回124并明确标记无结论。Quint 自己管理启动的 Apalache 服务；不维护 Python 进程管理包装器或假 CLI 脚本。Apalache 的原始 `_apalache-out/` 保持工具行为并由 Git 忽略。
 
 ## 契约与抽象
 
@@ -60,6 +48,8 @@ mix quint.supplemental quick
 | 超时/序列化/后端失败 | 无结论，不能声称请求界限完成 |
 | 正在检查 StateK | 仅进度，不是 depthK 完成证明 |
 
+诊断超时应保持模型、init/step/property 明确，分别增加预算、独立执行较小界限，并使用受限调度/较小实例/单属性作为成本对照。记录后端类型检查与求解阶段、实际退出码和并发负载；不能把不同范围的成功或较高 State 进度拼成完整界限，也不能把高耗时的生成 VC 直接判为契约违例。当前案例见[核心超时诊断](../../../spec/quint/core/timeout-analysis.md)。
+
 条件调度列明前提。严格递减 rank 与固定调度 bounded check 只覆盖指定调度，恢复 witness 不证明一般活性。有限身份/队列耗尽与稀疏消费必须报告，不用无条件 stutter、循环 blocked 分类或无关权限 fallback 掩盖停滞。
 
 断言独立于 guard，读取最小真实前态。适用时加入无授权/继承主体进入、旧提案、双终局回复、repeat 重用、跳 FIFO/部分提交及分支继承权限的检测变异。故意展示坏行为的通过 probe 不计为修复通过。
@@ -68,11 +58,11 @@ mix quint.supplemental quick
 
 监视器回归区分 guard/事实与排队报告投递。`lose(r, a)` 只接受 Admitted；在 nonexecution/局部失败后拒绝 lose，不执行 distinct-ID 载荷或持久化其审计。真实延迟报告、验证与审计归属 I2/I3/S4。外部 API 引用固定到实际检查版本，源码段落不是采用测试。
 
-抽样 positivity validator 检查每个请求目标。十项核心目标的20个 missing/zero 注入案例必须聚合失败，无关目标正计数不能替代缺项。
+抽样 positivity validator 检查每个请求目标。缺失或零计数必须失败，无关目标正计数不能替代缺项。
 
 ## 执行器验证
 
-执行器改变后运行 `mix format --check-formatted`、`mix compile --warnings-as-errors`、`mix test` 和真实 `mix quint.quick`。集成回归覆盖两套模式的 argv/seed、错误聚合、witness 缺失/零值、特殊路径、日志独占、配置错误，以及包装器超时后的产物隔离、所属进程停止与无关进程保留。假工具只验证编排，不计模型抽样/BMC。
+执行器改变后运行 `mix format --check-formatted`、`mix compile --warnings-as-errors`、`mix test` 和真实 `mix quint.quick`。保留小范围的参数与 witness 正计数回归；命令或超时调用改变时用真实小模型检查配置加载、成功退出和限时退出，不重建假 CLI、日志目录与进程监督设施。
 
 仅注释/空白变化可用语法、格式和语法树等同性代替行为回归：Python 比较去位置属性的 AST 与非注释 token，Elixir 解析后递归去节点位置元数据。若有可执行行或依赖变化，仍执行完整检查。
 
@@ -80,7 +70,7 @@ mix quint.supplemental quick
 
 ## 本地日志与可读交付
 
-全部验证捕获只在本地保留，两个完整 evidence 目录受根目录忽略规则覆盖。保留原始日志、反例和模型/测试副本字节，不翻译或规范化历史捕获。人工报告/README/coverage 必须自行说明结果、配置、限制和复现命令，必需 Markdown 链接指向可提交文档或源码，不依赖忽略目录。
+工具原始捕获和反例仅在本地保留，原始 `_apalache-out/` 与历史 evidence 树由 Git 忽略。需要保存终端输出时由调用方重定向。人工报告/README/coverage 说明结果、配置和限制；必需 Markdown 链接指向可提交文档或源码，不依赖本地捕获。
 
 检查保存条件时，直接比较工作树字节与完整索引记录；已有暂存内容保持。`git diff --check` 只检查其对应差异，差异为空不表示文件没有空白问题。日志整理不要求重复未改变模型的抽样/BMC。
 

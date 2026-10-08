@@ -21,11 +21,11 @@ mix quint.supplemental verify     # 组合与条件恢复的实际 bounded 尝�
 mix quint.supplemental all        # 默认执行全部
 ```
 
-当前补充入口与核心共用[单一 Elixir 执行器](check.exs)，可直接运行 `elixir spec/quint/check.exs quick --suite supplemental`。它沿用历史命令参数，使用现有 Quint0.32.0、随附 Apalache0.56.1 / OpenJDK21，默认输出到 `/tmp/beamlet-quint-supplemental-*`。`QUINT_LOG_DIR` 可指定 `/tmp` 或被忽略 evidence 树中的空目录；`QUINT_VERIFY_TIMEOUT` 默认600秒，也接受 GNU timeout 的正数时长（如 `10m`）。`quick` 是全部补充类型检查与确定测试，`simulate` 先 quick 再三组抽样；补充 `verify` 与历史行为一致，不先 quick。
+补充与核心共用[薄命令入口](check.exs)，使用 Quint0.32.0 / 随附 Apalache0.56.1 / Java21。`--cores N` 指定 SMT 线程数，默认8；`--timeout N` 指定每次后端检查的等待秒数，默认0（不限时），如 `mix quint.supplemental verify --cores 4 --timeout 600`。不使用 `QUINT_LOG_DIR` / `QUINT_VERIFY_TIMEOUT` 环境变量。`quick` 运行全部补充类型检查与确定测试，`simulate` 先 quick 再三组抽样；补充 `verify` 不先 quick。
 
-违例、工具/配置失败、超时或任何请求 witness 缺失/为零都返回非零，各独立检查仍继续；不能把单项模拟 exit0 当作 `all` 通过。
+输出直接显示在终端。违例、工具/配置失败、超时或任何请求 witness 缺失/为零都返回非零，首个失败即停止；不能把单项模拟 exit0 当作 `all` 通过。
 
-补充 bounded 继续使用历史 `timeout` 命令，它不保证回收另起会话的后代进程；不能把这个入口当作核心 Python 包装器的专属进程组保证。每个补充 backend 命令使用日志目录下自己的工作目录，只读取该目录产生的检查点，未产生日志会明确记录；不会挑选仓库中其他任务的最新 backend 日志。检查点只表示进度，不建立完成界限；补充成功不清除核心无结论。执行器回归中的假工具只检查编排行为，不属于补充模型抽样或 BMC。
+两套 backend 调用共用系统 GNU `timeout`。执行器只临时生成线程配置，不维护自定义日志和检查点；Apalache 原始产物保留在被忽略的 `_apalache-out/`。进度不建立完成界限，补充成功也不清除核心无结论。
 
 | 配置 | Run / Effect / Attempt | FIFO | init / step | 用途 |
 | --- | --- | --- | --- | --- |

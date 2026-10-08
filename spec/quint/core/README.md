@@ -9,9 +9,12 @@ mix quint.quick     # 六项类型检查、确定性竞态/变异及恢复路径
 mix quint.simulate  # quick 加10,000条组合抽样
 mix quint.verify    # quick 加实际 depth10 后端尝试
 mix quint           # 默认执行全部检查
+mix quint --cores 16 --timeout 0  # 完整核心套件，无后端时间截止
 ```
 
-使用现有 Quint0.32.0 / 随附 Apalache0.56.1 / Java21 环境。`CORE_LOG_DIR` 指定本地证据目录；默认创建 `/tmp/beamlet-quint-core-*`。`CORE_VERIFY_TIMEOUT` 默认240秒，`CORE_SERVER_PORT` 默认8842。Mix 使用[单一 Elixir 执行器](../check.exs)，也可直接运行 `elixir spec/quint/check.exs quick`。执行器记录独立 argv、域、版本/BEAM 环境、每项日志/退出码与耗时。每个请求的 witness 必须出现且计数正，工具/配置失败也返回非零，各项检查失败后仍继续汇总。日志目录须为空且位于 `/tmp` 或被忽略 evidence 树，独占标记防止共用/覆盖。超时返回非零，后端包装器停止自身进程组；所选端口应专用。核心 backend 在日志目录内的 `depth10.work/` 执行，保留相对 argv，新 `_apalache-out/` 产物也只写入该本地目录。
+使用 Quint0.32.0 / 随附 Apalache0.56.1 / Java21。Mix 使用[薄命令入口](../check.exs)，也可运行 `elixir spec/quint/check.exs quick`。`--cores N` 设置 Z3 SMT 求解线程数，须为正整数，默认8；`--timeout N` 设置每次后端检查的等待秒数，默认0（不限时），如 `mix quint.verify --cores 4 --timeout 900`。核心与补充共用参数。线程数不绑定具体 CPU 核心，也不保证固定倍数加速。
+
+类型检查、测试和后端进度直接显示在终端，首个失败即停止。抽样结束显示原始输出并检查每个请求 witness 是否有正计数。限时后端调用使用系统 GNU `timeout`，超时仍是无结论。入口只临时生成线程配置并在调用结束后删除；不维护日志目录、逐项退出码/耗时文件或检查点汇总。Apalache 自己生成的 `_apalache-out/` 是工具原始产物，已由 Git 忽略。
 
 运行日志仅保存在本地，Git 不包含原始捕获。新检出从[验证报告](verification-report.md)读取结果、配置与限制，并通过上述命令生成自己的日志。
 

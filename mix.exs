@@ -28,7 +28,7 @@ defmodule Beamlet.Verification.MixProject do
 
       code ->
         # Mix.raise 将执行器失败传播为 CLI exit1，并保留原返回码供诊断。
-        Mix.raise("Quint checks failed (runner exit #{code}); see the evidence directory above")
+        Mix.raise("Quint checks failed (exit #{code})")
     end
   end
 end

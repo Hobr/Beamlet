@@ -6,7 +6,7 @@
 
 工具配置为 Quint 0.32.0、Apalache 0.56.1（build70cdaf4）、Java 21。代表组合实例化 Runs0/1、每 Run 一个 Effect、每 Effect 两个 Attempt、两个主体实例和 FIFO6；默认 `init` / `step` / `safety` 保留故障、控制及源/分支交错。恢复投影使用 Run0/FIFO4 和受限的14转换调度。
 
-下表保留已执行的模型结果。本次执行器简化没有重新运行抽样或有界后端。
+下表保留既有历史模型结果；执行器简化时没有重新运行抽样或有界后端。日志编码修复后的追加检查见[超时诊断](timeout-analysis.md)，其独立结果与这些历史耗时分别解释。
 
 | 检查 | 配置与实际结果 | 允许的结论 |
 | --- | --- | --- |
@@ -33,6 +33,14 @@
 
 十项均正，消费5次与同一 Run 的恢复消费1次仍稀疏。到达目标不表示必然进度。恢复调度要求可用权威、active 控制、合法步骤与 finish、兼容且活着并成功的替代主体、显式 repeat、足够容量、指定动作最终得到调度，以及无新增故障、控制或输入干扰；它不建立任意状态恢复或一般活性。
 
+## 超时诊断补充
+
+日志编码修复后，未修改核心模型而追加分层检查：完整双 Run / FIFO6 / 开放 step / safety 的独立 depth4 检查在281.188秒完成 `NoError`；depth5 在360秒超时，depth10 在900秒于 State6 超时。单 Run / FIFO4 的 depth10 和双 Run 仅 C2 的成本对照均在600秒于 State7 超时。后两者不能替代完整组合 safety。
+
+受限恢复 depth14 在145.525秒完成 `NoError`。另一次10,000条 / depth200 / seed20261015抽样未发现反例，十项 witness 均正，消费30次、恢复消费4次；这些计数仍不建立一般活性。实验存在并发负载，耗时不是独占运行基准。
+
+这些结果支持开放转换和状态/属性编码存在求解成本瓶颈；240秒预算不足，但提高到900秒仍未完成请求的 depth10。没有发现新的安全性反例，也不能据此宣布模型完全正确。具体参数、成本对照、覆盖计数与复现命令见[超时诊断](timeout-analysis.md)。本轮结果独立于下文记录的早期240/900秒尝试。
+
 ## 实质缺陷与修复
 
 | 缺陷 | 原行为与检测 | 修复及对应义务 |
@@ -51,7 +59,7 @@ failed 保持封闭：无 resume、新 admit、commit、repeat 或 settle；原�
 
 ## 复现命令
 
-常用入口为 `mix quint.quick`、`mix quint.simulate`、`mix quint.verify` 或 `mix quint`；模式、预算、端口与本地输出目录见[核心说明](README.md)。以下命令说明上述模型配置，再次执行会产生新的结果：
+常用入口为 `mix quint.quick`、`mix quint.simulate`、`mix quint.verify` 或 `mix quint`；模式、线程数与时间预算见[核心说明](README.md)。以下命令说明上述模型配置，再次执行会产生新的结果：
 
 ```sh
 quint typecheck spec/quint/core/core_test.qnt
@@ -59,30 +67,23 @@ quint test spec/quint/core/core_test.qnt --main core_test --match '.*Test' --bac
 quint test spec/quint/core/recovery_test.qnt --main recovery_test --backend typescript --seed 20261014
 quint test spec/quint/core/core_test.qnt --main core_test --match combinedTest --backend typescript --seed 20261014 --out-itf '/tmp/combined_{test}_{seq}.itf.json'
 quint run spec/quint/core/composition.qnt --main composition --invariant safety --witnesses intentWitness entryWitness unknownWitness recoveryWitness consumedWitness recoveryConsumedWitness branchWorkWitness inconclusiveWitness failedUnknownWitness failedReplyWitness --max-samples 10000 --max-steps 60 --seed 20261014 --verbosity 1
-CORE_VERIFY_TIMEOUT=240 CORE_SERVER_PORT=8842 mix quint.verify
+mix quint.verify --cores 1 --timeout 240
 ```
 
-手动检查受限恢复时，Python 包装器使用调用方的当前目录；它负责进程清理，工作目录隔离由上层执行器或调用方建立。以下命令从仓库根目录创建本地工作目录及源码链接，使后端产物留在 `/tmp`：
+受限恢复可直接调用 Quint：
 
 ```sh
-recovery_work_dir=$(mktemp -d /tmp/beamlet-quint-recovery-XXXXXX)
-mkdir "$recovery_work_dir/spec"
-ln -s "$PWD/spec/quint" "$recovery_work_dir/spec/quint"
-(
-  cd "$recovery_work_dir" &&
-    python3 spec/quint/core/verify.py 120 8843 spec/quint/core/recovery.qnt recovery 14
-)
+timeout --kill-after=5s 120s quint verify spec/quint/core/recovery.qnt \
+  --main recovery --invariant safety --max-steps 14 --server-endpoint localhost:8843
 ```
 
 运行日志仅保存在本地，Git 不包含原始捕获。新检出可以读取本报告与模型、执行命令生成日志，无法独立查看已有运行的原日志。模型依赖改变后须重新检查受影响的结果；文档整理不产生新的模型证据。
 
 ## 执行器检查与限制
 
-[check.exs](../check.exs)编排模式、独立 argv、日志和退出聚合；[verify.py](verify.py)负责既有 POSIX 进程组超时清理。Mix/Elixir 执行器为后端建立日志目录内的独立工作目录，避免从共享 `_apalache-out/` 读取其他运行的产物。超时只证明预算耗尽，checkpoint 只说明进度。
+[check.exs](../check.exs)只负责参数、Quint 命令调用和抽样 witness 正计数检查。输出显示在终端，首个失败即停止；时间预算使用系统 GNU `timeout`。Python 包装器、假 CLI 与自定义日志/检查点设施已移除。超时只说明预算耗尽，进度不能当作已完成界限。
 
-执行器回归使用隔离假工具检查模式/种子/argv、特殊路径、失败继续与缺工具、全部 witness、日志独占、无效配置、产物隔离、超时后的同组进程停止及无关进程保留。假工具结果属于编排检查，不能算模型抽样或 BMC。
-
-执行器简化后的 `mix format --check-formatted`、`mix compile --warnings-as-errors` 与 `mix test --trace` 通过：9项集成测试，含全部20个 witness 缺失/零值注入案例。真实 `mix quint.quick` 的10项记录全部 exit0：版本检查、六项 typecheck、1项恢复测试、1项 combinedTest 和全部46项核心测试。确定性测试使用 TypeScript / seed20261014；本次未执行真实抽样或 BMC。BEAM 环境为 Elixir1.20.4 / OTP29，局部设置 `ERL_FLAGS='+S 4:4'`。
+当前简化入口通过格式、编译及3项参数/coverage 回归。真实核心 quick 的六项类型检查、恢复路径及46项核心确定测试通过，combinedTest 已包含在46项中。小模型检查验证线程配置可加载与限时返回124，不能当作核心组合 depth10 完成证据。
 
 ## 尚未验证的行为
 

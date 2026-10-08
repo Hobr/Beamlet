@@ -65,7 +65,7 @@ StartRun/初始 ready、两种不透明注册 Definition、两层 Scope、资源
 ```sh
 mix quint.supplemental quick
 mix quint.supplemental simulate
-QUINT_VERIFY_TIMEOUT=180 mix quint.supplemental verify
+mix quint.supplemental verify --timeout 180
 quint test spec/quint/architecture_test.qnt --main architecture_test --match combinedInterleavingTest --backend typescript --seed 20261007 --out-itf '/tmp/combined_{test}_{seq}.itf.json'
 ```
 
