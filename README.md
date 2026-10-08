@@ -23,6 +23,14 @@ mix compile
 
 # Test
 mix test
+
+# Quint
+mix quint.quick     # Type checking and determinism tests
+mix quint.simulate  # quick plus 10,000 combined sampling traces
+mix quint.verify    # quick plus bounded check with depth 10 (default budget 240 seconds)
+CORE_VERIFY_TIMEOUT=900 mix quint.verify  # Optional: set the backend budget to 900 seconds
+mix quint           # Runs quick, simulate, and verify
+mix quint all       # You can also explicitly select all
 ```
 
 ## Concept
@@ -33,10 +41,6 @@ mix test
 - Beamlet-{cli, tui, web, desktop, android, node}: A set of frontends for Beamlet-agent.
 
 These dependencies will be sperated into separate projects in the future.
-
-## Specifications
-
-The [specification library](./spec/README.md) documents the target runtime contracts, module boundaries, recovery semantics and architecture decisions. Start with the [architecture index](./spec/architecture/index.md).
 
 ## Thanks
 
