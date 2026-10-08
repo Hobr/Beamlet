@@ -1,6 +1,6 @@
 # 架构决策
 
-基线：`architecture-v1`。已接受的决策描述目标行为，不表示代码已经完成；ADR-008 为本次待评审的协议补充。
+基线：`architecture-v1`。已接受的决策描述目标行为，不表示代码已经完成；ADR-008 的补充技术设计已另行评审并接受，见[评审记录](./protocol-review-2026-10-08.md#disposition)。基线历史保持，最终门禁及运行时验证另行归属。
 
 ## ADR-001 — 显式状态推进
 
@@ -50,15 +50,17 @@ Capability / Scope 契约支持动态实现、依赖关系与生命周期。创�
 
 客户端或视图进程的生命周期与 Run 生命周期相互独立。标准 OTP 监督、分布式机制和应用接入边界验证承担各自职责；新的沙箱或成员管理框架不属于初始范围。
 
+<a id="adr-007-review"></a>
+
 ## ADR-007 — 权威层候选实现
 
-状态：提议，须通过验证。
+状态：技术评审后保留为条件候选，采用前须通过验证；见[评审记录](./protocol-review-2026-10-08.md#adr-007-review)。
 
 评估一个具体的 Ra 权威模块，使用一个组和三个持久化投票节点，以容忍单节点丢失。不创建多后端框架，也不自行实现共识。
 
 替代方案：OTP disk_log 是本地原语；Mnesia 事务与多数派机制是可用的原生选项，但仍需要明确的应用恢复与所有权契约。Ra 直接契合命令类型封闭的复制状态机。应用历史必须作为应用数据，在后端日志与快照压缩整理后继续保留。
 
-[Ra API](https://ra.hexdocs.pm/ra.html#process_command-3)描述命令应用后的回复与多数派相关超时；[consistent_query](https://ra.hexdocs.pm/ra.html#consistent_query-2)提供所需的当前领导者读取检查。[v3.2.0 WAL 源码](https://raw.githubusercontent.com/rabbitmq/ra/v3.2.0/src/ra_log_wal.erl)在写入通知前执行同步，同时包含无法满足承诺配置的非同步路径。
+[Ra API](https://ra.hexdocs.pm/3.2.0/ra.html#process_command-3)描述命令应用后的回复与多数派相关超时；[consistent_query](https://ra.hexdocs.pm/3.2.0/ra.html#consistent_query-2)提供所需的当前领导者读取检查。[v3.2.0 WAL 源码](https://raw.githubusercontent.com/rabbitmq/ra/v3.2.0/src/ra_log_wal.erl)在写入通知前执行同步，同时包含无法满足承诺配置的非同步路径 `wal_sync_method=none`；[v3.2.0 配置源码](https://raw.githubusercontent.com/rabbitmq/ra/v3.2.0/src/ra_system.erl)允许该选项，采用配置必须拒绝它。同步函数源码仅支持候选评估，不证明端到端持久化法定人数确认。
 
 [v3.2.0 README](https://raw.githubusercontent.com/rabbitmq/ra/v3.2.0/README.md)列出的版本为 OTP 26 / 27；项目配置选择 OTP 29 / Elixir 1.20。兼容性以及端到端磁盘与法定人数行为尚未验证。候选存储尚未安装或验证。
 
@@ -68,7 +70,7 @@ Capability / Scope 契约支持动态实现、依赖关系与生命周期。创�
 
 ## ADR-008 — 执行主体、调用裁定与生命周期闭合
 
-状态：提议；本次目标契约补充待评审。关联并澄清 ADR-001、ADR-002 与 ADR-004，保留原有选择理由。
+状态：技术设计已评审并接受；依据[本次评审记录](./protocol-review-2026-10-08.md#disposition)，最终独立检查及[父会话设计验收](./protocol-review-2026-10-08.md#parent-acceptance)已完成，未发现剩余范围内设计阻塞。关联并澄清 ADR-001、ADR-002 与 ADR-004，保留原有选择理由；不表示实现或完整形式 / 运行时验证已完成。
 
 上下文：逻辑命令与结果去重无法单独阻止同一执行授权被重复分发后再次调用；原规范没有完整定义裁定命令、不同输入来源的顺序以及 failed 的进入与结果保留行为。
 
@@ -77,6 +79,8 @@ Capability / Scope 契约支持动态实现、依赖关系与生命周期。创�
 替代方案：恢复时把旧 Attempt 交给替代工作进程，无法排除原主体已经执行；仅按命令 ID 或终局回复去重，不能约束提供者调用。输入来源优先级会引入跳队与饥饿规则，初始契约采用统一顺序。自动重复已确认的定义故障可能无限重现同一问题，初始契约采用显式失败与稳定边界分支。
 
 影响：工作进程替换必须申请新权限，无法证明未调用时可能牺牲自动恢复进度。该选择不保证外部恰好执行一次，允许重复执行的恢复仍可能与旧主体重叠。failed 不是取消，当前失败快照不属于可激活归档类型。所需命令、记录与故障断言分别归属[权威层](./authority-and-recovery.md)、[计算契约](./computation-and-effects.md)和[生命周期](./lifecycle-and-archives.md)。
+
+已评审细化：显式区分操作声明的 Attempt 局部失败与逻辑失败，捕获声明版本并从保留观测统一归约结果；划分既有计算、编排、原始授权、一次性许可与只读前缀的职责；按已提交事实交接恢复，并把 I1–I4 对应到具体模块的故障验证义务。failed 保留未知与迟到证据，不开放终态 settlement 或业务重启。此细化与原 ADR-008 补充分别在评审记录中逐项接受；迟到监视器报告按[证据优先规则](./authority-and-recovery.md#monitor-evidence-order)仅追加审计，不撤销同一 Attempt 的确定观测。基线历史不变，也不表示 Ra、进程、提供者或编解码验证已完成。
 
 ## 决策替代与验证
 

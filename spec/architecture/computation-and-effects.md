@@ -1,6 +1,6 @@
 # 计算、Invocation 与 Effect 契约
 
-状态：`architecture-v1` 已评审基线；本次协议补充待评审，见[架构索引](./index.md)。接口签名与载荷用于指导后续实现。
+状态：`architecture-v1` 已评审基线；ADR-008 协议补充技术设计已评审并接受，见[评审记录](./protocol-review-2026-10-08.md#disposition)。最终门禁及运行时验证另行归属。接口签名与载荷用于指导后续实现。
 
 ## 1. 适用范围
 
@@ -49,7 +49,7 @@ Beamlet.resolve_invocation(run_ref, invocation_ref, decision, opts)
 | Reply | reply_key、invocation_ref、result；不包含 Effect、Attempt 或存储对象 |
 | InputEnvelope | 稳定 input_id、正数 queue_seq、kind、应用载荷、来源信息；内部后续推进附带预期 state_revision，不确定性通知附带通知标识与关联的执行修订号 |
 | Run 快照 | definition_ref、state、state_revision、input_cursor、progress、scope_descriptor、mode、lifetime；终态还包含 finish_result 或有界 failure_reason |
-| Effect 意图 | effect_ref、来源 Run / 步骤 / 调用序号、Invocation、生效配置、已捕获的可重复执行声明；可变执行记录另含 execution_revision |
+| Effect 意图 | effect_ref、来源 Run / 步骤 / 调用序号、Invocation、生效配置、已捕获的声明引用 / 契约版本 / 可重复执行条件 / 生效失败含义（见[能力声明](./capability-composition.md#failure-declaration)）；可变执行记录另含 execution_revision |
 | Attempt | attempt_ref、effect_ref、提供者 / 资源 / 代次绑定、execution_owner_ref、原始执行授权证据；执行主体引用为不透明二进制，不是 PID |
 | Receipt | command_id、run_ref、history_revision、适用时的 state_revision、操作结果 |
 | Error | code：稳定原子或二进制；details：有界可移植数据；不得泄露运行时对象 |
@@ -81,7 +81,7 @@ input_cursor 表示已连续消费或明确处置的最后一个序号。成功�
 
 内部后续推进只在其预期 state_revision 等于当前状态修订号时调用 step。过期记录由 CommitStep 的内部处置变体记录 stale_continuation，推进游标和历史修订号，不调用 step，也不增加状态修订号。普通外部输入和 Reply 不因状态修订变化而自动丢弃。所有内部处置仍受当前纪元、active / open 与队首游标条件约束。
 
-每次进入 unknown 生成一个稳定通知标识，重复报告同一次不确定性不追加通知。通知与终局回复是不同输入。通知尚未消费而终局结果已提交时，在该通知到达队首后，以 CommitStep 内部处置变体记录 obsolete_uncertainty，不再向定义投递过时的 unknown；已经消费的通知保留历史，后续终局回复仍正常入队。宿主已基于通知求值但尚未提交时，CommitStep / FailRun 还须检查该通知没有被终局结果取代；被取代的提案返回 stale_permission，不提交业务状态、新 Effect 或定义故障，随后明确处置原通知。输入 ID、游标和执行结果去重分别负责不同层次的重复抑制。
+只有按[证据优先规则](./authority-and-recovery.md#monitor-evidence-order)实际进入 unknown 时生成通知；同一 Attempt 确定观测后的迟到监视器报告不重新通知。每次进入 unknown 生成一个稳定通知标识，重复报告同一次不确定性不追加通知。通知与终局回复是不同输入。通知尚未消费而终局结果已提交时，在该通知到达队首后，以 CommitStep 内部处置变体记录 obsolete_uncertainty，不再向定义投递过时的 unknown；已经消费的通知保留历史，后续终局回复仍正常入队。宿主已基于通知求值但尚未提交时，CommitStep / FailRun 还须检查该通知没有被终局结果取代；被取代的提案返回 stale_permission，不提交业务状态、新 Effect 或定义故障，随后明确处置原通知。输入 ID、游标和执行结果去重分别负责不同层次的重复抑制。
 
 ### 终态与定义故障
 
@@ -102,6 +102,16 @@ finish 只在提交该步骤后，Run 创建的所有 Effect 均为 consumed、�
 移动计算宿主时保留标识。新分支获得新 Run 标识，用于后续 Effect。继承的已完成历史保持只读。
 
 能力门面接口仅构造数据，不执行 I/O。状态转换不得直接读取时钟、随机数、邮箱或运行时资源；应通过能力获取观测。未提交的转换可以重新求值。权威层创建前，规范化并捕获生效配置；持久化意图保持不可变。
+
+<a id="failed-audit"></a>
+
+### 已评审补充：failed 的证据保留边界
+
+本节属于 [ADR-008](./decisions.md#adr-008) 的已评审补充，技术处置见[评审记录](./protocol-review-2026-10-08.md#disposition)。FailRun 关闭业务推进入口，不改变既有 Effect 意图、原始授权、已记录观测或最后业务状态。failed 不可 resume、CommitStep、创建新 Attempt、settle 或 allow_repeat；追加有来源的审计证据仍遵循原裁定条件。
+
+原始授权主体可以在 failed 后首次进入已授权调用或补充迟到观测。有效观测仍按[证据归约](./authority-and-recovery.md#3-契约)决定是否记录唯一终局结果。其回复保留为 unprocessed / run_failed，不调用定义、不记为成功消费、不使原来未消费的 Effect 变为 consumed。unknown 或仅局部失败可以长期作为可检查的审计事实存在；不得为了清空待处理列表而删除证据、伪造失败、恢复业务或赋予终态人工裁定 / 取消功能。终态人工 settlement 仍属暂缓事项。
+
+必需断言包括：failed 时保留 unknown；迟到局部失败仍未决；迟到有效成功或逻辑失败可记录一条未处理回复；控制恢复、重复许可和业务消费均被拒绝。已在失败前合法消费的历史保持原样。
 
 ## 4. 验证与错误矩阵
 

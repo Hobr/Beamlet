@@ -1,6 +1,6 @@
 # 权威存储、执行尝试与恢复
 
-状态：`architecture-v1` 已评审基线；本次协议补充待评审，见[架构索引](./index.md)。Ra 是实现建议，仍有待完成的验证要求。
+状态：`architecture-v1` 已评审基线；ADR-008 协议补充技术设计已评审并接受，见[评审记录](./protocol-review-2026-10-08.md#disposition)。最终门禁及运行时验证另行归属。Ra 是技术评审后的条件候选，仍有待完成的采用验证要求。
 
 ## 1. 适用范围
 
@@ -80,7 +80,7 @@ command.body =
 
 运行时观测必须包含稳定 observation_id、Attempt 引用、原始授权与绑定证据，以及以下一种有界载荷。重报同一 observation_id 与载荷不重复改变记录；同键不同载荷返回 key_conflict。可信恢复监视器可以报告执行主体失联的 unknown 证据，但不得把断连报告构造成提供者成功、失败或未执行证明。
 
-Effect 创建时为 pending，AdmitAttempt 后为 executing。有效的 succeeded、failed 或 not_executed 观测将对应 Attempt 标为 observation_recorded；unknown 观测将其标为 unknown，后来经过验证的观测仍可补充。唯一终局结果提交后 Effect 为 outcome_recorded，终局回复由 CommitStep 成功消费后才为 consumed；通知消费与 run_failed 处置都不能产生 consumed。
+Effect 创建时为 pending，AdmitAttempt 后为 executing。有效的 succeeded、failed 或 not_executed 观测将对应 Attempt 标为 observation_recorded；unknown 观测仅在该 Attempt 尚无经过验证的确定观测时将其标为 unknown，后来经过验证的观测仍可补充；已有确定观测后的监视器失联报告按下方证据优先规则仅作审计追加。唯一终局结果提交后 Effect 为 outcome_recorded，终局回复由 CommitStep 成功消费后才为 consumed；通知消费与 run_failed 处置都不能产生 consumed。
 
 操作可能已经执行后，仅当具备幂等性、适用的去重保障或明确允许重复执行时，操作声明才允许自动重试。保留请求语义以及实际去重域和保留期。声明本身不能延长提供者已过期的保证。
 
@@ -93,9 +93,9 @@ Effect 创建时为 pending，AdmitAttempt 后为 executing。有效的 succeede
 | 观测类型 | 含义 | Effect 与回复处置 |
 | --- | --- | --- |
 | succeeded(data) | 操作契约认可的成功结果 | 无既有终局结果时原子记录 {:ok, data} 与终局回复；不清除其他 Attempt 的证据 |
-| failed(data) | 已确认的操作失败，不等于未执行 | 仅在不存在更早未决执行、且声明足以确定整个逻辑操作失败时记录 {:error, data}；否则保持 unknown |
-| not_executed(evidence) | 可以验证该 Attempt 未进入外部调用 | 没有其他未决执行时回到 pending，可安全重新授权；否则保持 unknown，不产生终局回复 |
-| unknown(evidence) | 执行或结果无法确认 | Attempt 标为 unknown；没有终局结果或其他 admitted Attempt 时 Effect 进入 unknown，产生非终局通知 |
+| failed(data) | 已确认的操作失败，不等于未执行 | 仅在不存在其他未决执行（包括尚无权威确定观测的 admitted Attempt）、且声明足以确定整个逻辑操作失败时记录 {:error, data}；否则无其他 admitted Attempt 时保持 unknown，有 admitted Attempt 时保持 executing |
+| not_executed(evidence) | 可以验证该 Attempt 未进入外部调用 | 该证明只解除本 Attempt 的未决条件；Effect 按全部保留的有效观测与已捕获声明统一归约。无既有终局结果、无其他未决或 admitted Attempt、且无充分终局证据时才回到 pending；其余情况按下方证据归约表处理 |
+| unknown(evidence) | 执行或结果无法确认；监视器报告不推翻同一 Attempt 的有效确定观测 | 该 Attempt 尚无有效确定观测时标为 unknown；没有终局结果或其他 admitted Attempt 时 Effect 进入 unknown，产生非终局通知。同一 Attempt 已有确定观测时，迟到失联报告仅保存审计来源，不改变该观测、Effect 或追加通知 |
 
 已有终局结果后，新观测只更新审计证据，不能覆盖结果或新增终局回复。恢复 Attempt 的失败或预检拒绝不能消除更早的未知执行。所有允许记录的结果仍须通过操作回复模式与数据边界验证。没有有效结果可记录时，保留不确定性。
 
@@ -116,6 +116,51 @@ ResolveInvocation 的载荷包含 invocation_ref、expected_execution_revision �
 终局结果先提交时，使用过期修订号的 settle / allow_repeat 返回 stale_permission；重新读取并以当前修订号提交新的决策时返回 already_resolved。settle 先提交时，后到观测只按迟到证据规则保存，不覆盖结果。原键原载荷重试始终遵循回执优先规则。修订号冲突后不得修改原 command_id 的载荷，新的逻辑决策须使用新键。record_evidence 不代替经过验证的 RecordObservation，也不作为执行前审批 API。
 
 工作进程通过权威层记录结果，不依赖原计算宿主 PID。丢失的通知通过权威待处理工作与收件箱修复。failed Run 的结果与未处理回复按[终态契约](./computation-and-effects.md)保留。
+
+<a id="evidence-reduction"></a>
+
+### 已评审补充：证据归约、权限与恢复责任
+
+本节及上方 failed / not_executed 处置条件的细化属于 [ADR-008](./decisions.md#adr-008) 的已评审补充，依据[评审记录](./protocol-review-2026-10-08.md#disposition)单独接受；保留 `architecture-v1` 的历史基线。未执行证明本身不产生失败；另一 Attempt 的已验证逻辑失败在剩余未知被独立解除后才可能成为充分终局依据。已有终局结果与回复始终保持。
+
+Attempt 的阶段标签与原始观测分开保存。`observation_recorded` 只说明观测已记录；它不证明整个逻辑操作已确定。未决执行由已保留观测及该 Effect 捕获的操作声明推导：失联而未得到有效后续观测的执行仍未决；仅覆盖本 Attempt 的失败也仍未决。尚无权威确定观测的 admitted Attempt 同样阻止终局失败选择，无论它尚未进入、正在执行，还是本地已完成但尚未记录；不得仅因它晚于失败 Attempt 就排除它。本地完成但尚未记录的结果不改变权威知识。经过验证的原主体后续观测可以明确该 Attempt；不删除此前未知的审计来源。
+
+<a id="monitor-evidence-order"></a>
+
+监视器迟到或重复的失联报告，在同一不可变 Attempt 已有经过验证的 succeeded、failed 或 not_executed 观测后，仅作为有来源的审计证据保留；即使 observation_id 不同，也不得覆盖该确定观测、重新引入已解除的 Attempt 未决条件、改变既有 Effect / 终局结果或仅因迟到再追加不确定性通知。仍须验证来源、原授权、绑定、数据及键冲突，保留此前 unknown 的来源与已有通知历史。该优先规则依据证据含义，不是仅按 observation_id 去重。Attempt 局部失败仍可能使逻辑操作未决；observation_recorded 本身不证明逻辑结果确定。后续另一个已授权 Attempt 的失联须独立处理，不能借旧 Attempt 的确定观测解除新工作。评审发现、决定及验证范围见[评审记录 P1](./protocol-review-2026-10-08.md#p1)。
+
+正常结果选择集中在同一次 RecordObservation 的归约中，读取更新后的该 Attempt 观测、其他已记录观测和捕获的声明；不得只看最新观测或阶段标签。归约不推断未执行，也不把审计裁定当作提供者观测。
+
+| 权威事实 | 归约结果 |
+| --- | --- |
+| 已有终局结果 | 保留原结果及唯一回复，新观测仅进入审计记录 |
+| 任一有效成功观测，尚无终局结果 | 记录成功及一条回复；其他未知与冲突证据仍可检查 |
+| 已捕获声明认可逻辑操作失败，存在相应有效失败观测，且没有其他未决执行（含尚无权威确定观测的 admitted Attempt） | 记录失败及一条回复；读取所有保留的有效失败观测 |
+| 原未知 Attempt 后来证明未执行，另一 Attempt 已记录上述逻辑失败 | 解除该 Attempt 的未决条件，再由保留失败观测归约出唯一失败结果 |
+| 仅 Attempt 局部失败，或仍有未知执行 / 尚无权威确定观测的 admitted Attempt | 不产生终局失败；没有其他 admitted Attempt 时保持 unknown，否则 executing 同时保留未决证据 |
+| 全部已知观测均为未执行，没有未决执行或 admitted Attempt | 回到 pending；该证明不覆盖任何其他未知 Attempt |
+
+逻辑失败声明的具体含义、捕获与兼容要求见[能力声明补充](./capability-composition.md#failure-declaration)。不得用通用错误或超时替代该声明。终局结果与回复仍在同一提交中记录。
+
+| 既有权限角色 | 可以授权 | 控制变更后的含义 |
+| --- | --- | --- |
+| 当前计算权限、纪元及步骤条件 | active / open 下按队首提交业务步骤或定义故障 | 接管或模式变更使旧提案失效 |
+| 当前编排权限及 execution_revision | 满足当前条件的新 AdmitAttempt | 受控制器、暂停、终态和恢复条件约束 |
+| 原始 Attempt 授权及精确主体绑定 | 原实例至多进入一次调用，重报或补充原始观测 | 暂停、接管或 failed 不撤销；替代实例不得继承 |
+| allow_repeat 的一次性权限 | 当前 Effect 的下一次合格 AdmitAttempt 消费 | 不授权直接调用，不绕过编排、兼容检查或 active / open 条件 |
+| 稳定前缀及归档来源 | 读取或派生选定状态与历史 | 不授权重放历史调用、消费源队列或使用源权限 |
+
+这些是既有契约的职责划分，不增加权限体系。原键与原载荷回执查询是查明已提交事实，既不更新条件也不产生第二次许可。
+
+| 已提交事实 / 待处理工作 | 恢复责任与稳定身份 | 合法等待 |
+| --- | --- | --- |
+| 步骤命令响应丢失或提案未提交 | Durable 计算宿主查原 command_id 回执；一致性读取后仅对当前队首重新求值 | 权威不可用、暂停、终态或无输入 |
+| pending Effect，或符合条件的 unknown | 配置控制器依据 Effect、捕获声明、execution_revision 和当前权限解析绑定；新主体申请新 Attempt | 控制器未放行、资源不兼容、保护期不足、未获重复许可 |
+| 已提交 Attempt 的分发确认丢失 | Durable 查询原 execution_owner_ref；同实例重投按原授权与本地进入标记处理：未进入者至多首次调用一次，已进入者只查询或重报；监视器无法确认且该 Attempt 尚无确定观测时记录 unknown；已有确定观测后的失联报告仅作审计追加 | 原主体不可达，不能用替代主体继续旧 Attempt |
+| 本地观测完成、记录响应丢失 | 原工作进程按 observation_id 与原载荷重报，查回执；监视器只能补充失联证据 | 权威不可用或观测尚不满足注册模式 |
+| 已记录结果、通知或回复提示丢失 | Durable 从权威待处理工作与收件箱修复提示，保留原 input_id；当前宿主按队首处置 | suspended / failed 或更早输入尚未处置 |
+
+条件恢复进度需要：所需权威与提供者接口恢复可用、合法输入和定义步骤、活着的合格主体及足够容量、明确的重复执行依据、持续满足当前控制条件，以及就绪恢复动作最终得到调度。还须排除无限新增故障、控制变更与阻塞输入。安全性不依赖这些进度前提；普通故障开放执行不保证最终成功。有限恢复路径或受限调度的有界检查只证明其指定条件与范围，不证明任意环境中的活性。
 
 ## 4. 验证与错误矩阵
 
@@ -164,6 +209,7 @@ ResolveInvocation 的载荷包含 invocation_ref、expected_execution_revision �
 | 工作进程在调用前或调用后退出，无法确认具体位置 | 原 Attempt 保持 unknown；恢复使用新主体与新 Attempt | 重建原主体并重放旧授权 |
 | 授权回执丢失，随后 Run 暂停或宿主接管 | 原键原载荷查询返回原回执；新授权仍受当前条件约束 | 将回执查询当作新调用许可 |
 | 结果回执丢失或通知丢失 | 重报观测 / 修复收件箱，不新增终局回复 | 创建新 Effect 或重复消费结果 |
+| 同一 Attempt 的有效确定观测先提交，具有不同 observation_id 的监视器失联报告迟到 | 保留确定观测、既有 Effect、结果、通知及审计来源；迟到报告仅作审计追加 | 重开已解除的 Attempt 不确定性或新增通知；局部失败不得被误称为逻辑已解决 |
 
 <a id="s10"></a>
 
@@ -188,7 +234,7 @@ ResolveInvocation 的载荷包含 invocation_ref、expected_execution_revision �
 
 ### 存储实现验证要求
 
-Ra 是提议方案，尚未安装或测试。运行时发布前，必须固定受支持版本，并证明它能在实际 OTP 29 / Elixir 1.20 工具链上编译，以及跟随节点磁盘同步、法定人数应用与回复、快照与日志恢复、回执、旧权限隔离和暂停竞态均符合要求。
+Ra 经技术评审保留为[条件候选](./decisions.md#adr-007-review)，尚未安装或测试。运行时发布前，必须固定受支持版本，并证明它能在实际 OTP 29 / Elixir 1.20 工具链上编译，以及跟随节点磁盘同步、法定人数应用与回复、快照与日志恢复、回执、旧权限隔离和暂停竞态均符合要求。
 
 公共历史日志与检查点作为应用记录，在后端压缩整理后继续保留。初始扩展上限为一个权威组和保留历史的状态机；分片需要测量并修订实现决策。
 
