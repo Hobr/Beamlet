@@ -61,7 +61,7 @@ module coreBaseState {
     network' = Set(),
     external' = {
       invocations: List(), effects: Set(), finished: EXECUTIONS.mapBy(_ => ResourceUnfinished),
-      noFuture: Set(), emitted: Set(), marks: Set(), commandHandling: List(),
+      noFuture: Set(), emitted: Set(), marks: Set(), commandHandling: List(), ruleRetirements: List(),
     },
     clock' = 0,
   }

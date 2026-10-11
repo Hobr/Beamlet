@@ -3,6 +3,14 @@ module coreActionsReconciliation {
   import coreLogicCommands.* from "../logic/commands"
   export coreLogicCommands.*
 
+  // Observe a policy boundary. Subsequent actions receive the retired policy explicitly.
+  // This does not implement a registry deployment or a revocation command.
+  action retireRuleVersion(p: ReconciliationPolicy, ref: RuleReference): bool = all {
+    authority.online, p.registeredRules.exists(r => r.rule == ref),
+    authority' = authority, workers' = workers, network' = network, clock' = clock,
+    external' = observeRuleRetirement(external, authority.durable, authority.durable, p, ref),
+  }
+
   action reconcileDecision(p: ReconciliationPolicy, d: Decision): bool = all {
     authority.online, canReconcile(authority.durable, p, d),
     authority' = { ...authority, durable: applyReconcileAndMaybeCommit(authority.durable, p, d) },

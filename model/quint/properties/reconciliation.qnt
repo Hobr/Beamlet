@@ -14,6 +14,12 @@ module corePropertiesReconciliation {
   val automaticRuleVersionsSound = authority.durable.decisions.foldl(true, (ok, w) =>
     ok and registeredRuleQualified(w.rulesAtDecision, w.decision))
 
+  val ordinaryRuleRetirementSound = external.ruleRetirements.foldl(true, (ok, w) =>
+    ok and w.previousRules.exists(r => r.rule == w.rule)
+      and w.nextRules == w.previousRules.filter(r => r.rule != w.rule)
+      and w.durableUnchanged and w.previousRevision == w.nextRevision
+      and w.previousBindings == w.nextBindings)
+
   val reconciledEvidencePreserved = authority.durable.decisions.foldl(true, (ok, w) =>
     ok and w.acceptedReports.forall(r => authority.durable.reports.contains(r)))
 

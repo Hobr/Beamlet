@@ -14,6 +14,8 @@ module repeatingScenarios {
   export repeatingReconciliationTests.*
   import repeatingRuleTests.* from "./rules_test"
   export repeatingRuleTests.*
+  import repeatingRetirementTests.* from "./retirement_test"
+  export repeatingRetirementTests.*
   import repeatingRecoveryTests.* from "./recovery_test"
   export repeatingRecoveryTests.*
 }

@@ -24,6 +24,21 @@ module coreLogicRules {
     ...rule2v1, rule: { id: 2, version: 2 }, queryRequired: true,
   }
 
+  // Ordinary retirement changes a trusted registration input, never the Intent ledger.
+  pure def retiredRulePolicy(p: ReconciliationPolicy, ref: RuleReference): ReconciliationPolicy =
+    { ...p, registeredRules: p.registeredRules.filter(r => r.rule != ref) }
+
+  pure def observeRuleRetirement(x: ExternalState, before: Ledger, after: Ledger,
+    p: ReconciliationPolicy, ref: RuleReference): ExternalState = {
+    val witness: RuleRetirementWitness = {
+      rule: ref, previousRules: p.registeredRules,
+      nextRules: retiredRulePolicy(p, ref).registeredRules,
+      previousBindings: applicableBindings(before), nextBindings: applicableBindings(after),
+      previousRevision: before.revision, nextRevision: after.revision, durableUnchanged: before == after,
+    }
+    { ...x, ruleRetirements: x.ruleRetirements.append(witness) }
+  }
+
   pure def ruleConditionQualified(r: RuleRegistration, d: Decision): bool =
     r.kinds.contains(d.kind) and (not(r.queryRequired) or d.report.origin == ByQuery)
       and (not(r.evidenceRequired) or d.evidence.size() > 0)

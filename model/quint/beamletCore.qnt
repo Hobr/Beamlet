@@ -36,7 +36,7 @@ module beamletCore {
     and conflictCoverageSound and conflictHistoryPreserved and terminalConflictsResolved
     and excludedAllKnowledgeSound and allExcludedCommitSound
     and supersessionLinksSound and dispositionBindingsUnique and decisionsImmutable
-    and automaticRuleVersionsSound
+    and automaticRuleVersionsSound and ordinaryRuleRetirementSound
 
   val commandSafety = safety and judgmentRevisionSound and commandRecordsUnique and commandRecordsImmutable
     and commandExecutionMatchesRequest and commandEffectsAtomic

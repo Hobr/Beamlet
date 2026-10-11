@@ -53,6 +53,8 @@
 | automaticRequestVersionRefreshed | commandExecutionMatchesRequest | 23 | 1 |
 | historicalRuleReinterpreted | automaticRuleVersionsSound | 22 | 1 |
 | replayBlockedByRuleRetirement | commandHandlingSound | 23 | 1 |
+| retirementClearsDisposition | ordinaryRuleRetirementSound | 22 | 1 |
+| retirementBumpsJudgmentRevision | ordinaryRuleRetirementSound | 22 | 1 |
 
 ### duplicateOutcome
 
@@ -287,6 +289,18 @@
 - v1 命令已处理且原请求重投, 处理时 v1 已退役, 只有 v2 登记.
 - 错误规则重新检查登记后返回 CommandIneligible, 持久账本保持不变.
 - commandHandlingSound 检出已处理请求被当作新提交; 当前读取权限仍需校验, 但退役不让原命令重新执行或失去原结果身份.
+
+### retirementClearsDisposition
+
+- 合法前缀已接受 v1 的非终结排除处置, Intent Open, 原成功报告当前被排除.
+- 错误规则把普通退役当作撤销, 改写接受时作用范围, 使原适用绑定消失; 原决定内容、命令结果及原报告未改.
+- 即使伪造 durableUnchanged=true, ordinaryRuleRetirementSound 仍比较实际前后绑定并检出丢失. 该见证只观察退役转换, 不阻止后来新证据或显式取代合法改变绑定.
+
+### retirementBumpsJudgmentRevision
+
+- 同一合法前缀中, 普通退役没有新增判断材料或改变当前处置.
+- 错误规则递增 Judgment Revision, 同样伪造 durableUnchanged=true.
+- ordinaryRuleRetirementSound 从实际前后版本检出误增; judgmentRevisionSound 也独立检出版本与判断变化链不一致.
 
 完整 ITF 由 [Mix 检查器](../../tools/beamlet/quint_checks.ex) 写入日志目录. 全部复跑:
 

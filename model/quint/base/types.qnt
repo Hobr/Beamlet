@@ -173,9 +173,16 @@ module coreBaseTypes {
 
   type Invocation = { token: Token, incarnationAtCall: int }
 
+  // Independent before/after observations, not registry state or SQL fields.
+  type RuleRetirementWitness = {
+    rule: RuleReference, previousRules: Set[RuleRegistration], nextRules: Set[RuleRegistration],
+    previousBindings: Set[DispositionBinding], nextBindings: Set[DispositionBinding],
+    previousRevision: int, nextRevision: int, durableUnchanged: bool,
+  }
+
   type ExternalState = {
     invocations: List[Invocation], effects: Set[int], finished: int -> ResourceResult,
     noFuture: Set[int], emitted: Set[Report], marks: Set[str],
-    commandHandling: List[CommandHandlingWitness],
+    commandHandling: List[CommandHandlingWitness], ruleRetirements: List[RuleRetirementWitness],
   }
 }

@@ -7,7 +7,7 @@ defmodule Beamlet.QuintChecks do
   @mutations "model/quint/beamletCore_mutations_test.qnt"
   @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test)
   @rule_mutations ~w(ruleVersionIgnored ruleConditionsFromOtherVersion automaticRequestVersionRefreshed
-    historicalRuleReinterpreted replayBlockedByRuleRetirement)
+    historicalRuleReinterpreted replayBlockedByRuleRetirement retirementClearsDisposition retirementBumpsJudgmentRevision)
   @core_mutations ~w(duplicateOutcome overwriteOutcome reviveExpiredLease negativeQueryRetry
     incarnationInheritance grantAfterClosure pendingRegression unknownFailure earlyReceipt oldSuccessFailure
     unauthorizedReconciliation unregisteredReconciliation staleReconciliation permanentReconciliation
@@ -237,7 +237,22 @@ defmodule Beamlet.QuintChecks do
               ~w(pinnedV1Witness pinnedV2Witness commandReplayReached rejectedCommandStoredReached)
             )
 
-    core ++ prefixes ++ primitives ++ commands ++ conflicts ++ rules
+    retirements =
+      for init <-
+            ~w(ordinaryRetirementInit retirementBeforeDecisionInit retirementAfterClosureInit),
+          do:
+            simulation(
+              "retirement-#{init}",
+              "model/quint/beamletRules.qnt",
+              "beamletRules",
+              init,
+              "retirementStep",
+              "commandSafety",
+              config.directed_samples,
+              ~w(retiredDispositionUsedWitness retirementBindingPreservedWitness commandReplayReached rejectedCommandStoredReached)
+            )
+
+    core ++ prefixes ++ primitives ++ commands ++ conflicts ++ rules ++ retirements
   end
 
   defp test_job(file, main),
