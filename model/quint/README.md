@@ -158,11 +158,13 @@ D1 引用 D0 的 success1 与 disputedFailure, 不取代 failure2. D2 对三报�
 ```console
 mix beamlet.check
 mix beamlet.check --phase test
-mix beamlet.check --samples 5000 --directed-samples 1000 --jobs 4 --log-dir /tmp/beamlet-quint
+mix beamlet.check --samples 5000 --directed-samples 1000 --jobs 4 --threads 4 --log-dir /tmp/beamlet-quint
 mix test
 ```
 
-默认三个核心实例各 5,000 条、最多 100 步; 五组核心合法前缀各 1,000 条, 协调原语扩展的普通 init 与合法前缀各 1,000 条; 命令协议的普通 init 与三个合法前缀各 1,000 条, 防御性冲突扩展六个合法前缀各 1,000 条 (含 allExcludedInit 与 partiallySupersededInit), 均最多 100 步. 默认合计 32,000 条轨迹. 使用 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --log-dir 指定日志目录. --phase 支持 all、typecheck、test、simulate、mutations. Mix 仅接受退出 1 且报告 Invariant violated 并产生非空 ITF 的预期 mutation 结果, 不将类型错误或运行错误视为检出. 重用目录时先删除该次 mutation 的旧 ITF, 防止陈旧文件满足检查. mix test 检查工具拒绝误报的行为; 不代替 Quint 场景与抽样.
+默认三个核心实例各 5,000 条、最多 100 步; 五组核心合法前缀各 1,000 条, 协调原语扩展的普通 init 与合法前缀各 1,000 条; 命令协议的普通 init 与三个合法前缀各 1,000 条, 防御性冲突扩展六个合法前缀各 1,000 条 (含 allExcludedInit 与 partiallySupersededInit), 均最多 100 步. 默认合计 32,000 条轨迹. 使用 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads 控制每个 Rust 模拟进程的线程上限, --log-dir 指定日志目录. 未指定 --threads 时取 max(div(System.schedulers_online(), jobs), 1), 例如 16 个在线 scheduler、jobs=4 时默认每进程 4 线程; 这是保守预算, 不是最优性能保证, 也不保证准确反映所有容器 CPU 配额. typecheck 与 test 不接收线程参数; 单样本 mutation 反例固定使用 1 个模拟线程. --phase 支持 all、typecheck、test、simulate、mutations. Mix 仅接受退出 1 且报告 Invariant violated 并产生非空 ITF 的预期 mutation 结果, 不将类型错误或运行错误视为检出. 重用目录时先删除该次 mutation 的旧 ITF, 防止陈旧文件满足检查. mix test 检查工具拒绝误报的行为; 不代替 Quint 场景与抽样.
+
+每次运行在日志目录写入 `run-info.txt` (Quint 版本、Rust 后端、在线 scheduler 数、jobs/threads、抽样预算、seed 与阶段) 和 `timings.tsv` (任务、阶段与运行的 passed/failed 及毫秒墙钟耗时). 重用目录时这两份报告重新生成, 不累计旧计时. 并发任务的耗时不能相加作为总耗时; 阶段/运行耗时包含调度和任务处理, 运行计时不含最初的版本查询和报告初始化. 更改线程配置后保留完整配置和输出, 不只凭同一个 seed 假定轨迹完全相同. 具体调参方法与实测限制见 [性能记录](performance.md).
 
 冲突扩展也可单独运行 (默认 init 执行合法冲突前缀):
 

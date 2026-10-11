@@ -23,7 +23,19 @@ mix compile
 
 # Test
 mix test
+
+# Quint
+## Quint model checks
+mix beamlet.check
+
+## Low-budget full regression
+mix beamlet.check --samples 20 --directed-samples 20
+
+## Single phase
+mix beamlet.check --phase typecheck/test/simulate/mutations
 ```
+
+See the [Quint documentation](model/quint/README.md) for model coverage, parameters, and logs.
 
 ## Thanks
 

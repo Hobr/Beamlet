@@ -7,11 +7,13 @@ defmodule Mix.Tasks.Beamlet.Check do
 
       mix beamlet.check
       mix beamlet.check --phase test
-      mix beamlet.check --samples 5000 --directed-samples 1000 --jobs 4 --log-dir /tmp/beamlet-checks
+      mix beamlet.check --samples 5000 --directed-samples 1000 --jobs 4 --threads 4 --log-dir /tmp/beamlet-checks
 
   Phases: all (default), typecheck, test, simulate, mutations.
   Defaults: 5,000 core samples, 1,000 directed samples, at most 100 steps,
-  input seed 42, and four independent Quint processes.
+  input seed 42, and four independent Quint processes. Rust simulation threads
+  default to max(div(online schedulers, jobs), 1); --threads overrides this.
+  Single-sample mutation counterexamples always use one simulation thread.
   """
 
   @impl Mix.Task
@@ -24,6 +26,7 @@ defmodule Mix.Tasks.Beamlet.Check do
           samples: :integer,
           directed_samples: :integer,
           jobs: :integer,
+          threads: :integer,
           log_dir: :string,
           phase: :string
         ]
@@ -32,15 +35,19 @@ defmodule Mix.Tasks.Beamlet.Check do
     if rest != [] or invalid != [],
       do: Mix.raise("Invalid arguments: #{inspect(rest ++ invalid)}")
 
+    jobs = Keyword.get(opts, :jobs, 4)
+    default_threads = max(div(System.schedulers_online(), max(jobs, 1)), 1)
+
     config = %{
       samples: Keyword.get(opts, :samples, 5000),
       directed_samples: Keyword.get(opts, :directed_samples, 1000),
-      jobs: Keyword.get(opts, :jobs, 4),
+      jobs: jobs,
+      threads: Keyword.get(opts, :threads, default_threads),
       log_dir: Keyword.get(opts, :log_dir),
       phase: Keyword.get(opts, :phase, "all")
     }
 
-    for key <- [:samples, :directed_samples, :jobs] do
+    for key <- [:samples, :directed_samples, :jobs, :threads] do
       if config[key] < 1, do: Mix.raise("--#{key} must be positive")
     end
 

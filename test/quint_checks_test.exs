@@ -46,14 +46,15 @@ defmodule Beamlet.QuintChecksTest do
   end
 
   test "invalid CLI options stop before invoking Quint" do
-    for args <- [
-          ["--samples", "0"],
-          ["--jobs", "-1"],
-          ["--phase", "oops"],
-          ["--unknown"],
-          ["extra"]
-        ] do
-      assert_raise Mix.Error, fn -> Mix.Tasks.Beamlet.Check.run(args) end
+    invalid_numbers =
+      for flag <- ~w(--samples --directed-samples --jobs --threads),
+          value <- ~w(0 -1 not-an-integer),
+          do: [flag, value]
+
+    for args <- invalid_numbers ++ [["--phase", "oops"], ["--unknown"], ["extra"]] do
+      assert_raise Mix.Error, ~r/must be positive|Invalid arguments|Unknown phase/, fn ->
+        Mix.Tasks.Beamlet.Check.run(args)
+      end
     end
   end
 end

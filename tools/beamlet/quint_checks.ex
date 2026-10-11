@@ -25,24 +25,97 @@ defmodule Beamlet.QuintChecks do
     File.mkdir_p!(logs)
     Mix.shell().info("Quint logs: #{logs}")
 
-    for phase <- ~w(typecheck test simulate mutations),
-        config.phase in ["all", phase] do
-      config
-      |> jobs(phase)
-      |> Task.async_stream(
-        fn job -> execute(job, executable, logs) end,
-        max_concurrency: config.jobs,
-        timeout: :infinity,
-        ordered: false
+    prepare_run_log(logs, executable, config)
+    Mix.shell().info("Rust simulation budget: #{config.jobs} jobs × #{config.threads} threads")
+
+    if config.phase in ["all", "simulate"] and
+         config.jobs * config.threads > System.schedulers_online() do
+      Mix.shell().info(
+        "Warning: simulation thread budget exceeds online schedulers; benchmark before increasing concurrency"
       )
-      |> Enum.each(fn
-        {:ok, {:ok, name}} -> Mix.shell().info("Passed #{phase}: #{name}")
-        {:ok, {:error, message}} -> Mix.raise(message)
-        {:exit, reason} -> Mix.raise("Quint worker exited: #{inspect(reason)}")
-      end)
     end
 
+    timed(logs, "run", config.phase, "total", fn ->
+      for phase <- ~w(typecheck test simulate mutations),
+          config.phase in ["all", phase] do
+        timed(logs, "phase", phase, phase, fn ->
+          config
+          |> jobs(phase)
+          |> Task.async_stream(
+            fn job -> execute(job, executable, logs, config.threads) end,
+            max_concurrency: config.jobs,
+            timeout: :infinity,
+            ordered: false
+          )
+          |> Enum.each(fn
+            {:ok, {:ok, name, elapsed}} ->
+              record_timing(logs, "job", phase, name, "passed", elapsed)
+              Mix.shell().info("Passed #{phase}: #{name} (#{elapsed} ms)")
+
+            {:ok, {:error, name, message, elapsed}} ->
+              record_timing(logs, "job", phase, name, "failed", elapsed)
+              Mix.raise(message)
+
+            {:exit, reason} ->
+              Mix.raise("Quint worker exited: #{inspect(reason)}")
+          end)
+        end)
+      end
+    end)
+
     Mix.shell().info("Quint checks completed: #{config.phase}")
+  end
+
+  defp prepare_run_log(logs, executable, config) do
+    {version, status} = System.cmd(executable, ["--version"], stderr_to_stdout: true)
+    if status != 0, do: Mix.raise("Cannot read Quint version (exit #{status}): #{version}")
+
+    info = [
+      quint_version: String.trim(version),
+      backend: "rust",
+      online_schedulers: System.schedulers_online(),
+      jobs: config.jobs,
+      threads: config.threads,
+      mutation_threads: 1,
+      samples: config.samples,
+      directed_samples: config.directed_samples,
+      max_steps: 100,
+      seed: 42,
+      phase: config.phase
+    ]
+
+    File.write!(
+      Path.join(logs, "run-info.txt"),
+      Enum.map_join(info, "\n", fn {key, value} -> "#{key}=#{value}" end) <> "\n"
+    )
+
+    File.write!(Path.join(logs, "timings.tsv"), "scope\tphase\tname\tstatus\telapsed_ms\n")
+  end
+
+  defp timed(logs, scope, phase, name, fun) do
+    started = System.monotonic_time(:millisecond)
+
+    try do
+      result = fun.()
+      elapsed = System.monotonic_time(:millisecond) - started
+      record_timing(logs, scope, phase, name, "passed", elapsed)
+      Mix.shell().info("Completed #{scope}: #{name} (#{elapsed} ms)")
+      result
+    rescue
+      error ->
+        elapsed = System.monotonic_time(:millisecond) - started
+        record_timing(logs, scope, phase, name, "failed", elapsed)
+        reraise error, __STACKTRACE__
+    end
+  end
+
+  # Only the supervising process writes this file; concurrent tasks return durations.
+  defp record_timing(logs, scope, phase, name, status, elapsed) do
+    File.write!(
+      Path.join(logs, "timings.tsv"),
+      "#{scope}\t#{phase}\t#{name}\t#{status}\t#{elapsed}\n",
+      [:append]
+    )
   end
 
   defp jobs(_config, "typecheck") do
@@ -181,14 +254,16 @@ defmodule Beamlet.QuintChecks do
      args ++ if(witnesses == [], do: [], else: ["--witnesses" | witnesses])}
   end
 
-  defp execute(job, executable, logs) do
+  defp execute(job, executable, logs, threads) do
+    started = System.monotonic_time(:millisecond)
+
     try do
       case job do
         {:check, name, args} ->
           path = Path.join(logs, name <> ".log")
-          status = invoke(executable, args, path)
+          status = invoke(executable, args, path, threads)
           if status != 0, do: Mix.raise("Quint failed (exit #{status}); inspect #{path}")
-          {:ok, name}
+          {:ok, name, System.monotonic_time(:millisecond) - started}
 
         {:mutation, main, file} ->
           test_log = Path.join(logs, main <> ".test.log")
@@ -206,7 +281,7 @@ defmodule Beamlet.QuintChecks do
             "1"
           ]
 
-          status = invoke(executable, test_args, test_log)
+          status = invoke(executable, test_args, test_log, threads)
 
           if status != 0,
             do: Mix.raise("Mutation scenario failed (exit #{status}); inspect #{test_log}")
@@ -243,16 +318,25 @@ defmodule Beamlet.QuintChecks do
             trace
           ]
 
-          status = invoke(executable, args, log)
+          status = invoke(executable, args, log, 1)
           validate_counterexample!(status, File.read!(log), trace)
-          {:ok, main}
+          {:ok, main, System.monotonic_time(:millisecond) - started}
       end
     rescue
-      error -> {:error, Exception.message(error)}
+      error ->
+        {:error, elem(job, 1), Exception.message(error),
+         System.monotonic_time(:millisecond) - started}
     end
   end
 
-  defp invoke(executable, args, path) do
+  defp invoke(executable, args, path, threads) do
+    args =
+      case hd(args) do
+        "run" -> args ++ ["--backend", "rust", "--n-threads", to_string(threads)]
+        "test" -> args ++ ["--backend", "rust"]
+        _ -> args
+      end
+
     File.open!(path, [:write], fn device ->
       {_stream, status} =
         System.cmd(executable, args,
