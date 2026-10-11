@@ -1,7 +1,7 @@
 // Authority-checked decision qualification and durable reconciliation.
 module coreLogicReconciliation {
-  import coreLogicOutcomes.* from "./outcomes"
-  export coreLogicOutcomes.*
+  import coreLogicRules.* from "./rules"
+  export coreLogicRules.*
 
   pure def proposeDecision(l: Ledger, r: Report, kind: DecisionKind, actor: DecisionActor): Decision = withSupersessions(l, {
     kind: kind, report: r, actor: actor,
@@ -11,13 +11,7 @@ module coreLogicReconciliation {
 
   pure def decisionActorQualified(p: ReconciliationPolicy, d: Decision): bool = match d.actor {
     | Operator(id) => p.operators.contains(id)
-    | AutomaticRule(id) => p.registeredRules.contains(id) and {
-        if (id == 1) d.kind == AdoptSuccess and d.report.origin == ByQuery
-        else if (id == 2) d.kind == ExcludeFromJudgment
-        else if (id == 4) decisionIsTerminal(d) and d.report.origin == ByQuery and d.evidence.size() > 0
-        else if (id == 5) d.kind == ExcludeAllEvidence and d.evidence.size() > 0
-        else false
-      }
+    | AutomaticRule(_) => registeredRuleQualified(p.registeredRules, d)
   }
 
   pure def decisionContractQualified(p: ReconciliationPolicy, d: Decision): bool =
@@ -78,7 +72,7 @@ module coreLogicReconciliation {
       actorQualified: decisionActorQualified(p, d),
       contractQualified: decisionContractQualified(p, d),
       coverageQualified: decisionCoverageQualified(l, d), evidenceQualified: decisionEvidenceQualified(p, d),
-      supersessionQualified: decisionSupersessionsQualified(l, d),
+      supersessionQualified: decisionSupersessionsQualified(l, d), rulesAtDecision: p.registeredRules,
     }
     val updated = { ...l, decisions: l.decisions.append(w), decisionSnapshots: l.decisionSnapshots.append(d),
       history: l.history.append({ kind: EvidenceReconciled, exec: Current(d.report.exec) }) }

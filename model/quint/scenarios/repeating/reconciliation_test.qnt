@@ -5,7 +5,7 @@ module repeatingReconciliationTests {
 
   run automaticExclusionUsesRegisteredRuleTest = oldSuccessCurrentFailureInit
     .then(reconcileDecision(reconciliationPolicy,
-      { ...manualExclusion, actor: AutomaticRule(2) })).expect(safety)
+      { ...manualExclusion, actor: AutomaticRule({ id: 2, version: 1 }) })).expect(safety)
     .expect(automaticDecisionReached and exclusionDecisionReached)
     .then(finishFailure(2)).expect(safety)
     .expect(failedReached)
@@ -15,7 +15,7 @@ module repeatingReconciliationTests {
     .then(receiveReport({ id: 3, exec: 1, kind: Success, origin: ByQuery })).expect(safety)
     .then(reconcileDecision(reconciliationPolicy,
       proposeDecision(authority.durable, { id: 3, exec: 1, kind: Success, origin: ByQuery },
-        AdoptSuccess, AutomaticRule(1)))).expect(safety)
+        AdoptSuccess, AutomaticRule({ id: 1, version: 1 })))).expect(safety)
     .expect(automaticDecisionReached and adoptionDecisionReached)
     .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
 
@@ -25,12 +25,12 @@ module repeatingReconciliationTests {
 
   run unregisteredAutomaticRuleIsDisabledTest = oldSuccessCurrentFailureInit
     .then(reconcileDecision(reconciliationPolicy,
-      { ...manualExclusion, actor: AutomaticRule(3) }).fail())
+      { ...manualExclusion, actor: AutomaticRule({ id: 3, version: 1 }) }).fail())
 
   run registeredButWrongConditionIsDisabledTest = oldSuccessCurrentFailureInit
     // Rule 1 is only for trusted query completion, not a Worker completion.
     .then(reconcileDecision(reconciliationPolicy,
-      { ...manualAdoption, actor: AutomaticRule(1) }).fail())
+      { ...manualAdoption, actor: AutomaticRule({ id: 1, version: 1 }) }).fail())
 
   run noContractBasisIsDisabledTest = oldSuccessCurrentFailureInit
     .then(reconcileDecision({ ...reconciliationPolicy, excludable: Set() },
@@ -39,7 +39,7 @@ module repeatingReconciliationTests {
   run noAutomaticRulesDoesNotBlockManualTest = oldSuccessCurrentFailureInit
     .expect(not(canReconcile(authority.durable,
       { ...reconciliationPolicy, registeredRules: Set() },
-      { ...manualExclusion, actor: AutomaticRule(2) })))
+      { ...manualExclusion, actor: AutomaticRule({ id: 2, version: 1 }) })))
     .then(reconcileDecision({ ...reconciliationPolicy, registeredRules: Set() },
       manualExclusion)).expect(safety)
     .expect(manualDecisionReached and not(automaticDecisionReached))

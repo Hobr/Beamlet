@@ -14,7 +14,8 @@ module coreLogicCommands {
 
   pure def submitActorAllowed(p: ReconciliationPolicy, d: Decision): bool = match d.actor {
     | Operator(id) => p.operators.contains(id)
-    | AutomaticRule(id) => p.registeredRules.contains(id)
+    // Rule identity represents admission; exact version eligibility is domain judgment.
+    | AutomaticRule(ref) => p.registeredRules.exists(r => r.rule.id == ref.id)
   }
 
   pure def commandSubmissionAllowed(p: ReconciliationPolicy, c: ReconciliationCommand, a: CommandAccess): bool =

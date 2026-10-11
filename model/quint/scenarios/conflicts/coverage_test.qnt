@@ -109,17 +109,17 @@ module conflictCoverageTests {
     .then(reconcileDecision(policy, { ...exclusion, actor: Operator(2) }).fail())
 
   run registeredAutomaticConflictRuleCanCommitTest = queriedConflictInit
-    .then(reconcileDecision(policy, { ...adoption, actor: AutomaticRule(4) })).expect(commandSafety)
+    .then(reconcileDecision(policy, { ...adoption, actor: AutomaticRule({ id: 4, version: 1 }) })).expect(commandSafety)
     .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
     .expect(automaticDecisionReached)
 
   run automaticRuleStillNeedsCheckedBasisTest = queriedConflictInit
     .then(reconcileDecision({ ...policy, resolutions: Set() },
-      { ...adoption, actor: AutomaticRule(4) }).fail())
+      { ...adoption, actor: AutomaticRule({ id: 4, version: 1 }) }).fail())
 
   run unregisteredAutomaticConflictRuleCannotCommitTest = queriedConflictInit
-    .then(reconcileDecision({ ...policy, registeredRules: Set(1, 2) },
-      { ...adoption, actor: AutomaticRule(4) }).fail())
+    .then(reconcileDecision({ ...policy, registeredRules: Set(rule1v1, rule2v1) },
+      { ...adoption, actor: AutomaticRule({ id: 4, version: 1 }) }).fail())
 
   run cancellationCanCloseWithUnresolvedConflictTest = conflictInit
     .then(cancelIntent).expect(commandSafety)

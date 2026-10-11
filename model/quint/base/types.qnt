@@ -44,7 +44,14 @@ module coreBaseTypes {
 
   type DecisionKind = AdoptSuccess | AdoptFailure | ExcludeFromJudgment | ExcludeAllEvidence
 
-  type DecisionActor = Operator(int) | AutomaticRule(int)
+  type RuleReference = { id: int, version: int }
+
+  // Checked semantic definitions; versions are not executable release numbers.
+  type RuleRegistration = {
+    rule: RuleReference, kinds: Set[DecisionKind], queryRequired: bool, evidenceRequired: bool,
+  }
+
+  type DecisionActor = Operator(int) | AutomaticRule(RuleReference)
 
   type DecisionBasis = VerifiedCompletion | ContractExclusion
 
@@ -53,7 +60,7 @@ module coreBaseTypes {
   type EvidenceDisposition = { report: Report, treatment: EvidenceTreatment, basis: DecisionBasis }
 
   type ReconciliationPolicy = {
-    operators: Set[int], registeredRules: Set[int], excludable: Set[Report],
+    operators: Set[int], registeredRules: Set[RuleRegistration], excludable: Set[Report],
     // Authority-checked, per-item Operation contract facts, not caller assertions.
     resolutions: Set[Set[EvidenceDisposition]],
   }
@@ -81,6 +88,7 @@ module coreBaseTypes {
     acceptedRevision: int, acceptedBase: JudgmentBase,
     openAtDecision: bool, actorQualified: bool, contractQualified: bool,
     coverageQualified: bool, evidenceQualified: bool, supersessionQualified: bool,
+    rulesAtDecision: Set[RuleRegistration],
   }
 
   type JudgmentView = { base: JudgmentBase, decisions: List[Decision] }

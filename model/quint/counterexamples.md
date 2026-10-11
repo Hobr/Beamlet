@@ -48,6 +48,11 @@
 | overbroadSupersession | supersessionLinksSound | 25 | 1 |
 | supersessionRewritesOldDecision | decisionsImmutable | 26 | 1 |
 | supersessionLinksNotCommitted | commandExecutionMatchesRequest | 25 | 1 |
+| ruleVersionIgnored | automaticRuleVersionsSound | 21 | 1 |
+| ruleConditionsFromOtherVersion | automaticRuleVersionsSound | 21 | 1 |
+| automaticRequestVersionRefreshed | commandExecutionMatchesRequest | 23 | 1 |
+| historicalRuleReinterpreted | automaticRuleVersionsSound | 22 | 1 |
+| replayBlockedByRuleRetirement | commandHandlingSound | 23 | 1 |
 
 ### duplicateOutcome
 
@@ -104,7 +109,7 @@
 ### unauthorizedReconciliation / unregisteredReconciliation
 
 - 合法前缀同 oldSuccessFailure, 已存旧成功和当前失败, Intent Open.
-- 故意错误规则绕过主体守卫, 分别将 Operator(2) 或未登记的 AutomaticRule(3) 的决定保存.
+- 故意错误规则绕过主体守卫, 分别保存 Operator(2) 的决定或未登记规则身份 3 / 语义版本 1 的自动决定 (Q74 前使用 AutomaticRule(3) 抽象).
 - 违规后: reports=2; decisions 从 0 变为 1; actorQualified=false, contractQualified=true. 即使契约依据与证据快照合格, 主体或规则未获授权仍不能接受决定.
 
 ### staleReconciliation
@@ -258,6 +263,30 @@
 - 新请求明确携带取代链接.
 - 故意错误规则在持久决定中丢弃链接, 却用原请求保存命令结果.
 - commandExecutionMatchesRequest 检出命令和实际决定的取代引用不一致, 不能把丢失链接的写入视为原请求已经完整处理.
+
+### ruleVersionIgnored / ruleConditionsFromOtherVersion
+
+- 合法前缀已有旧成功和当前失败, 指定规则版本的请求在途.
+- 第一条错误规则仅按规则身份接受已退役 v1; 第二条以 v1 条件接受指定 v2 的 Worker 报告, 但 v2 要求查询来源.
+- 两条都伪造 actorQualified=true. automaticRuleVersionsSound 检查实际引用及接受时定义, 分别检出版本未登记和指定版本条件不满足.
+
+### automaticRequestVersionRefreshed
+
+- 查询成功报告已保存, v1 请求在途; 处理时只有 v2 登记, v2 条件与契约本身可以满足.
+- 错误规则把实际执行决定迁移到 v2, 却用 v1 原请求保存命令.
+- commandExecutionMatchesRequest 检出规则版本被静默改义, 即使新的 v2 决定本身合格也不能冒充原请求执行成功.
+
+### historicalRuleReinterpreted
+
+- 合法前缀已接受 v1 的 Worker 报告排除决定, 原决定和命令均保留.
+- 错误规则修改接受时 v1 定义快照, 用新增“必须查询来源”的条件重新解释历史, actorQualified 仍保持 true.
+- automaticRuleVersionsSound 检出原接受事实与被改写解释不一致; 当前登记变更不能替换历史解释材料.
+
+### replayBlockedByRuleRetirement
+
+- v1 命令已处理且原请求重投, 处理时 v1 已退役, 只有 v2 登记.
+- 错误规则重新检查登记后返回 CommandIneligible, 持久账本保持不变.
+- commandHandlingSound 检出已处理请求被当作新提交; 当前读取权限仍需校验, 但退役不让原命令重新执行或失去原结果身份.
 
 完整 ITF 由 [Mix 检查器](../../tools/beamlet/quint_checks.ex) 写入日志目录. 全部复跑:
 

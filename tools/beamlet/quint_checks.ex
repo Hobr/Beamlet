@@ -5,7 +5,9 @@ defmodule Beamlet.QuintChecks do
   @tests "model/quint/beamletCore_test.qnt"
   @conflicts "model/quint/beamletConflicts_test.qnt"
   @mutations "model/quint/beamletCore_mutations_test.qnt"
-  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test)
+  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test)
+  @rule_mutations ~w(ruleVersionIgnored ruleConditionsFromOtherVersion automaticRequestVersionRefreshed
+    historicalRuleReinterpreted replayBlockedByRuleRetirement)
   @core_mutations ~w(duplicateOutcome overwriteOutcome reviveExpiredLease negativeQueryRetry
     incarnationInheritance grantAfterClosure pendingRegression unknownFailure earlyReceipt oldSuccessFailure
     unauthorizedReconciliation unregisteredReconciliation staleReconciliation permanentReconciliation
@@ -129,7 +131,8 @@ defmodule Beamlet.QuintChecks do
 
   defp jobs(_config, "mutations") do
     Enum.map(@core_mutations, &{:mutation, &1, @mutations}) ++
-      Enum.map(@conflict_mutations, &{:mutation, &1, @conflicts})
+      Enum.map(@conflict_mutations, &{:mutation, &1, @conflicts}) ++
+      Enum.map(@rule_mutations, &{:mutation, &1, "model/quint/beamletRules_mutations_test.qnt"})
   end
 
   defp jobs(config, "simulate") do
@@ -220,7 +223,21 @@ defmodule Beamlet.QuintChecks do
               ~w(conflictDispositionWitness conflictSuccessWitness conflictFailureWitness allExcludedWitness supersessionWitness)
             )
 
-    core ++ prefixes ++ primitives ++ commands ++ conflicts
+    rules =
+      for init <- ~w(automaticRulePendingInit automaticRuleCommittedInit retiredRuleRejectedInit),
+          do:
+            simulation(
+              "rules-#{init}",
+              "model/quint/beamletRules.qnt",
+              "beamletRules",
+              init,
+              "ruleVersionStep",
+              "commandSafety",
+              config.directed_samples,
+              ~w(pinnedV1Witness pinnedV2Witness commandReplayReached rejectedCommandStoredReached)
+            )
+
+    core ++ prefixes ++ primitives ++ commands ++ conflicts ++ rules
   end
 
   defp test_job(file, main),

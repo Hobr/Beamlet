@@ -1,15 +1,17 @@
 # Beamlet 核心 Safety 模型
 
-状态: 首个有界可执行规格. 来源为 [RFC Q1-Q73](../rfc/0001-core-boundaries.md) 与三个 SPEC 草案. 模型收窄选择不自动成为产品决策. 尚无 Runtime/Ecto 实现代码; Mix 项目仅管理规格验证工具.
+状态: 首个有界可执行规格. 来源为 [RFC Q1-Q74](../rfc/0001-core-boundaries.md) 与三个 SPEC 草案. 模型收窄选择不自动成为产品决策. 尚无 Runtime/Ecto 实现代码; Mix 项目仅管理规格验证工具.
 
 ## 文件与模型边界
 
 - [beamletCore.qnt](beamletCore.qnt): 主入口, 组合 `step`、扩展 step 与 Safety 性质, 再导出分层模块的公共定义. 三个双 Worker 实例分别为禁止重复、显式接受重复风险、具备可靠资源排除协议; singleWorker 用于早期增量验证.
-- [beamletCore_test.qnt](beamletCore_test.qnt): 保持原模块名的测试入口, 聚合 `scenarios/` 中的 78 个确定场景: strictTests 23 个、fencedTests 2 个、repeatingTests 53 个. 前缀只使用真实转换并逐步检查 safety; 拒绝行为另检查守卫及实际 disabled action.
+- [beamletCore_test.qnt](beamletCore_test.qnt): 保持原模块名的测试入口, 聚合 `scenarios/` 中的 94 个确定场景: strictTests 23 个、fencedTests 2 个、repeatingTests 69 个. 前缀只使用真实转换并逐步检查 safety; 拒绝行为另检查守卫及实际 disabled action.
 - [beamletCore_mutations_test.qnt](beamletCore_mutations_test.qnt): 保持原模块名与 BUG 编号的 mutation 入口, 30 个故意错误规则位于 `mutations/`, 从合法前缀产生可定位的反例. 不属于正常 step.
 - [beamletReconciliation.qnt](beamletReconciliation.qnt): Q63-Q70 的有界协调扩展, 为核心动作提供受控的示例权限与契约输入; reconciliationStep 检查领域原语, commandStep 加入命令请求、原子处理与重投协议.
 - [beamletConflicts_test.qnt](beamletConflicts_test.qnt): Q71-Q73 防御性冲突与取代测试入口, 聚合 47 个正常场景及 14 个故意错误规则; 正常测试与 mutation 使用不同实例.
 - [beamletConflicts.qnt](beamletConflicts.qnt): 冲突抽样入口, 只导入共享 fixture, 不导入测试或 mutation. 使用明确合法前缀和 conflictSafety (即核心 commandSafety) 检查.
+- [beamletRules.qnt](beamletRules.qnt): Q74 规则语义版本并存、退役与重投抽样入口, 导入未绑定共享 fixture; 16 个新正常场景位于 [rules_test.qnt](scenarios/repeating/rules_test.qnt), 汇总在 repeatingTests.
+- [beamletRules_mutations_test.qnt](beamletRules_mutations_test.qnt): 五个版本错误的具体入口, 错误动作位于 [mutations/rules.qnt](mutations/rules.qnt).
 - [counterexamples.md](counterexamples.md): 已读取 ITF 后记录的违规前后状态与复现方式.
 - [Mix task](../../tools/mix/tasks/beamlet.check.ex) 与 [Quint 检查器](../../tools/beamlet/quint_checks.ex): 类型检查、正常场景、抽样及预期反例检查. 直接调用 Quint, 不调用 shell 脚本; 完整日志与 ITF 写入临时目录或指定目录.
 
@@ -20,13 +22,14 @@ model/quint/
 ├── beamletCore.qnt                    # 主入口: step / safety / 具体实例
 ├── beamletReconciliation.qnt          # 协调与命令抽样入口
 ├── beamletConflicts.qnt               # 防御性冲突抽样入口
+├── beamletRules.qnt                   # 规则版本抽样入口
 ├── base/
 │   ├── types.qnt                      # 领域类型、消息与独立观察记录
 │   └── state.qnt                      # 参数、五组变量、初值、init
 ├── logic/                            # 纯守卫、投影与更新
 │   ├── judgment.qnt / reports.qnt / dispositions.qnt
 │   ├── leases.qnt / outcomes.qnt / recovery.qnt / workers.qnt
-│   └── reconciliation.qnt / commands.qnt
+│   └── rules.qnt / reconciliation.qnt / commands.qnt
 ├── actions/                          # 完整赋值的协议动作, 不定义总 step
 │   └── leases.qnt / workers.qnt / evidence.qnt / recovery.qnt / reconciliation.qnt
 ├── properties/                       # Safety 子性质与可达性见证
@@ -34,7 +37,7 @@ model/quint/
 ├── scenarios/
 │   ├── strict/                       # fixture + 生命周期/恢复/冲突/资格测试
 │   ├── fenced/                       # fixture + 可靠资源排除测试
-│   ├── repeating/                    # fixture + 命令/拒绝/权限/版本/协调/恢复测试
+│   ├── repeating/                    # fixture + 命令/拒绝/权限/判断版本/规则版本/协调/恢复测试
 │   └── conflicts/                    # fixture + 覆盖/全部排除/取代测试
 └── mutations/                        # 故意错误规则与专用合法前缀
 ```
@@ -101,6 +104,7 @@ plain Quint 的选择来自 Q59: 以一个原子 Authority 为中心审查少量
 | terminalConflictsResolved | 成功/失败提交当刻没有尚未解除的冲突阻塞; 取消独立处理 |
 | excludedAllKnowledgeSound / allExcludedCommitSound | 全部明确排除后的判断保持未知; 全部排除命令不产生终结结果 |
 | supersessionLinksSound / dispositionBindingsUnique / decisionsImmutable | 取代链接覆盖对应旧处置且无越界、自引用或失效目标; 每报告当前绑定唯一; 旧决定值与独立快照一致 |
+| automaticRuleVersionsSound | 按接受时规则定义检查实际指定版本与条件, 不只信任 actorQualified 标志 |
 
 starts、commits、firstOutcome、invalidLeases、retries 与 decisions 中的快照用于观察历史事实, 并非最终 SQL schema. 例如 invalidLeases 是独立历史见证, leaseValid 不使用它作第二重屏障; 否则遗忘当前 invalidated 标志的错误可能被辅助变量掩盖.
 
@@ -137,6 +141,12 @@ starts、commits、firstOutcome、invalidLeases、retries 与 decisions 中的�
 
 19. historicalBindings 按已保存的显式边折叠; applicableBindings 再按接受时证据/资格范围判断当前适用性. 这些是抽象投影, 不规定通过事件重放恢复产品状态. supersessionLinksSound 对接受前缀逐项检查目标和覆盖, 不只依靠 admission bool; decisionSnapshots 是独立不可变性见证, 不作执行守卫, 不是新 SQL 表/字段. 同一个原子提交保存决定及其引用, 命令与决定内容比较也包含引用. 完整撤回、决定删除、跨 Intent 引用与 SQL 并发实现仍未建模.
 
+20. Q74 的 RuleReference={id,version} 用整数抽象具体语义版本, 不批准公开 codec、semver 或 SQL 字段. RuleRegistration 是 Authority 已核验的版本与条件输入; 示例 rule2 的 v1 允许 Worker 成功报告按契约排除, v2 额外要求查询来源. 多版本可并存, 精确匹配须唯一; 同一引用出现相互矛盾的定义则不能接受新决定. rulesAtDecision 保存接受时的抽象定义见证, 性质不使用处理时当前登记去重解释历史. 此快照不是获批的全注册表持久化方案, 不验证规则源码或真实条件核验.
+
+21. 有界规则扩展按处理动作选择并存或仅 v2 的可信策略, 不增加第六个状态变量或模拟真实注册表部署. 新命令的规则身份用于入域资格, 指定版本的登记/条件属于领域核验; 已允许身份但未知版本形成持久 DecisionIneligible. 这是抽象入口收窄, 不批准产品权限映射、缺失字段/格式错误分类或版本零的编码语义. 已处理命令优先查找并按读取权限返回原结果, 不再要求旧版本在当前登记中存在. 自动重算显式选择版本和新身份, 不在接收端重写请求.
+
+22. 规则定义稳定性、登记事务/撤权、代码与语义版本映射及历史解释材料保留未验证. Q74 确认历史解释和原结果重投; 登记退役对已接受、尚未终结处置的后续适用性仍待决议. 当前例子沿用既有 acceptedBase 范围来检查历史与新提交, 不把这一收窄当作产品的退役撤销协议.
+
 ## 部分范围取代的模型例子
 
 partiallySupersededInit 通过真实协议先保存 D0 的三报告全部排除, 再保存 D1 的两报告重处置. 旧决定完整保留; 当前绑定只在明确引用的范围内改变:
@@ -162,7 +172,7 @@ mix beamlet.check --samples 5000 --directed-samples 1000 --jobs 4 --threads 4 --
 mix test
 ```
 
-默认三个核心实例各 5,000 条、最多 100 步; 五组核心合法前缀各 1,000 条, 协调原语扩展的普通 init 与合法前缀各 1,000 条; 命令协议的普通 init 与三个合法前缀各 1,000 条, 防御性冲突扩展六个合法前缀各 1,000 条 (含 allExcludedInit 与 partiallySupersededInit), 均最多 100 步. 默认合计 32,000 条轨迹. 使用 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads 控制每个 Rust 模拟进程的线程上限, --log-dir 指定日志目录. 未指定 --threads 时取 max(div(System.schedulers_online(), jobs), 1), 例如 16 个在线 scheduler、jobs=4 时默认每进程 4 线程; 这是保守预算, 不是最优性能保证, 也不保证准确反映所有容器 CPU 配额. typecheck 与 test 不接收线程参数; 单样本 mutation 反例固定使用 1 个模拟线程. --phase 支持 all、typecheck、test、simulate、mutations. Mix 仅接受退出 1 且报告 Invariant violated 并产生非空 ITF 的预期 mutation 结果, 不将类型错误或运行错误视为检出. 重用目录时先删除该次 mutation 的旧 ITF, 防止陈旧文件满足检查. mix test 检查工具拒绝误报的行为; 不代替 Quint 场景与抽样.
+默认三个核心实例各 5,000 条、最多 100 步; 五组核心合法前缀各 1,000 条, 协调原语扩展的普通 init 与合法前缀各 1,000 条; 命令协议的普通 init 与三个合法前缀各 1,000 条, 防御性冲突扩展六个合法前缀各 1,000 条 (含 allExcludedInit 与 partiallySupersededInit), 规则版本扩展三个合法前缀各 1,000 条, 均最多 100 步. 默认合计 35,000 条轨迹. 使用 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads 控制每个 Rust 模拟进程的线程上限, --log-dir 指定日志目录. 未指定 --threads 时取 max(div(System.schedulers_online(), jobs), 1), 例如 16 个在线 scheduler、jobs=4 时默认每进程 4 线程; 这是保守预算, 不是最优性能保证, 也不保证准确反映所有容器 CPU 配额. typecheck 与 test 不接收线程参数; 单样本 mutation 反例固定使用 1 个模拟线程. --phase 支持 all、typecheck、test、simulate、mutations. Mix 仅接受退出 1 且报告 Invariant violated 并产生非空 ITF 的预期 mutation 结果, 不将类型错误或运行错误视为检出. 重用目录时先删除该次 mutation 的旧 ITF, 防止陈旧文件满足检查. mix test 检查工具拒绝误报的行为; 不代替 Quint 场景与抽样.
 
 每次运行在日志目录写入 `run-info.txt` (Quint 版本、Rust 后端、在线 scheduler 数、jobs/threads、抽样预算、seed 与阶段) 和 `timings.tsv` (任务、阶段与运行的 passed/failed 及毫秒墙钟耗时). 重用目录时这两份报告重新生成, 不累计旧计时. 并发任务的耗时不能相加作为总耗时; 阶段/运行耗时包含调度和任务处理, 运行计时不含最初的版本查询和报告初始化. 更改线程配置后保留完整配置和输出, 不只凭同一个 seed 假定轨迹完全相同. 具体调参方法与实测限制见 [性能记录](performance.md).
 
@@ -294,6 +304,32 @@ Q73 显式取代检查点: mix beamlet.check 完整通过六文件类型检查, 
 | partiallySupersededInit | — | — | — | 8 | 15 |
 
 取代见证已从未初始化该目标的前缀到达. queriedConflictInit 没有对应完整排除契约集合, 不声称覆盖零命中的排除/取代路径. 初始化未知范围之后的成功/失败来自新的合格判断或证据, 不归因于原全部排除命令. 决定身份、最小引用要求、真实条件核验、归档/撤回和 SQL 并发仍未验证; 不宣称穷尽证明或 Liveness.
+
+Q74 规则语义版本检查点: 通过 mix beamlet.check 完整检查. 八个入口类型检查覆盖 59 个 Quint 文件, 141/141 正常场景 (23 + 2 + 69 + 47) 与 49/49 mutation 检测场景通过. 全部 49 份 ITF 已读取, 每份仍只有原五组状态变量. 新增五条反例核对了实际引用版本、接受时定义、请求/决定差异、原命令结果和重投处理见证:
+
+| 新反例 | 合法前缀步数 | 核对的违规 |
+| --- | ---: | --- |
+| ruleVersionIgnored | 21 | actorQualified=true, 但请求 v1 在接受时定义中不存在 |
+| ruleConditionsFromOtherVersion | 21 | actorQualified=true, 指定 v2 要求查询来源, 实际主报告来自 Worker |
+| automaticRequestVersionRefreshed | 23 | 原命令引用 v1, 实际持久决定引用 v2 |
+| historicalRuleReinterpreted | 22 | 原决定/命令不变, 历史 v1 定义的 queryRequired 从 false 被改成 true |
+| replayBlockedByRuleRetirement | 23 | 持久账本不变, 可读且已有原记录的重投被错误回复 CommandIneligible |
+
+23 组正常运行共 35,000 条抽样轨迹, 每条最多 100 步, 输入 seed 42, Quint 0.32.0 / Rust. jobs=4、threads=4、mutation_threads=1, 配置保存在 run-info.txt; 未发现所检查的 commandSafety / conflictSafety 违规. 日志与 ITF: /tmp/beamlet-quint-q74-final; 汇总日志: /tmp/beamlet-quint-q74-final.log. 十个 Mix 工具测试、格式、编译和主动诊断检查通过; 工具测试不计入 Quint 场景数.
+
+新增 16 个正常场景覆盖多版本并存、同版本重复定义拒绝、当前审查但指定版本退役/未知、指定版本条件不足、原成功/拒绝结果在登记变化及 Closed 后重投、读取授权、同身份更换版本冲突、新身份明确 v2 求值、独立契约校验、新证据过期及人工入口. 抽象版本 0/9 场景检查未登记引用, 不代表缺失字段或真实格式校验已实现.
+
+以下三个前缀各 1,000 条轨迹. “—”表示初始化已成立, 不作为新保存覆盖; 各列可重叠, 不是事件次数、完整覆盖或统计证明:
+
+| 规则版本前缀 | v1 决定 | v2 决定 | 原命令重投 | 拒绝保存 |
+| --- | ---: | ---: | ---: | ---: |
+| automaticRulePendingInit | 165 | 1 | 993 | 1000 |
+| automaticRuleCommittedInit | — | 1 | 996 | 1000 |
+| retiredRuleRejectedInit | 96 | 0 | 996 | — |
+
+该模拟在处理动作之间可以选择并存/仅 v2 的可信策略, 不建模不可逆的注册表迁移. retiredRuleRejectedInit 后续 v1 命中来自随后选择允许 v1 的策略与新身份, 不表示已保存拒绝被重新执行. v2 深路径命中少, 用确定场景核对其新身份、明确版本及契约. 历史解释快照是受信见证, 不证明真实规则定义、登记持久性或治理; 旧非终结处置在规则退役后的后续效力仍待决议. 不宣称穷尽证明、Liveness、SQL 或外部效果恰好一次.
+
+结构保持用户拆分后的依赖方向: 新规则逻辑在 logic/rules.qnt, 测试与 fixture 在 scenarios/repeating/rules_*.qnt, 故意错误在 mutations/rules.qnt, 主目录仅增加具体入口. 所有 Quint 文件不超过 200 行, 导入图无环, 八个入口覆盖全部文件, 正常模拟不导入测试或 mutation.
 
 Q59/Q60 检查点的定向见证运行同样使用输入 seed 42, 每组 1,000 条、最多 100 步. 见证计数是命中目标的轨迹数, 不是事件总次数或统计证明:
 

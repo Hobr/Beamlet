@@ -42,7 +42,7 @@ module conflictFixtures {
   pure val failWithUnknownOld = excludeAllConflict.union(Set(keep(failure2)))
 
   pure val policy: ReconciliationPolicy = {
-    operators: Set(1), registeredRules: Set(1, 2, 4, 5), excludable: Set(success1),
+    operators: Set(1), registeredRules: Set(rule1v1, rule2v1, rule4v1, rule5v1), excludable: Set(success1),
     resolutions: Set(excludeOldConflict, acceptOldConflict, failCurrentConflict, resolveBothConflicts,
       excludeAllConflict, excludeAllBoth, excludeAllAcross, failWithUnknownOld),
   }
@@ -145,7 +145,7 @@ module conflictFixtures {
       { report: querySuccess, kind: AdoptSuccess, items: acceptOldConflict },
       { report: failure2, kind: AdoptFailure, items: failCurrentConflict },
       { report: querySuccess2, kind: AdoptSuccess, items: resolveBothConflicts }).oneOf()
-    nondet actor = Set(Operator(1), Operator(2), AutomaticRule(4), AutomaticRule(5)).oneOf()
+    nondet actor = Set(Operator(1), Operator(2), AutomaticRule({ id: 4, version: 1 }), AutomaticRule({ id: 5, version: 1 })).oneOf()
     sendReconciliationCommand({
       id: id, decision: conflictDecision(authority.durable, candidate.report, candidate.kind, candidate.items, actor),
     })

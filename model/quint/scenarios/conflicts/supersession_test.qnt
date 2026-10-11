@@ -69,10 +69,10 @@ module conflictSupersessionTests {
   run concurrentSupersessionReviewGoesStaleTest = resolvedConflictInit
     .then(sendReconciliationCommand(replacementCommand)).expect(commandSafety)
     .then(sendReconciliationCommand({ ...replacementCommand, id: 3, decision: {
-      ...replacementCommand.decision, actor: AutomaticRule(5) } })).expect(commandSafety)
+      ...replacementCommand.decision, actor: AutomaticRule({ id: 5, version: 1 }) } })).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, replacementCommand)).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, { ...replacementCommand, id: 3, decision: {
-      ...replacementCommand.decision, actor: AutomaticRule(5) } })).expect(commandSafety)
+      ...replacementCommand.decision, actor: AutomaticRule({ id: 5, version: 1 }) } })).expect(commandSafety)
     .expect(authority.durable.decisions.length() == 2 and authority.durable.rejections.length() == 1)
     .expect(authority.durable.rejections.head().command.decision.supersedes == replacementCommand.decision.supersedes)
     .expect(authority.durable.revision == 10)

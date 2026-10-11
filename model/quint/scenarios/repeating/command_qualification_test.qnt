@@ -13,19 +13,19 @@ module repeatingCommandQualificationTests {
 
   run automaticFreshEvaluationUsesNewCommandTest = oldSuccessCurrentFailureInit
     .then(sendReconciliationCommand({
-      ...exclusionCommand, decision: { ...exclusionCommand.decision, actor: AutomaticRule(2) },
+      ...exclusionCommand, decision: { ...exclusionCommand.decision, actor: AutomaticRule({ id: 2, version: 1 }) },
     })).expect(commandSafety)
     .then(receiveReconciliationCommand(reconciliationPolicy, {
-      ...exclusionCommand, decision: { ...exclusionCommand.decision, actor: AutomaticRule(2) },
+      ...exclusionCommand, decision: { ...exclusionCommand.decision, actor: AutomaticRule({ id: 2, version: 1 }) },
     })).expect(commandSafety)
     .then(queryExternal(1, 3)).expect(commandSafety)
     .then(receiveReport(querySuccess)).expect(commandSafety)
     .expect(oldSuccessNeedsReconciliation(authority.durable, 2))
     .then(sendReconciliationCommand({
-      id: 2, decision: proposeDecision(authority.durable, querySuccess, AdoptSuccess, AutomaticRule(1)),
+      id: 2, decision: proposeDecision(authority.durable, querySuccess, AdoptSuccess, AutomaticRule({ id: 1, version: 1 })),
     })).expect(commandSafety)
     .then(receiveReconciliationCommand(reconciliationPolicy, {
-      id: 2, decision: proposeDecision(authority.durable, querySuccess, AdoptSuccess, AutomaticRule(1)),
+      id: 2, decision: proposeDecision(authority.durable, querySuccess, AdoptSuccess, AutomaticRule({ id: 1, version: 1 })),
     })).expect(commandSafety)
     .expect(authority.durable.commands.length() == 2 and authority.durable.decisions.length() == 2)
     .expect(authority.durable.commands.head().command.id == 1)

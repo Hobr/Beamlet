@@ -1,7 +1,7 @@
 // Reconciliation, conflict, supersession and revision properties.
 module corePropertiesReconciliation {
-  import coreLogicDispositions.* from "../logic/dispositions"
-  export coreLogicDispositions.*
+  import coreLogicRules.* from "../logic/rules"
+  export coreLogicRules.*
 
   val reconciliationQualified = authority.durable.decisions.foldl(true, (ok, w) =>
     ok and w.openAtDecision and w.actorQualified and w.contractQualified
@@ -9,6 +9,10 @@ module corePropertiesReconciliation {
       and w.decision.reviewedRevision == w.acceptedRevision
       and w.acceptedBase.current == w.acceptedCurrent and w.acceptedBase.reports == w.acceptedReports
       and w.acceptedReports.contains(w.decision.report))
+
+  // Validate actual pinned versions and accepted definitions, independently of actorQualified.
+  val automaticRuleVersionsSound = authority.durable.decisions.foldl(true, (ok, w) =>
+    ok and registeredRuleQualified(w.rulesAtDecision, w.decision))
 
   val reconciledEvidencePreserved = authority.durable.decisions.foldl(true, (ok, w) =>
     ok and w.acceptedReports.forall(r => authority.durable.reports.contains(r)))

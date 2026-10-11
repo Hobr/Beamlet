@@ -46,9 +46,9 @@ module conflictAllExcludedTests {
 
   run automaticAllExcludedTest = conflictInit
     .then(sendReconciliationCommand({ id: 1, decision: {
-      ...allExclusionCommand.decision, actor: AutomaticRule(5) } })).expect(commandSafety)
+      ...allExclusionCommand.decision, actor: AutomaticRule({ id: 5, version: 1 }) } })).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, { id: 1, decision: {
-      ...allExclusionCommand.decision, actor: AutomaticRule(5) } })).expect(commandSafety)
+      ...allExclusionCommand.decision, actor: AutomaticRule({ id: 5, version: 1 }) } })).expect(commandSafety)
     .expect(noConflicts(authority.durable) and judgmentKnowledge(authority.durable, 1) == NoKnowledge)
     .expect(authority.durable.phase == Open and authority.durable.outcomes == List())
 

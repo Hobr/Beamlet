@@ -17,7 +17,7 @@ module reconciliationMutationFixtures {
   pure val querySuccess: Report = { id: 3, exec: 1, kind: Success, origin: ByQuery }
 
   pure val policy: ReconciliationPolicy = {
-    operators: Set(1), registeredRules: Set(1, 2), excludable: Set(success1), resolutions: Set(),
+    operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(success1), resolutions: Set(),
   }
 
   action readyInit = init.expect(safety)
@@ -47,7 +47,7 @@ module reconciliationMutationFixtures {
 
   def invalidProposal: Decision =
     if (BUG == 1) { ...validExclusion, actor: Operator(2) }
-    else if (BUG == 2) { ...validExclusion, actor: AutomaticRule(3) }
+    else if (BUG == 2) { ...validExclusion, actor: AutomaticRule({ id: 3, version: 1 }) }
     else { ...validExclusion, reviewedRevision: 7 }
 
   action newEvidenceInit = readyInit

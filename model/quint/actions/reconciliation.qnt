@@ -13,7 +13,7 @@ module coreActionsReconciliation {
     authority.durable.reports.size() > 0,
     nondet r = authority.durable.reports.oneOf()
     nondet kind = Set(AdoptSuccess, ExcludeFromJudgment).oneOf()
-    nondet actor = Set(Operator(1), Operator(2), AutomaticRule(1), AutomaticRule(2), AutomaticRule(3)).oneOf()
+    nondet actor = Set(Operator(1), Operator(2), AutomaticRule({ id: 1, version: 1 }), AutomaticRule({ id: 2, version: 1 }), AutomaticRule({ id: 3, version: 1 })).oneOf()
     reconcileDecision(p, proposeDecision(authority.durable, r, kind, actor)),
   }
 
@@ -73,7 +73,7 @@ module coreActionsReconciliation {
     authority.durable.reports.size() > 0,
     nondet r = authority.durable.reports.oneOf()
     nondet kind = Set(AdoptSuccess, ExcludeFromJudgment).oneOf()
-    nondet actor = Set(Operator(1), Operator(2), AutomaticRule(1), AutomaticRule(2), AutomaticRule(3)).oneOf()
+    nondet actor = Set(Operator(1), Operator(2), AutomaticRule({ id: 1, version: 1 }), AutomaticRule({ id: 2, version: 1 }), AutomaticRule({ id: 3, version: 1 })).oneOf()
     nondet id = Set(1, 2, 3, 4).oneOf()
     sendReconciliationCommand({
       id: id, decision: proposeDecision(authority.durable, r, kind, actor),

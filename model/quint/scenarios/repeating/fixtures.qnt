@@ -39,7 +39,7 @@ module repeatingFixtures {
     .then(receiveReport(failure2)).expect(safety)
 
   pure val reconciliationPolicy: ReconciliationPolicy = {
-    operators: Set(1), registeredRules: Set(1, 2), excludable: Set(success1), resolutions: Set(),
+    operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(success1), resolutions: Set(),
   }
 
   def manualExclusion: Decision = proposeDecision(authority.durable, success1, ExcludeFromJudgment, Operator(1))
