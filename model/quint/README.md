@@ -12,6 +12,11 @@
 | [beamletRecovery.qnt](beamletRecovery.qnt) | 正常能力与崩溃, 丢包, 重投, 到期, 时钟回拨组合 | recoveryAnalysis |
 | [beamletMultiIntent.qnt](beamletMultiIntent.qnt) | 两个完整 Intent, 两个 Agent, 共享 Worker 与调用方依赖汇总 | multiIntentAnalysis |
 | [beamletContinuation.qnt](beamletContinuation.qnt) | 三 Intent, 单步部分结果决策, 后续身份与调用方重启恢复 | continuationAnalysis |
+| [beamletClaim.qnt](beamletClaim.qnt) | 领取分配提交, 回复丢失/重投, 会话隔离 | claimAnalysis |
+| [beamletResource.qnt](beamletResource.qnt) | 设备/账户/对象/协议匹配, 授权绑定与实际调用 | resourceAnalysis |
+| [beamletHistory.qnt](beamletHistory.qnt) | 两 Coordinator 草稿, History 与状态原子提交, 逻辑次序 | historyAnalysis |
+| [beamletTriple.qnt](beamletTriple.qnt) | 三原始并发依赖, 两项完成后调用方重启 | tripleAnalysis |
+| [beamletSharedResource.qnt](beamletSharedResource.qnt) | 两 Intent 竞争同一资源版本, 原 key receipt 恢复 | sharedResourceAnalysis |
 | [beamletExecution_test.qnt](beamletExecution_test.qnt) | 独立核心与无处置参考账本的投影对照, 仅用于测试 | executionProjectionTests |
 | [beamletCore.qnt](beamletCore.qnt) | 完整执行/协调/治理组合参考 | beamletCoreAnalysis / repeatAllowed / fenced |
 | [beamletReconciliation.qnt](beamletReconciliation.qnt) | 协调原语与命令协议 | beamletReconciliation |
@@ -38,7 +43,7 @@ mix test
 ```
 
 `mix test` 验证工具和模型结构, 不代替 Quint 场景及采样.
-默认接入 22 个类型入口, 306 个正常场景, 82 条预期反例和 54 组模拟; 默认模拟预算为 78,000 条, 每条最多 100 步, seed=42.
+默认接入 33 个类型入口, 360 个正常场景, 97 条预期反例和 67 组模拟; 默认模拟预算为 91,000 条, 每条最多 100 步, seed=42.
 预算配置与已经完成的采样结果分别记录, 见覆盖文档.
 
 ```sh
@@ -73,6 +78,7 @@ quint run model/quint/beamletMultiIntent.qnt --main multiIntentAnalysis \
 | normal/ | 提交目录, Handler, 回调, 策略, 读取及恢复组合 |
 | multi/ | Intent 作用域, 共享 Worker, 调用方依赖, 隔离性质与调度 |
 | continuation/ | 调用方持久决定, 消费证据, 下一轮清单, 独立性质与恢复见证 |
+| contracts/ | Claim 响应, 资源匹配, History 提交, 三原依赖与共享条件写的独立有界例子 |
 | scenarios/ | 按严格执行, 资源排除, 正常使用, 并发, 协调/冲突划分的 fixture 和确定场景 |
 | mutations/ | 从合法前缀出发的故意错误转换 |
 
@@ -89,7 +95,7 @@ quint run model/quint/beamletMultiIntent.qnt --main multiIntentAnalysis \
 - 场景通过真实转换建立前缀, 不直接注入 Running/Closed; 拒绝场景检查守卫及 disabled action.
 - 正常 step 不导入 mutation, 不以 Open 的兜底空转代替进展. 故障采样与正常 profile 分开, 以合法深前缀覆盖后半段.
 - 辅助见证独立回查真实状态, 不成为执行守卫或公开 schema.保留观察以检出重复终结, 旧许可调用和跨 Intent 串写.
-- [结构测试](../../test/quint_structure_test.exs) 检查全部导入无环, 每文件最多 200 行, 以及五个首版入口的依赖隔离.
+- [结构测试](../../test/quint_structure_test.exs) 检查全部导入无环, 每文件最多 200 行, 以及十个首版入口的依赖隔离.
 - 语义修改同步更新守卫, 性质, 场景与相应 mutation.类型/场景检查后运行相关定向采样; 跨层变化再做完整回归.
   文档整理不需要重新运行全量采样.
 

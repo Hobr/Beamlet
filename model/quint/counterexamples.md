@@ -1,6 +1,6 @@
 # 故意错误规则索引
 
-82 条 mutation 用来确认指定安全检查能检出典型错误, 不表示正常模型存在这些违规, 也不代表所有错误均已覆盖.
+97 条 mutation 用来确认指定安全检查能检出典型错误, 不表示正常模型存在这些违规, 也不代表所有错误均已覆盖.
 每条从真实转换构造的合法前缀开始, 最后执行一条故意错误转换; 正常 step 不导入这些动作.
 模型覆盖与假设见 [覆盖文档](coverage.md).
 
@@ -124,6 +124,32 @@
 
 前缀首先满足完整 continuationSafety, 再仅以目标子性质判定违规.
 换 key/定义检查实际发出的请求, 来源检查回查真实 Outcome, 不依赖无关 History/作用域观察的破坏.
+
+## 五项独立补验: 15 条
+
+统一入口为 [beamletContract_mutations_test.qnt](beamletContract_mutations_test.qnt), 每项三个 BUG, 原 mutation
+名称和编号保留. 各前缀先满足相应完整 Safety, 错误转换仅以指定子性质判定, 不把解析/运行错误当作反例.
+
+| 模块 | 独立检查目标 | 故意错误 |
+| --- | --- | --- |
+| claimReplayAllocatesNewGeneration | allocationSound | 原请求重投又领取新 generation |
+| claimReplyChangesOwner | claimDeliverySound | 回复把已提交 token 换为另一 Worker |
+| claimOldSessionReceivesToken | claimSessionsSound | 重启的新 incarnation 接受旧会话 token |
+| resourceUsesChangedDefaultAccount | resourceCallsSound | 授权后改用当前默认账户调用 |
+| resourceAuthorizesWrongDevice | resourceBindingsSound | 启动绑定错误设备/对象 |
+| resourceRewritesSavedTarget | resourceBindingsSound | 改写原授权绑定, 独立 saved 仍保留原值 |
+| historyStateWithoutCommitGroup | historyStateAtomic | 保存报告/终结状态却没有对应提交组 |
+| historyReusesCommittedSequence | historyGroupsSound | 两份已提交组复用 sequence |
+| historyDuplicateReportCreatesGroup | historyCommandsSound | 已入账相同报告重投产生空事件组 |
+| tripleRestartLosesThirdSlot | tripleManifestSound | 重启时从持久 manifest 丢第三项 |
+| tripleTwoResultsCompleteRound | tripleCompletionSound | 两项结果就标记三项汇总完成 |
+| tripleRestartChangesSubmissionKey | tripleManifestSound | 重建时改原 slot 的 submission key |
+| sharedBothWritesSameVersion | objectWritesSound | 同初始版本的两个请求均产生实际写入 |
+| sharedBorrowsOtherReceipt | objectEvidenceSound | B 用 A 的 applied 回执覆盖自己的 mismatch |
+| sharedCurrentContentProvesCompletion | objectEvidenceSound | B 没有原请求 receipt, 仅凭当前内容提交 Success |
+
+History 的序号/重复组反例同时更新 committed 观察, 避免仅靠独立快照不一致判错.
+共享资源的后两项检查真实资源 receipt 与已接受报告/Outcome 的关联; 不把当前对象值当作独立操作完成证据.
 
 ## 复现与判定
 

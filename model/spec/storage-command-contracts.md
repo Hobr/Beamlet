@@ -43,6 +43,14 @@ SQL Adapter 在以下原子边界中读取并重验, 不接收客户端提供的
 存储重试次数耗尽不会变成 Failed Outcome. 传输必须无损保留这些区分, 不统一折成 boolean/异常文本.
 Report/事实返回按当前权限裁剪; 领域错误码与解释版本稳定, 调试异常不得成为长期结果比较材料.
 
+调用方便利层可以提供 submit/read/wait 的统一入口, 但同步等待只是本次调用的等待方式,
+不改变 Effect 可独立提交和恢复的语义. 等待超时返回仍在等待或读取不确定性, 不能生成 Cancelled/Failed;
+取消必须发出独立获授权命令并观察其提交结果. 进程内 wait handle 不是持久身份, 重启使用原 Intent/提交身份读取.
+`await_all`/部分推进所需的完整 manifest, 已消费结果和决定由调用方保存, Storage 不隐式新增依赖图.
+
+固定的 Interface 义务是稳定身份, 完整守卫, 持久确认, 独立 Outcome 以及上述错误区分;
+函数参数名, Behaviour 签名, 传输编码和分页格式仍是实现前选择. 不能让这些未定形式放宽已确认的语义.
+
 ## 2. 最小命令集合
 
 | 命令 | 原子读取/守卫 | 同事务修改和 History | 重投/竞争结果 |
@@ -60,8 +68,9 @@ Report/事实返回按当前权限裁剪; 领域错误码与解释版本稳定, 
 
 Claim 请求携带调用者观察的 expected generation, 新 token 响应丢失后用
 `(execution, worker, incarnation, expected generation)` 识别原领取, 在相同领取仍有效时返回已分配 token.
-不从同一过期请求分配下一代; 要重新领取须读取当前 generation 后提出新请求. Quint 当前把 Claim 与得知 token 合并,
-因而领取回复丢失属于上述工程符合性场景, 不是模型已验证项.
+不从同一过期请求分配下一代; 要重新领取须读取当前 generation 后提出新请求. 原执行实例仍把 Claim 与得知 token 合并;
+[独立领取模型](../quint/beamletClaim.qnt) 另展开分配提交与回复丢失/送达, 检查原请求重投不重新分配.
+该逻辑关联可由原 lease/身份事实实现, 不自动要求新增 SQL 表; 实际后端仍须通过下述符合性场景.
 
 AuthorizeStart 的身份由 `(execution, worker, incarnation, generation)` 确定. 已保存相同 grant 的重投返回原内容,
 即使现时 lease 到期/Intent 已关闭; 回复不表示新许可, 不能携带新 Handler/上下文. 来源与读取权限仍需验证.

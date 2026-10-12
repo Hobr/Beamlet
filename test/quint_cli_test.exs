@@ -105,6 +105,18 @@ defmodule Beamlet.QuintCliTest do
       assert_option(command, "--seed", "42")
     end
 
+    for {file, expected_groups} <- [
+          {"Claim", 3},
+          {"Resource", 3},
+          {"History", 2},
+          {"Triple", 3},
+          {"SharedResource", 2}
+        ] do
+      runs = Enum.filter(commands, &(Enum.at(&1, 1) == "model/quint/beamlet#{file}.qnt"))
+      assert length(runs) == expected_groups
+      for command <- runs, do: assert_option(command, "--invariant", "safety")
+    end
+
     {core, directed} =
       Enum.split_with(commands, fn command ->
         Enum.at(command, 1) in ~w(model/quint/beamletCore.qnt model/quint/beamletExecution.qnt) or
@@ -234,6 +246,25 @@ defmodule Beamlet.QuintCliTest do
              mutants,
              &(Enum.at(&1, 1) == "model/quint/beamletContinuation_mutations_test.qnt")
            ) == 6
+
+    for {file, main} <- [
+          {"Claim", "claimTests"},
+          {"Resource", "resourceTests"},
+          {"History", "historyTests"},
+          {"Triple", "tripleTests"},
+          {"SharedResource", "sharedResourceTests"}
+        ] do
+      for suffix <- ["", "_test"] do
+        assert Enum.any?(checks, &(Enum.at(&1, 1) == "model/quint/beamlet#{file}#{suffix}.qnt"))
+      end
+
+      assert Enum.any?(tests, &(main in &1))
+    end
+
+    assert Enum.count(
+             mutants,
+             &(Enum.at(&1, 1) == "model/quint/beamletContract_mutations_test.qnt")
+           ) == 15
 
     for command <- checks ++ tests, do: refute("--n-threads" in command)
     for command <- checks, do: refute("--backend" in command)

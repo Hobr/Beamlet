@@ -6,6 +6,10 @@ defmodule Mix.QuintChecks do
   @conflicts "model/quint/beamletConflicts_test.qnt"
   @mutations "model/quint/beamletCore_mutations_test.qnt"
   @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test beamletNormalUse beamletNormalUse_test beamletNormalUse_mutations_test beamletExecution beamletExecution_test beamletRecovery beamletMultiIntent beamletMultiIntent_test beamletMultiIntent_mutations_test beamletContinuation beamletContinuation_test beamletContinuation_mutations_test)
+  @contract_models ~w(beamletClaim beamletClaim_test beamletResource beamletResource_test
+    beamletHistory beamletHistory_test beamletTriple beamletTriple_test
+    beamletSharedResource beamletSharedResource_test beamletContract_mutations_test)
+  @contract_mutations ~w(claimReplayAllocatesNewGeneration claimReplyChangesOwner claimOldSessionReceivesToken resourceUsesChangedDefaultAccount resourceAuthorizesWrongDevice resourceRewritesSavedTarget historyStateWithoutCommitGroup historyReusesCommittedSequence historyDuplicateReportCreatesGroup tripleRestartLosesThirdSlot tripleTwoResultsCompleteRound tripleRestartChangesSubmissionKey sharedBothWritesSameVersion sharedBorrowsOtherReceipt sharedCurrentContentProvesCompletion)
   @continuation_mutations ~w(continuationSendBeforeCommit continuationReplayChangesKey
     continuationLostDecision continuationConsumesWrongIntent continuationLaterResultReplacesDecision
     continuationReplayChangesDefinition)
@@ -132,7 +136,10 @@ defmodule Mix.QuintChecks do
   end
 
   defp jobs(_config, "typecheck") do
-    Enum.map(@models, &{:check, &1 <> ".typecheck", ["typecheck", "model/quint/#{&1}.qnt"]})
+    Enum.map(
+      @models ++ @contract_models,
+      &{:check, &1 <> ".typecheck", ["typecheck", "model/quint/#{&1}.qnt"]}
+    )
   end
 
   defp jobs(_config, "test") do
@@ -142,15 +149,24 @@ defmodule Mix.QuintChecks do
         test_job("model/quint/beamletNormalUse_test.qnt", "normalUseTests"),
         test_job("model/quint/beamletExecution_test.qnt", "executionProjectionTests"),
         test_job("model/quint/beamletMultiIntent_test.qnt", "multiIntentTests"),
-        test_job("model/quint/beamletContinuation_test.qnt", "continuationTests")
+        test_job("model/quint/beamletContinuation_test.qnt", "continuationTests"),
+        test_job("model/quint/beamletClaim_test.qnt", "claimTests"),
+        test_job("model/quint/beamletResource_test.qnt", "resourceTests"),
+        test_job("model/quint/beamletHistory_test.qnt", "historyTests"),
+        test_job("model/quint/beamletTriple_test.qnt", "tripleTests"),
+        test_job("model/quint/beamletSharedResource_test.qnt", "sharedResourceTests")
       ]
   end
 
   defp jobs(_config, "mutations") do
     Enum.map(
-      @continuation_mutations,
-      &{:mutation, &1, "model/quint/beamletContinuation_mutations_test.qnt"}
+      @contract_mutations,
+      &{:mutation, &1, "model/quint/beamletContract_mutations_test.qnt"}
     ) ++
+      Enum.map(
+        @continuation_mutations,
+        &{:mutation, &1, "model/quint/beamletContinuation_mutations_test.qnt"}
+      ) ++
       Enum.map(
         @multi_mutations,
         &{:mutation, &1, "model/quint/beamletMultiIntent_mutations_test.qnt"}
@@ -416,6 +432,47 @@ defmodule Mix.QuintChecks do
               continuation_witnesses
             )
 
+    contracts =
+      for {file, main, init, step, witnesses} <- [
+            {"Claim", "claimAnalysis", "init", "healthyStep",
+             ~w(allocatedWitness deliveredWitness calledWitness)},
+            {"Claim", "claimAnalysis", "lostInit", "healthyStep",
+             ~w(replayWitness deliveredWitness calledWitness)},
+            {"Claim", "claimAnalysis", "lostInit", "step",
+             ~w(replayWitness deliveredWitness calledWitness)},
+            {"Resource", "resourceAnalysis", "init", "healthyStep",
+             ~w(boundWitness calledWitness completedWitness)},
+            {"Resource", "resourceAnalysis", "alternateInit", "healthyStep",
+             ~w(migratedWorkerWitness completedWitness)},
+            {"Resource", "resourceAnalysis", "boundInit", "step",
+             ~w(calledWitness changedWitness completedWitness)},
+            {"History", "historyAnalysis", "init", "healthyStep",
+             ~w(committedWitness outcomeWitness duplicateWitness)},
+            {"History", "historyAnalysis", "runningInit", "step",
+             ~w(outcomeWitness rollbackWitness duplicateWitness)},
+            {"Triple", "tripleAnalysis", "init", "healthyStep",
+             ~w(invokedWitness twoCompletedWitness joinedWitness)},
+            {"Triple", "tripleAnalysis", "restartedInit", "healthyStep",
+             ~w(recoveredReadWitness joinedWitness)},
+            {"Triple", "tripleAnalysis", "restartedInit", "step",
+             ~w(recoveredReadWitness joinedWitness)},
+            {"SharedResource", "sharedResourceAnalysis", "runningInit", "healthyStep",
+             ~w(appliedWitness mismatchWitness replayWitness recoveryWitness closedWitness)},
+            {"SharedResource", "sharedResourceAnalysis", "appliedInit", "step",
+             ~w(mismatchWitness replayWitness recoveryWitness closedWitness)}
+          ],
+          do:
+            simulation(
+              "contract-#{file}-#{init}-#{step}",
+              "model/quint/beamlet#{file}.qnt",
+              main,
+              init,
+              step,
+              "safety",
+              config.directed_samples,
+              witnesses
+            )
+
     core ++
       prefixes ++
       primitives ++
@@ -425,7 +482,7 @@ defmodule Mix.QuintChecks do
       retirements ++
       withdrawals ++
       normal ++
-      execution ++ recovery ++ projections ++ multi_intent ++ continuation
+      execution ++ recovery ++ projections ++ multi_intent ++ continuation ++ contracts
   end
 
   defp test_job(file, main),

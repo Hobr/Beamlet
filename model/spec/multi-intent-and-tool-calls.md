@@ -85,7 +85,13 @@ Intent 幂等上下文跨该 Intent 的尝试保持不变, 不同独立 Intent �
 PostgreSQL 可分别保护各 Intent 行; SQLite 可以串行化短写事务, 同时允许事务外的外部执行并发.
 独立 Intent 不要求全系统单个 GenServer 串行处理. 声明逻辑并发不等于证明数据库写并行, 吞吐量或公平性.
 两个 Intent 修改同一外部订单/资源时, 仍由 Operation/Handler/资源协议定义版本竞争, 锁, 业务去重或冲突处理.
-Intent 幂等不自动合并两次独立业务操作. 当前组合模型把两个 Intent 的外部资源事实分开, 不验证共享业务对象竞争.
+Intent 幂等不自动合并两次独立业务操作. 原组合模型的资源事实分开;
+[共享资源例子](../quint/beamletSharedResource.qnt) 另检查资源支持原子 CAS + 请求绑定 receipt 时的条件写竞争,
+version_mismatch 在该 Operation 中是正常 Success 数据. 该前提不是一般文件/API/Browser 的保证.
+
+原轮次有三个并发依赖时, [三依赖模型](../quint/beamletTriple.qnt) 直接检查完成两项后重启:
+清单完整保留, 原 key/定义重建三项关联, 读取两份既有 Outcome 不能冒充收齐第三项.
+第三项可在重启前/后完成, 或保持 Unknown; 取消仍须单独授权. 该例与第 8 节的 A/B 后驱动 C 分开验证.
 
 ## 7. 工程验收
 
