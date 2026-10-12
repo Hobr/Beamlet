@@ -1,9 +1,9 @@
 # 首版 Handler、回调与恢复策略契约
 
-状态: 首版实现契约草案. 细化 Q36-Q45 与明确失败停止语义, 为 Handler/Callback Adapter 提供最小可测试 Interface.
-Operation 的业务语义仍由对应版本定义. 本文不实现网络协议、凭据系统、资源端幂等或策略治理.
+本文规定首版 Handler/Callback Adapter 的声明、持久快照、回调关联和停止/重试契约。
+Operation 的业务语义由对应版本定义，具体网络协议、凭据配置与资源端保证须由 Adapter 验证。
 关联: [Operation / Handler](operation-handler-contracts.md)、[存储命令](storage-command-contracts.md)、
-[值与消息](persistent-values-and-messages.md)、[正常模型](../quint/normal-use-coverage.md).
+[值与消息](persistent-values-and-messages.md)、[模型覆盖](../quint/coverage.md).
 
 ## 1. Handler 声明与持久快照
 
@@ -98,7 +98,7 @@ Unknown、Pending、NotFound、存储/传输错误不映射为确定 Failure. �
 | 已知失败后安全窗口过期 | 不能重调用; 具备终结资格时提前停止 | earlyStopWhenIdempotencyExpiresTest |
 | 窗口过期但结果 Unknown | 保持 Open, 不伪造确定失败 | unknownCannotStopAfterWindowExpiresTest |
 | 查询不支持/认证失败/关联不匹配 | 不形成可信完成事实 | 原 Pending/query/callback 场景; 真实 Adapter 测试 |
-| 两个独立 Intent | 绑定、幂等键、报告与结果不串线 | [双 Intent 完整组合](../quint/multi-intent-coverage.md); 另需 SQL/Adapter 并发符合性测试 |
+| 两个独立 Intent | 绑定、幂等键、报告与结果不串线 | [双 Intent 完整组合](../quint/coverage.md); 另需 SQL/Adapter 并发符合性测试 |
 | Tool Call 多依赖 | 按稳定身份读取每项 Outcome; 重启从原清单重建 | [调用方组合契约](multi-intent-and-tool-calls.md); 清单由调用方持久保存 |
 
 真实 Adapter 还须覆盖 key 映射稳定性、账户/协议切换拒绝、边界时限/延迟、签名轮换、重复/矛盾内容和受限值解码.

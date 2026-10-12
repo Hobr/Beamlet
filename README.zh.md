@@ -35,8 +35,6 @@ mix beamlet.check --samples 20 --directed-samples 20
 mix beamlet.check --phase typecheck/test/simulate/mutations
 ```
 
-模型覆盖、参数和日志说明见 [Quint 文档](model/quint/README.md)。
-
 ## 感谢
 
 - [Erlang/OTP](https://www.erlang.org/)

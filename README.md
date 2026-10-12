@@ -35,8 +35,6 @@ mix beamlet.check --samples 20 --directed-samples 20
 mix beamlet.check --phase typecheck/test/simulate/mutations
 ```
 
-See the [Quint documentation](model/quint/README.md) for model coverage, parameters, and logs.
-
 ## Thanks
 
 - [Erlang/OTP](https://www.erlang.org/)
@@ -44,5 +42,5 @@ See the [Quint documentation](model/quint/README.md) for model coverage, paramet
 - [Phoenix](https://www.phoenixframework.org/)
 - [Elixir Desktop](https://github.com/elixir-desktop/desktop)
 - [Mob Framework](https://github.com/GenericJam/mob)
-- [Quint](https://github.com/quint-lang/quint)
+- [Quint](https://github.com/quint-co/quint)
 - [Nix](https://nixos.org/)

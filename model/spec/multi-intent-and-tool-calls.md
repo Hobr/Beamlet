@@ -1,9 +1,8 @@
 # 多 Intent 并发与 Tool Call 依赖契约
 
-状态: 首版并发组合与调用方使用契约草案. 覆盖多个 Agent 独立创建 Intent, 以及一个 Agent 的一轮 Tool Call
-等待多个 Intent 的结果. [组合模型](../quint/beamletMultiIntent.qnt) 完整展开两个 Intent;
-[验证记录](../quint/multi-intent-coverage.md) 区分场景、有界采样和实际工程边界.
-没有新增 Runtime、Agent SDK 或通用 Workflow 引擎.
+本文规定多个 Agent 独立创建 Intent，以及单轮 Tool Call 等待多个 Intent 的责任、身份和恢复边界。
+调用方持久保存依赖清单与汇总，Beamlet 维护每个 Intent 的事实和 Outcome。抽象检查范围见
+[模型覆盖与边界](../quint/coverage.md)。
 
 ## 1. 责任边界
 
@@ -89,5 +88,5 @@ Intent 幂等不自动合并两次独立业务操作. 当前组合模型把两�
 共享 Worker 重启清空所有局部作用域, 两个回调绑定及签名/account 作用域, 真实 key 编码无碰撞,
 调用方在提交后/读到部分结果后/保存汇总前后的崩溃恢复, 以及 PostgreSQL/SQLite 的并发写入.
 
-[Quint 检查](../quint/multi-intent-coverage.md) 验证的是有界参与者、原子存储和可信消息前提下的安全关系;
+[Quint 检查](../quint/coverage.md) 验证的是有界参与者、原子存储和可信消息前提下的安全关系;
 不证明真实 SQL、认证、provider 幂等、任意数量参与者、最终完成、公平调度或外部 exactly-once.
