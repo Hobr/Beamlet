@@ -11,8 +11,13 @@
 nix develop
 
 # 包管理
+## 安装 Hex
 mix local.hex
+
+## 获取依赖
 mix deps.get
+
+## 更新依赖
 mix deps.update --all
 
 # 格式化
@@ -20,6 +25,9 @@ mix format
 
 # 编译
 mix compile
+
+# 生产环境编译
+MIX_ENV=prod mix compile
 
 # 测试
 mix test

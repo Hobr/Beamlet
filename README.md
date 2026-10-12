@@ -11,8 +11,13 @@
 nix develop
 
 # Package
+## Install Hex
 mix local.hex
+
+## Fetch dependencies
 mix deps.get
+
+## Update dependencies
 mix deps.update --all
 
 # Format
@@ -20,6 +25,9 @@ mix format
 
 # Compile
 mix compile
+
+# Production build
+MIX_ENV=prod mix compile
 
 # Test
 mix test
