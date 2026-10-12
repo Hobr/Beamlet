@@ -42,7 +42,7 @@ module coreBaseTypes {
 
   type Outcome = { kind: OutcomeKind, exec: CurrentExecution }
 
-  type DecisionKind = AdoptSuccess | AdoptFailure | ExcludeFromJudgment | ExcludeAllEvidence
+  type DecisionKind = AdoptSuccess | AdoptFailure | ExcludeFromJudgment | ExcludeAllEvidence | WithdrawDisposition
 
   type RuleReference = { id: int, version: int }
 
@@ -53,7 +53,7 @@ module coreBaseTypes {
 
   type DecisionActor = Operator(int) | AutomaticRule(RuleReference)
 
-  type DecisionBasis = VerifiedCompletion | ContractExclusion
+  type DecisionBasis = VerifiedCompletion | ContractExclusion | VerifiedWithdrawal
 
   type EvidenceTreatment = KeepEvidence | ExcludeEvidence
 
@@ -63,6 +63,8 @@ module coreBaseTypes {
     operators: Set[int], registeredRules: Set[RuleRegistration], excludable: Set[Report],
     // Authority-checked, per-item Operation contract facts, not caller assertions.
     resolutions: Set[Set[EvidenceDisposition]],
+    // Checked authorization/grounds for exact withdrawal references; trusted Authority input.
+    withdrawals: Set[Set[Supersession]],
   }
 
   // Stable Intent-local list positions abstract decision identity; not a SQL/public ID scheme.
@@ -88,7 +90,8 @@ module coreBaseTypes {
     acceptedRevision: int, acceptedBase: JudgmentBase,
     openAtDecision: bool, actorQualified: bool, contractQualified: bool,
     coverageQualified: bool, evidenceQualified: bool, supersessionQualified: bool,
-    rulesAtDecision: Set[RuleRegistration],
+    rulesAtDecision: Set[RuleRegistration], bindingsBefore: Set[DispositionBinding],
+    withdrawalsAtDecision: Set[Set[Supersession]],
   }
 
   type JudgmentView = { base: JudgmentBase, decisions: List[Decision] }

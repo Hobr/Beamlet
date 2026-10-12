@@ -16,6 +16,8 @@ module beamletCore {
   export corePropertiesCore.*
   import corePropertiesReconciliation.* from "./properties/reconciliation"
   export corePropertiesReconciliation.*
+  import corePropertiesWithdrawal.* from "./properties/withdrawal"
+  export corePropertiesWithdrawal.*
   import corePropertiesWitnesses.* from "./properties/witnesses"
   export corePropertiesWitnesses.*
 
@@ -37,6 +39,7 @@ module beamletCore {
     and excludedAllKnowledgeSound and allExcludedCommitSound
     and supersessionLinksSound and dispositionBindingsUnique and decisionsImmutable
     and automaticRuleVersionsSound and ordinaryRuleRetirementSound
+    and withdrawalScopeSound and withdrawalCommandsNonterminal
 
   val commandSafety = safety and judgmentRevisionSound and commandRecordsUnique and commandRecordsImmutable
     and commandExecutionMatchesRequest and commandEffectsAtomic

@@ -17,9 +17,14 @@ module coreLogicDispositions {
     EXECUTIONS.forall(e => not(l.attempts.get(e).conflict) or conflictResolved(l, e))
 
   pure def decisionTreatments(d: Decision): Set[EvidenceDisposition] =
-    if (d.evidence.size() > 0) d.evidence
+    if (d.kind == WithdrawDisposition) Set()
+    else if (d.evidence.size() > 0) d.evidence
     else Set({ report: d.report,
       treatment: if (decisionIsTerminal(d)) KeepEvidence else ExcludeEvidence, basis: d.basis })
+
+  pure def decisionAffectedReports(d: Decision): Set[Report] =
+    if (d.kind == WithdrawDisposition) d.supersedes.fold(Set(), (rs, s) => rs.union(s.reports))
+    else decisionTreatments(d).map(i => i.report)
 
   pure def advanceBindings(bindings: Set[DispositionBinding], d: Decision, index: int): Set[DispositionBinding] =
     bindings.filter(b => not(d.supersedes.exists(s =>
@@ -37,7 +42,7 @@ module coreLogicDispositions {
 
   pure def requiredSupersessions(l: Ledger, d: Decision): Set[Supersession] = {
     val bindings = historicalBindings(l.decisions)
-    val reports = decisionTreatments(d).map(i => i.report)
+    val reports = decisionAffectedReports(d)
     bindings.map(b => b.decisionIndex).map(index => {
       decisionIndex: index,
       reports: bindings.filter(b => b.decisionIndex == index and reports.contains(b.item.report)).map(b => b.item.report),
@@ -50,6 +55,9 @@ module coreLogicDispositions {
 
   pure def decisionSupersessionsQualified(l: Ledger, d: Decision): bool =
     d.supersedes == requiredSupersessions(l, d)
+      and (d.kind != WithdrawDisposition or (d.supersedes.size() > 0
+        and decisionAffectedReports(d).contains(d.report)
+        and decisionAffectedReports(d).forall(r => applicableBindings(l).exists(b => b.item.report == r))))
 
   pure def judgmentItems(l: Ledger): Set[EvidenceDisposition] =
     applicableBindings(l).filter(b => l.decisions.nth(b.decisionIndex).decision.evidence.size() > 0)

@@ -15,7 +15,9 @@ module coreLogicReconciliation {
   }
 
   pure def decisionContractQualified(p: ReconciliationPolicy, d: Decision): bool =
-    if (d.kind == AdoptSuccess) d.report.kind == Success and d.basis == VerifiedCompletion
+    if (d.kind == WithdrawDisposition) d.basis == VerifiedWithdrawal
+      and p.withdrawals.contains(d.supersedes)
+    else if (d.kind == AdoptSuccess) d.report.kind == Success and d.basis == VerifiedCompletion
     else if (d.kind == AdoptFailure) d.report.kind == Failure and d.basis == VerifiedCompletion
     else if (d.kind == ExcludeAllEvidence) d.basis == ContractExclusion and d.evidence.size() > 0
       and d.evidence.forall(i => i.treatment == ExcludeEvidence)
@@ -23,7 +25,9 @@ module coreLogicReconciliation {
 
   pure def decisionCoverageQualified(l: Ledger, d: Decision): bool = {
     val required = conflictReports(l)
-    if (d.evidence.size() == 0) required.size() == 0
+    if (d.kind == WithdrawDisposition) d.evidence.size() == 0
+      and decisionAffectedReports(d).forall(r => l.reports.contains(r) and reportSourceValid(l, r))
+    else if (d.evidence.size() == 0) required.size() == 0
     else evidenceReports(d) == required.union(Set(d.report))
       and evidenceReports(d).size() == d.evidence.size()
       and d.evidence.forall(i => l.reports.contains(i.report) and reportSourceValid(l, i.report))
@@ -32,7 +36,8 @@ module coreLogicReconciliation {
   }
 
   pure def decisionEvidenceQualified(p: ReconciliationPolicy, d: Decision): bool =
-    if (d.evidence.size() == 0) d.kind != AdoptFailure and d.kind != ExcludeAllEvidence
+    if (d.kind == WithdrawDisposition) d.evidence.size() == 0
+    else if (d.evidence.size() == 0) d.kind != AdoptFailure and d.kind != ExcludeAllEvidence
     else p.resolutions.contains(d.evidence)
       and d.evidence.forall(i => i.basis ==
         (if (i.treatment == KeepEvidence) VerifiedCompletion else ContractExclusion))
@@ -52,17 +57,17 @@ module coreLogicReconciliation {
   pure def canReconcile(l: Ledger, p: ReconciliationPolicy, d: Decision): bool =
     l.phase == Open and decisionScopeCurrent(l, d)
       and l.reports.contains(d.report) and reportSourceValid(l, d.report)
-      and (l.current != Current(d.report.exec) or d.evidence.size() > 0)
+      and (d.kind == WithdrawDisposition or l.current != Current(d.report.exec) or d.evidence.size() > 0)
       and decisionActorQualified(p, d) and decisionContractQualified(p, d)
       and decisionCoverageQualified(l, d) and decisionEvidenceQualified(p, d)
       and decisionSupersessionsQualified(l, d)
       and (not(decisionIsTerminal(d)) or canCommit(applyReconcile(l, p, d), decisionOutcome(d)))
-      and l.decisions.select(w => dispositionScopeCurrent(l, w)
+      and (d.kind == WithdrawDisposition or l.decisions.select(w => dispositionScopeCurrent(l, w)
         and decisionTreatments(w.decision).forall(i => applicableBindings(l).exists(b =>
           b.item == i and l.decisions.nth(b.decisionIndex) == w))
         and w.decision.kind == d.kind and w.decision.report == d.report
         and w.decision.actor == d.actor and w.decision.basis == d.basis
-        and w.decision.evidence == d.evidence).length() == 0
+        and w.decision.evidence == d.evidence).length() == 0)
 
   pure def applyReconcile(l: Ledger, p: ReconciliationPolicy, d: Decision): Ledger = {
     val w: DecisionWitness = {
@@ -73,6 +78,7 @@ module coreLogicReconciliation {
       contractQualified: decisionContractQualified(p, d),
       coverageQualified: decisionCoverageQualified(l, d), evidenceQualified: decisionEvidenceQualified(p, d),
       supersessionQualified: decisionSupersessionsQualified(l, d), rulesAtDecision: p.registeredRules,
+      bindingsBefore: historicalBindings(l.decisions), withdrawalsAtDecision: p.withdrawals,
     }
     val updated = { ...l, decisions: l.decisions.append(w), decisionSnapshots: l.decisionSnapshots.append(d),
       history: l.history.append({ kind: EvidenceReconciled, exec: Current(d.report.exec) }) }

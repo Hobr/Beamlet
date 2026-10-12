@@ -55,6 +55,12 @@
 | replayBlockedByRuleRetirement | commandHandlingSound | 23 | 1 |
 | retirementClearsDisposition | ordinaryRuleRetirementSound | 22 | 1 |
 | retirementBumpsJudgmentRevision | ordinaryRuleRetirementSound | 22 | 1 |
+| withdrawalResurrectsOldTreatment | withdrawalScopeSound | 28 | 1 |
+| withdrawalOverstepsScope | commandExecutionMatchesRequest | 27 | 1 |
+| withdrawalWithoutRevision | judgmentRevisionSound | 27 | 1 |
+| uncheckedWithdrawalBasis | withdrawalScopeSound | 27 | 1 |
+| withdrawalCreatesOutcome | withdrawalCommandsNonterminal | 27 | 1 |
+| withdrawalDeletesEvidence | reconciledEvidencePreserved | 27 | 1 |
 
 ### duplicateOutcome
 
@@ -301,6 +307,37 @@
 - 同一合法前缀中, 普通退役没有新增判断材料或改变当前处置.
 - 错误规则递增 Judgment Revision, 同样伪造 durableUnchanged=true.
 - ordinaryRuleRetirementSound 从实际前后版本检出误增; judgmentRevisionSound 也独立检出版本与判断变化链不一致.
+
+### withdrawalResurrectsOldTreatment
+
+- 合法前缀中 D0 三报告排除, D1 显式取代其中两报告, 随后合法撤销 D1 的两报告范围; D0 只有范围外第三报告继续有效.
+- 错误规则删除 D1 的历史取代链接, 把撤销误做历史回退; D0 的两项旧排除重新出现, 原报告/命令/撤销记录保留.
+- withdrawalScopeSound 对照撤销接受时独立绑定快照与实际前缀, 检出历史回退; decisionsImmutable 和请求/决定一致性也不允许改写 D1 的链接.
+
+### withdrawalOverstepsScope
+
+- 请求只撤销 D1 的 success1 范围, 错误规则实际撤销其两报告, 却按原部分请求保存命令.
+- commandExecutionMatchesRequest 检出作用范围改义; 范围外本应保留的 disputedFailure 采用绑定被错误删除.
+
+### withdrawalWithoutRevision
+
+- 错误规则合法保存撤销关系与命令, 却保留原判断版本和变化链.
+- judgmentRevisionSound 检出实际判断材料已改变但未递增版本; 这会让其他在途审查误以为仍然当前.
+
+### uncheckedWithdrawalBasis
+
+- 明确撤销引用结构本身有效, 但接受时可信策略没有核验该撤销范围/依据.
+- 错误规则把 contractQualified 伪造为 true. withdrawalScopeSound 检查实际 withdrawalsAtDecision, 不接受仅靠布尔标志掩盖的未核验撤销.
+
+### withdrawalCreatesOutcome
+
+- 错误规则在撤销时同时提交 Succeeded, 原命令结果因此包含终结 Outcome.
+- withdrawalCommandsNonterminal 检出“撤销就是成功”; 原终结资格和命令结果检查也保持独立.
+
+### withdrawalDeletesEvidence
+
+- 错误规则保存撤销关系后删除原成功 Report, 把撤销当前处置误作清除原始证据.
+- reconciledEvidencePreserved 检出接受时原报告丢失; 撤销后必须仍能重新判断原始证据.
 
 完整 ITF 由 [Mix 检查器](../../tools/beamlet/quint_checks.ex) 写入日志目录. 全部复跑:
 

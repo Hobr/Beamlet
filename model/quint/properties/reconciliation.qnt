@@ -29,7 +29,8 @@ module corePropertiesReconciliation {
   val conflictCoverageSound = authority.durable.decisions.foldl(true, (ok, w) => {
     val required = w.acceptedReports.filter(r => w.acceptedBase.attempts.get(r.exec).conflict)
     ok and w.coverageQualified and w.evidenceQualified
-      and (if (w.decision.evidence.size() == 0) required.size() == 0
+      and (if (w.decision.kind == WithdrawDisposition) w.decision.evidence.size() == 0
+        else if (w.decision.evidence.size() == 0) required.size() == 0
         else evidenceReports(w.decision) == required.union(Set(w.decision.report))
           and evidenceReports(w.decision).size() == w.decision.evidence.size())
   })
@@ -38,7 +39,7 @@ module corePropertiesReconciliation {
   val supersessionLinksSound = {
     val checked = authority.durable.decisions.foldl(
       { valid: true, bindings: Set(), index: 0 }, (s, w) => {
-        val reports = decisionTreatments(w.decision).map(i => i.report)
+        val reports = decisionAffectedReports(w.decision)
         val refs = w.decision.supersedes
         val covered = s.bindings.forall(b => reports.contains(b.item.report) implies
           refs.exists(r => r.decisionIndex == b.decisionIndex and r.reports.contains(b.item.report)))

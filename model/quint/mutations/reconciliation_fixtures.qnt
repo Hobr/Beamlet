@@ -17,7 +17,7 @@ module reconciliationMutationFixtures {
   pure val querySuccess: Report = { id: 3, exec: 1, kind: Success, origin: ByQuery }
 
   pure val policy: ReconciliationPolicy = {
-    operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(success1), resolutions: Set(),
+    operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(success1), resolutions: Set(), withdrawals: Set(),
   }
 
   action readyInit = init.expect(safety)

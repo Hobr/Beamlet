@@ -5,7 +5,9 @@ defmodule Beamlet.QuintChecks do
   @tests "model/quint/beamletCore_test.qnt"
   @conflicts "model/quint/beamletConflicts_test.qnt"
   @mutations "model/quint/beamletCore_mutations_test.qnt"
-  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test)
+  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test)
+  @withdrawal_mutations ~w(withdrawalResurrectsOldTreatment withdrawalOverstepsScope withdrawalWithoutRevision
+    uncheckedWithdrawalBasis withdrawalCreatesOutcome withdrawalDeletesEvidence)
   @rule_mutations ~w(ruleVersionIgnored ruleConditionsFromOtherVersion automaticRequestVersionRefreshed
     historicalRuleReinterpreted replayBlockedByRuleRetirement retirementClearsDisposition retirementBumpsJudgmentRevision)
   @core_mutations ~w(duplicateOutcome overwriteOutcome reviveExpiredLease negativeQueryRetry
@@ -132,7 +134,11 @@ defmodule Beamlet.QuintChecks do
   defp jobs(_config, "mutations") do
     Enum.map(@core_mutations, &{:mutation, &1, @mutations}) ++
       Enum.map(@conflict_mutations, &{:mutation, &1, @conflicts}) ++
-      Enum.map(@rule_mutations, &{:mutation, &1, "model/quint/beamletRules_mutations_test.qnt"})
+      Enum.map(@rule_mutations, &{:mutation, &1, "model/quint/beamletRules_mutations_test.qnt"}) ++
+      Enum.map(
+        @withdrawal_mutations,
+        &{:mutation, &1, "model/quint/beamletWithdrawals_mutations_test.qnt"}
+      )
   end
 
   defp jobs(config, "simulate") do
@@ -252,7 +258,21 @@ defmodule Beamlet.QuintChecks do
               ~w(retiredDispositionUsedWitness retirementBindingPreservedWitness commandReplayReached rejectedCommandStoredReached)
             )
 
-    core ++ prefixes ++ primitives ++ commands ++ conflicts ++ rules ++ retirements
+    withdrawals =
+      for init <- ~w(withdrawalPendingInit withdrawnInit partiallyWithdrawnInit),
+          do:
+            simulation(
+              "withdrawals-#{init}",
+              "model/quint/beamletWithdrawals.qnt",
+              "beamletWithdrawals",
+              init,
+              "step",
+              "safety",
+              config.directed_samples,
+              ~w(withdrawalWitness renewedJudgmentWitness commandReplayWitness conflictFailureWitness)
+            )
+
+    core ++ prefixes ++ primitives ++ commands ++ conflicts ++ rules ++ retirements ++ withdrawals
   end
 
   defp test_job(file, main),

@@ -6,6 +6,8 @@ module conflictScenarios {
   export conflictAllExcludedTests.*
   import conflictSupersessionTests.* from "./scenarios/conflicts/supersession_test"
   export conflictSupersessionTests.*
+  import conflictWithdrawalTests.* from "./scenarios/conflicts/withdrawal_test"
+  export conflictWithdrawalTests.*
   import conflictMutations.* from "./mutations/conflicts"
   export conflictMutations.*
 }

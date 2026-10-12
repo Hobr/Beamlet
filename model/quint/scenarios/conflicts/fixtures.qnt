@@ -44,7 +44,7 @@ module conflictFixtures {
   pure val policy: ReconciliationPolicy = {
     operators: Set(1), registeredRules: Set(rule1v1, rule2v1, rule4v1, rule5v1), excludable: Set(success1),
     resolutions: Set(excludeOldConflict, acceptOldConflict, failCurrentConflict, resolveBothConflicts,
-      excludeAllConflict, excludeAllBoth, excludeAllAcross, failWithUnknownOld),
+      excludeAllConflict, excludeAllBoth, excludeAllAcross, failWithUnknownOld), withdrawals: Set(),
   }
 
   // Trusted ingress boundary, deliberately separate from resource-generated queryExternal.

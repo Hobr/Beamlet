@@ -9,7 +9,7 @@ module beamletReconciliation {
   pure val firstSuccess: Report = { id: 2, exec: 1, kind: Success, origin: ByWorker(firstToken) }
   // Checked-contract premise for this example, not proof of real irrelevance.
   pure val policy: ReconciliationPolicy = {
-    operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(firstSuccess), resolutions: Set(),
+    operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(firstSuccess), resolutions: Set(), withdrawals: Set(),
   }
 
   action reconciliationStep = stepWithReconciliation(policy)
