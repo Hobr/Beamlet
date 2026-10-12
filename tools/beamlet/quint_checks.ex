@@ -7,7 +7,8 @@ defmodule Beamlet.QuintChecks do
   @mutations "model/quint/beamletCore_mutations_test.qnt"
   @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test)
   @withdrawal_mutations ~w(withdrawalResurrectsOldTreatment withdrawalOverstepsScope withdrawalWithoutRevision
-    uncheckedWithdrawalBasis withdrawalCreatesOutcome withdrawalDeletesEvidence)
+    uncheckedWithdrawalBasis withdrawalCreatesOutcome withdrawalDeletesEvidence
+    withdrawalReplayRetargetsNewDisposition commandIdentitySplitByOperationKind withdrawalReplyBeforeCommit)
   @rule_mutations ~w(ruleVersionIgnored ruleConditionsFromOtherVersion automaticRequestVersionRefreshed
     historicalRuleReinterpreted replayBlockedByRuleRetirement retirementClearsDisposition retirementBumpsJudgmentRevision)
   @core_mutations ~w(duplicateOutcome overwriteOutcome reviveExpiredLease negativeQueryRetry
@@ -259,7 +260,8 @@ defmodule Beamlet.QuintChecks do
             )
 
     withdrawals =
-      for init <- ~w(withdrawalPendingInit withdrawnInit partiallyWithdrawnInit),
+      for init <-
+            ~w(withdrawalPendingInit withdrawnInit partiallyWithdrawnInit renewedWithdrawalInit),
           do:
             simulation(
               "withdrawals-#{init}",
@@ -269,7 +271,7 @@ defmodule Beamlet.QuintChecks do
               "step",
               "safety",
               config.directed_samples,
-              ~w(withdrawalWitness renewedJudgmentWitness commandReplayWitness conflictFailureWitness)
+              ~w(withdrawalWitness renewedJudgmentWitness commandReplayWitness conflictFailureWitness withdrawalOriginalReplayWitness crossKindIdentityConflictWitness)
             )
 
     core ++ prefixes ++ primitives ++ commands ++ conflicts ++ rules ++ retirements ++ withdrawals

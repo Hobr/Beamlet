@@ -1,4 +1,4 @@
-// Q76 scoped withdrawal simulation. Normal entry imports only the unbound shared fixture.
+// Q76-Q77 scoped withdrawal and durable-command simulation. Normal entry imports only the unbound shared fixture.
 module beamletWithdrawals {
   import conflictWithdrawalFixtures(WORKERS = Set(1, 2), EXECUTIONS = Set(1, 2),
     REPORT_IDS = Set(1, 2, 3, 4), CLOCK_VALUES = 0.to(6), MAX_INCARNATION = 2,
@@ -9,10 +9,13 @@ module beamletWithdrawals {
   action withdrawalPendingInit = scenario::withdrawalPendingInit
   action withdrawnInit = scenario::withdrawnInit
   action partiallyWithdrawnInit = scenario::partiallyWithdrawnInit
+  action renewedWithdrawalInit = scenario::renewedWithdrawalInit
   action step = scenario::withdrawalStep
   val safety = scenario::commandSafety
   val withdrawalWitness = scenario::withdrawalWitness
   val renewedJudgmentWitness = scenario::renewedJudgmentWitness
   val commandReplayWitness = scenario::commandReplayReached
   val conflictFailureWitness = scenario::conflictFailureWitness
+  val withdrawalOriginalReplayWitness = scenario::withdrawalOriginalReplayWitness
+  val crossKindIdentityConflictWitness = scenario::crossKindIdentityConflictWitness
 }

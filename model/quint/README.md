@@ -1,6 +1,6 @@
 # Beamlet 核心 Safety 模型
 
-状态: 首个有界可执行规格. 来源为 [RFC Q1-Q76](../rfc/0001-core-boundaries.md) 与三个 SPEC 草案.
+状态: 首个有界可执行规格. 来源为 [RFC Q1-Q77](../rfc/0001-core-boundaries.md) 与三个 SPEC 草案.
 模型收窄选择不自动成为产品决策. 尚无 Runtime/Ecto 实现代码; Mix 项目仅管理规格验证工具.
 
 ## 文件与模型边界
@@ -14,7 +14,7 @@
   个故意错误规则位于 `mutations/`, 从合法前缀产生可定位的反例. 不属于正常 step.
 - [beamletReconciliation.qnt](beamletReconciliation.qnt): Q63-Q70 的有界协调扩展,
   为核心动作提供受控的示例权限与契约输入; reconciliationStep 检查领域原语, commandStep 加入命令请求、原子处理与重投协议.
-- [beamletConflicts_test.qnt](beamletConflicts_test.qnt): Q71-Q76 防御性冲突、取代与撤销测试入口, 聚合 69 个正常场景及
+- [beamletConflicts_test.qnt](beamletConflicts_test.qnt): Q71-Q77 防御性冲突、取代与撤销测试入口, 聚合 81 个正常场景及
   14 个故意错误规则; 正常测试与 mutation 使用不同实例.
 - [beamletConflicts.qnt](beamletConflicts.qnt): 冲突抽样入口, 只导入共享 fixture, 不导入测试或 mutation.
   使用明确合法前缀和 conflictSafety (即核心 commandSafety) 检查.
@@ -23,10 +23,12 @@
   [retirement_test.qnt](scenarios/repeating/retirement_test.qnt), 汇总在 repeatingTests.
 - [beamletRules_mutations_test.qnt](beamletRules_mutations_test.qnt): 五个版本错误及两个退役错误的具体入口, 错误动作位于
   [mutations/rules.qnt](mutations/rules.qnt) 与 [mutations/retirement.qnt](mutations/retirement.qnt).
-- [beamletWithdrawals.qnt](beamletWithdrawals.qnt): Q76 范围撤销抽样入口, 只导入共享 fixture; 22 个新确定场景位于
-  [withdrawal_test.qnt](scenarios/conflicts/withdrawal_test.qnt), 汇总在 conflictTests.
-- [beamletWithdrawals_mutations_test.qnt](beamletWithdrawals_mutations_test.qnt): 六个故意错误规则入口; 实际错误动作位于
-  [mutations/withdrawal.qnt](mutations/withdrawal.qnt).
+- [beamletWithdrawals.qnt](beamletWithdrawals.qnt): Q76-Q77 范围撤销与命令抽样入口, 只导入共享 fixture; 22
+  个撤销场景位于 [withdrawal_test.qnt](scenarios/conflicts/withdrawal_test.qnt), 12 个命令场景位于
+  [withdrawal_commands_test.qnt](scenarios/conflicts/withdrawal_commands_test.qnt), 汇总在 conflictTests.
+- [beamletWithdrawals_mutations_test.qnt](beamletWithdrawals_mutations_test.qnt): 九个故意错误规则入口; 实际错误动作位于
+  [mutations/withdrawal.qnt](mutations/withdrawal.qnt) 与
+  [mutations/withdrawal_commands.qnt](mutations/withdrawal_commands.qnt).
 - [counterexamples.md](counterexamples.md): 已读取 ITF 后记录的违规前后状态与复现方式.
 - [Mix task](../../tools/mix/tasks/beamlet.check.ex) 与 [Quint 检查器](../../tools/beamlet/quint_checks.ex):
   类型检查、正常场景、抽样及预期反例检查. 直接调用 Quint, 不调用 shell 脚本; 完整日志与 ITF 写入临时目录或指定目录.
@@ -271,7 +273,8 @@ invalidLeases 是独立历史见证, leaseValid 不使用它作第二重屏障; 
     也分别因实际绑定丢失/版本误增被检出. 观察不会要求后来新证据或显式取代后仍保持同一绑定.
 
 24. 当前普通退役抽象不在每个 Intent 追加 History; 本轮不规定注册表操作的全局审计存储. Q75 检查点尚未建模显式撤销; Q76
-    已增加判断语义的抽象例子, 但具体权限、理由、范围表示、原子性和重复提交接口仍待决议, 不把普通退役动作作为撤销接口.
+    已增加判断语义的抽象例子, Q77 确认撤销复用命令身份/原结果重投及首次接受原子保存语义.
+    具体权限、理由、范围表示、事务实现和重复提交接口仍未实现, 不把普通退役动作作为撤销接口.
 
 25. Q76 用 WithdrawDisposition 与 VerifiedWithdrawal 抽象范围撤销, 复用 Decision.supersedes
     明确引用当前所有者及报告范围. decisionTreatments 对撤销返回空集, advanceBindings 只删除引用绑定,
@@ -284,7 +287,9 @@ invalidLeases 是独立历史见证, leaseValid 不使用它作第二重屏障; 
     主报告须位于撤销范围且来自已存合法证据. Closed 新请求拒绝, 已处理请求仍按当前读取权限返回原结果; 不批准产品在 Closed
     上追加历史撤销的最小规则. 原始报告、旧决定、命令与结果不变.
 
-27. 模型复用协调 Command ID、revision、权限与审计/拒绝协议来观察撤销效应, 不批准具体撤销 API、专属权限或 SQL schema.
+27. Q77 已确认撤销复用协调 Command ID、审查 revision、原结果重投和审计/拒绝规则, 共用同一 Intent 身份域.
+    模型沿用同一处理动作与已核验输入, 不批准具体撤销 API、专属权限或 SQL schema; 独立操作种类在模型 Decision 中编码,
+    不是要求产品沿用该类型表示.
     bindingsBefore 与 withdrawalsAtDecision 保存独立观察快照, 用于 properties/withdrawal.qnt
     核对接受时当前目标和作用范围, 不作执行守卫. 性质对撤销前缀的实际绑定检查“原绑定减明确范围”, 并核对指定依据; 不只依赖
     contractQualified/supersessionQualified 布尔见证. 撤销本身无 Outcome, 也不修改重试策略/Start Authorization.
@@ -337,8 +342,8 @@ mix test
 
 默认三个核心实例各 5,000 条、最多 100 步; 五组核心合法前缀各 1,000 条, 协调原语扩展的普通 init 与合法前缀各 1,000 条;
 命令协议的普通 init 与三个合法前缀各 1,000 条, 防御性冲突扩展六个合法前缀各 1,000 条 (含 allExcludedInit 与
-partiallySupersededInit), 规则版本扩展三个合法前缀、普通退役扩展三个合法前缀及范围撤销扩展三个合法前缀各 1,000 条,
-均最多 100 步. 默认合计 41,000 条轨迹. 使用 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads
+partiallySupersededInit), 规则版本扩展三个合法前缀、普通退役扩展三个合法前缀及范围撤销扩展四个合法前缀各 1,000 条,
+均最多 100 步. 默认合计 42,000 条轨迹. 使用 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads
 控制每个 Rust 模拟进程的线程上限, --log-dir 指定日志目录. 未指定 --threads 时取 max(div(System.schedulers_online(),
 jobs), 1), 例如 16 个在线 scheduler、jobs=4 时默认每进程 4 线程; 这是保守预算, 不是最优性能保证,
 也不保证准确反映所有容器 CPU 配额. typecheck 与 test 不接收线程参数; 单样本 mutation 反例固定使用 1 个模拟线程. --phase
@@ -667,6 +672,48 @@ Outcome 的原结果, 由确定场景与性质检查.
 独立绑定/依据见证不是执行屏障或获批 SQL 字段, 真实撤销授权、依据真实性、注册表治理、精确冲突相关性和 SQL 并发仍未验证.
 完整抽样不是穷尽证明或 Liveness, 不证明外部效果恰好一次. 开发期的一次整组短轨迹工具调用限时终止, 不计作通过或不变量违反;
 新撤销入口另经 Mix 调用实际短轨迹, 后以完整检查为最终记录.
+
+Q77 撤销命令检查点: mix beamlet.check --log-dir /tmp/beamlet-quint-q77-complete 完整通过. 十个类型入口覆盖全部 70 个
+Quint 文件, 185/185 正常场景 (23 + 2 + 79 + 81)、60/60 mutation 检测场景和实际反例通过.
+最终类型与正常场景分别再次通过 /tmp/beamlet-quint-q77-final-types、/tmp/beamlet-quint-q77-final-tests.
+全部 60 份 ITF 已读取, 五组状态变量及每条合法前缀步数与反例表核对; 三个新反例另外独立核对原请求、处理前后账本及显式绑定:
+
+| 新反例 | 合法前缀步数 | 实际违规 |
+| --- | ---: | --- |
+| withdrawalReplayRetargetsNewDisposition | 31 | 原 ID 3 请求仍指向 D1/版本 10, 错误执行改指 D3/版本 12; 实际版本 12→13, 决定/命令各 4→5, D3 绑定 3→1 |
+| commandIdentitySplitByOperationKind | 29 | 同 ID 3 同时保存撤销和全部排除两种命令, 版本 11→12、决定/命令各 3→4 |
+| withdrawalReplyBeforeCommit | 27 | 原账本不变, 撤销关系/结果/审计未保存却回复 CommandCommitted; 判断版本仍为 10 |
+
+本轮没有更改通用命令的首次处理/重投守卫或新增状态变量: 既有 commandRecordsUnique、commandExecutionMatchesRequest、
+commandHandlingSound、commandRepliesSound、commandEffectsAtomic、judgmentRevisionSound 等性质已覆盖 Q77,
+以新确定场景与受控错误检验其适用于撤销. 新增 12 个正常场景覆盖 W 撤销后新处置形成时的原结果重投、回复丢失/重启、
+撤销依据或提交权限不再满足但仍可读、两种操作互换身份 (包括已保存拒绝)、改目标/版本内容冲突、依据改善仍返回原拒绝、
+使用新身份重新提交、首次过期审查拒绝及关系/结果/审计/版本共同保存. 具体撤销权限与 Closed 历史纠正仍待决议.
+
+30 组正常抽样共 42,000 条轨迹, 每条最多 100 步, 输入 seed 42, Quint 0.32.0 / Rust,
+jobs=4、threads=4、mutation_threads=1; 未发现所检查的 Safety 违规. 全部日志/ITF 在 /tmp/beamlet-quint-q77-complete,
+汇总日志 /tmp/beamlet-quint-q77-complete.log, 配置/耗时在 run-info.txt / timings.tsv. 十个 Mix 工具测试、格式、编译和
+主动文档/Elixir 诊断通过; Quint 无 LSP, 以实际 CLI 验证. 开发期的定向筛选误匹配非测试定义、witness 参数错误及限时终止
+不作为 Safety 违规、预期反例或完整通过; 以最终检查为准.
+
+四个撤销前缀各 1,000 条; 下列为见证命中轨迹数, 可重叠, 均不是事件次数或穷尽覆盖:
+
+| 撤销前缀 | 完整 W 的原结果重投 | 协调与撤销的身份冲突 |
+| --- | ---: | ---: |
+| withdrawalPendingInit | 24 | 309 |
+| withdrawnInit | 188 | 743 |
+| partiallyWithdrawnInit | 0 | 759 |
+| renewedWithdrawalInit | 197 | 722 |
+
+withdrawalOriginalReplayWitness 只计具体完整 W/withdrawalRecord 的原结果读取, 不是所有撤销请求; 部分前缀保存同 ID
+不同内容, 所以完整 W 应返回身份冲突而非该原结果, 零命中不作为完整 W 重投覆盖. crossKindIdentityConflictWitness
+要求已接受原命令与 请求恰好一侧为 WithdrawDisposition, 不把普通采用/排除之间的差异计入;
+领域拒绝占用共同身份由确定场景覆盖. renewedWithdrawalInit 的撤销与后续新判断均在初始化已成立, 不作新动作覆盖.
+该组原结果重投命中不要求新处置之后始终适用; 重投不转向仍适用新处置的因果关系由
+withdrawalReplayAfterRenewedDispositionDoesNotRetargetTest 独立核对.
+
+70 个 Quint 文件全部不超过 200 行, 导入图无环, 普通入口不导入测试/mutation, 共用未绑定 fixture 并只在外层绑定参数.
+这是有界 Safety 抽样和具体错误检测, 不证明穷尽正确性、Liveness、真实鉴权/撤销依据核验、SQL 原子实现或外部效果恰好一次.
 
 Q59/Q60 检查点的定向见证运行同样使用输入 seed 42, 每组 1,000 条、最多 100 步. 见证计数是命中目标的轨迹数,
 不是事件总次数或统计证明:

@@ -58,8 +58,8 @@ _Avoid_: 撤销既有处置, 删除规则历史, Outcome 撤回
 **Disposition Withdrawal**: 明确撤除指定范围的当前证据处置, 使该范围重新等待判断, 而不恢复更早被取代的处置.
 它不删除历史决定、改写原命令结果或撤回已有 Outcome. _Avoid_: 恢复上一版结论, 删除决定, 规则退役, Outcome 撤销
 
-**Reconciliation Command Identity**: 在一个 Intent 内标识同一协调请求的稳定身份,
-用于识别重投并定位原成功或明确领域拒绝结果. 同一身份不代表不同证据上下文下的新决定, 权限变化也不使它成为未处理请求.
+**Reconciliation Command Identity**: 在一个 Intent 内标识同一协调或处置撤销请求的稳定身份,
+用于识别重投并定位原成功或明确领域拒绝结果. 操作种类不同不产生另一身份域, 新判断或新撤销不沿用已处理身份.
 _Avoid_: Submission Key, Report ID, 永久协调权限
 
 **Judgment Revision**: 标识某个 Intent 的判断材料与资格处于哪一版的单调编号, 用于检测审查后、提交前发生的相关变化.

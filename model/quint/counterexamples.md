@@ -63,6 +63,9 @@
 | uncheckedWithdrawalBasis | withdrawalScopeSound | 27 | 1 |
 | withdrawalCreatesOutcome | withdrawalCommandsNonterminal | 27 | 1 |
 | withdrawalDeletesEvidence | reconciledEvidencePreserved | 27 | 1 |
+| withdrawalReplayRetargetsNewDisposition | commandHandlingSound | 31 | 1 |
+| commandIdentitySplitByOperationKind | commandRecordsUnique | 29 | 1 |
+| withdrawalReplyBeforeCommit | commandRepliesSound | 27 | 1 |
 
 ## duplicateOutcome
 
@@ -381,6 +384,27 @@
 
 - 错误规则保存撤销关系后删除原成功 Report, 把撤销当前处置误作清除原始证据.
 - reconciledEvidencePreserved 检出接受时原报告丢失; 撤销后必须仍能重新判断原始证据.
+
+### withdrawalReplayRetargetsNewDisposition
+
+- 合法前缀已保存 D0、D1、撤销 W 和新处置 D3; 原 W 的重投请求明确在途, 仍引用 D1、审查版本 10.
+- 错误规则重新指定 D3 两份报告、把审查版本改为 12, 再以同 ID 3 执行. 新范围在给定可信核验事实下可以撤销,
+  但这不是原请求. 实际版本 12→13、决定/命令各 4→5, D3 当前绑定 3→1; 原 reports/Outcome 不变.
+- commandHandlingSound 检出已知原请求处理却改变 Durable 并返回改义的新结果; 请求身份唯一性也被破坏.
+
+### commandIdentitySplitByOperationKind
+
+- 合法前缀已保存 ID 3 的撤销结果, 随后同 ID 的协调请求明确到达. 新协调的证据/契约/版本本身合格,
+  但该身份已被撤销占用.
+- 错误规则把另一操作种类的已占用身份当作新身份, 绕过共同身份查找并接受请求. 同 ID 3 出现 WithdrawDisposition /
+  ExcludeAllEvidence 两份命令记录, 版本 11→12, 决定/命令各 3→4.
+- commandRecordsUnique 检出共同身份域破坏; 权威处理也应返回身份冲突而非重新执行.
+
+### withdrawalReplyBeforeCommit
+
+- 原撤销请求明确在途, 但只有两个旧决定及命令; W 的关系/原结果/审计尚未保存, 版本为 10.
+- 错误规则账本完全不变却发送 CommandCommitted(withdrawalRecord). commandRepliesSound 检出回复中原记录不存在;
+  不是靠解析错误或无效退出码冒充反例.
 
 完整 ITF 由 [Mix 检查器](../../tools/beamlet/quint_checks.ex) 写入日志目录. 全部复跑:
 

@@ -8,6 +8,8 @@ module conflictScenarios {
   export conflictSupersessionTests.*
   import conflictWithdrawalTests.* from "./scenarios/conflicts/withdrawal_test"
   export conflictWithdrawalTests.*
+  import conflictWithdrawalCommandTests.* from "./scenarios/conflicts/withdrawal_commands_test"
+  export conflictWithdrawalCommandTests.*
   import conflictMutations.* from "./mutations/conflicts"
   export conflictMutations.*
 }

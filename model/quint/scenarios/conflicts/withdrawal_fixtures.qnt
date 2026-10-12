@@ -16,7 +16,7 @@ module conflictWithdrawalFixtures {
     ...policy, withdrawals: Set(withdrawD1, withdrawSuccess, withdrawKeep, withdrawD0, withdrawBothOwners),
   }
 
-  // Model-only shape, reusing command transport; a public withdrawal API remains undecided.
+  // Q77 shares command identity and replay semantics; API/encoding/withdrawal permissions remain undecided.
   pure val withdrawalCommand: ReconciliationCommand = {
     id: 3, decision: {
       kind: WithdrawDisposition, report: success1, actor: Operator(1), basis: VerifiedWithdrawal,
@@ -48,6 +48,22 @@ module conflictWithdrawalFixtures {
       ExcludeAllEvidence, excludeAllAcross, Operator(1)),
   }
 
+  action renewedWithdrawalInit = withdrawnInit
+    .then(sendReconciliationCommand(renewedAllExclusion)).expect(commandSafety)
+    .then(receiveReconciliationCommand(withdrawalPolicy, renewedAllExclusion)).expect(commandSafety)
+
+  def coordinationUsingWithdrawalId: ReconciliationCommand = { ...renewedAllExclusion, id: 3 }
+  pure val withdrawalUsingCoordinationId: ReconciliationCommand = { ...withdrawalCommand, id: 2 }
+
+  val withdrawalOriginalReplayWitness = external.commandHandling.select(w =>
+    w.request == withdrawalCommand and w.previous.length() > 0
+      and w.reply == CommandCommitted(withdrawalRecord)).length() > 0
+  val crossKindIdentityConflictWitness = external.commandHandling.select(w =>
+    w.previous.length() > 0
+      and ((w.previous.head().command.decision.kind == WithdrawDisposition)
+        != (w.request.decision.kind == WithdrawDisposition))
+      and w.reply == CommandIdentityConflict(w.request)).length() > 0
+
   val withdrawalWitness = withdrawalReached
   val renewedJudgmentWitness = authority.durable.decisions.select(w =>
     w.decision.kind == WithdrawDisposition).length() > 0
@@ -57,5 +73,7 @@ module conflictWithdrawalFixtures {
     stepWithCommands(withdrawalPolicy), offerAnyCheckedEvidence, proposeConflictCommand,
     sendReconciliationCommand(withdrawalCommand), sendReconciliationCommand(partialWithdrawalCommand),
     sendReconciliationCommand(renewedAllExclusion),
+    sendReconciliationCommand(coordinationUsingWithdrawalId),
+    sendReconciliationCommand(withdrawalUsingCoordinationId),
   }
 }
