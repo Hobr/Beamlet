@@ -51,7 +51,8 @@ module coreLogicReconciliation {
           implies (not(sameReportIdentity(i.report, j.report)) or i.report == j.report)
             and not((i.report.kind == Success and (j.report.kind == Failure or j.report.kind == NotExecuted))
               or (j.report.kind == Success and (i.report.kind == Failure or i.report.kind == NotExecuted))
-              or (i.report.kind == j.report.kind and i.report.kind == Success and i.report.value != j.report.value))))
+              or (i.report.kind == j.report.kind and (i.report.kind == Success or i.report.kind == Failure)
+                and i.report.value != j.report.value))))
 
       // Q72 permits no retained decisive report; judgmentKnowledge then remains unknown.
 

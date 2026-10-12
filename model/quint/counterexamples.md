@@ -406,6 +406,36 @@
 - 错误规则账本完全不变却发送 CommandCommitted(withdrawalRecord). commandRepliesSound 检出回复中原记录不存在;
   不是靠解析错误或无效退出码冒充反例.
 
+## 正常闭环补全的七条反例
+
+以下实际 ITF 来自 `/tmp/beamlet-normal-completion-full`, Quint 0.32.0 / Rust,
+输入 seed 42、max-samples=1、max-steps=1、mutation_threads=1.
+每份 ITF 已解码并核对违规前后的实际记录, 恰好包含原五组变量与新 usage 六组状态.
+前缀步数按 `states.length - 2` 核对; 先有合法前缀, 再执行一条故意错误转换.
+
+| 模块 | 被破坏性质 | 合法前缀步数 | 核对的实际变化 |
+| --- | --- | ---: | --- |
+| normalWrongResultValue | outcomeValuesEvidenced | 10 | 原报告 value=1, Outcome/firstOutcome/commit 均伪造为 9, 仍被独立业务值检查检出 |
+| normalDefinitionOverwritten | submissionIdentitySound | 2 | 目录定义 input 从 1 改为 9, 独立 creation 原定义仍为 1 |
+| normalCallbackBindingLost | handlerLaunchesSound | 8 | 已外部调用后持久 CallbackBinding 被改为 NoCompletion, launch 快照保留原关联 |
+| normalExpiredIdempotencyRetry | retryContractsSound | 12 | 契约时间 4、窗口只到 3, current 仍错误从 Execution 1 切换到 2 |
+| normalSuccessNotAtomic | normalAcceptanceAtomic | 10 | 成功报告入账, 但 Outcome 未保存且 Intent 仍 Open |
+| normalContextChanged | handlerLaunchesSound | 8 | Handler context 从 1 改为 9, 原 launch context 保持 1 |
+| normalFailureNotAtomic | normalAcceptanceAtomic | 10 | 失败报告入账但未终结, 伪造 stop=false; 原定义仍为 StopOnFailure, 独立策略重算检出 |
+
+错误结果反例同时改写 firstOutcome 与 commit, 不能仅依赖首值相等来检出;
+失败反例同时伪造停止摘要, 不能仅相信该布尔值. 其余六十条反例仍从原专用入口复跑,
+新 mutation 不进入正常 profile, 不把这些故意违规描述为正常模型发现的 bug.
+
+单条新增反例可复现为:
+
+```sh
+quint run model/quint/beamletNormalUse_mutations_test.qnt --main normalWrongResultValue \
+  --init mutantInit --step mutantStep --invariant mutantInvariant \
+  --max-samples 1 --max-steps 1 --seed 42 --backend rust --n-threads 1 \
+  --out-itf /tmp/normal-wrong-result.itf.json
+```
+
 完整 ITF 由 [Mix 检查器](../../tools/beamlet/quint_checks.ex) 写入日志目录. 全部复跑:
 
 ```console

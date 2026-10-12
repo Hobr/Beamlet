@@ -7,9 +7,12 @@
 已确认首版对无法安全解决的 Unknown/冲突保持 Open、提供事实读取, 暂不提供人工裁定接口.
 现有模型仍是组合参考规格, 尚未按核心/命令/治理实际隔离; 不因这里有验证场景就要求首版交付全部能力.
 [依赖切割计划](dependency-cut-plan.md) 已列出实际耦合和分步验证要求, 尚未执行物理拆分.
-当前先完成 [正常使用覆盖与 SPEC 一致性审查](normal-use-audit.md): 既有类型/185 场景回归通过, 执行主路径可达,
-但独立回调、稳定提交身份/业务值、Handler 条件尚有覆盖缺口, 不能宣布首版模型完整. 补正常闭环优先于依赖切割.
-Q78 授权区分已记入 RFC/SPEC, 尚未新增模型验证; 本次范围提案不改变 Q77 验证基线.
+[正常使用审查](normal-use-audit.md) 发现的独立回调、稳定提交身份/业务值、Handler 条件与失败原子接受缺口,
+已增加 [正常闭环补全模型](normal-use-coverage.md), 复用同一执行账本并增加提交/契约抽象与正常 profile.
+原 Q77 的 185 场景/60 反例保留, 新增 40 个正常场景与七个 mutation.
+当前检查点: 13 个类型入口、225 个正常场景、67 条预期反例通过;
+正式回归 46,000 条及额外 seed 的 10,000 条抽样未观察到所检查不变量违规, 具体配置/覆盖见补全记录.
+Q78 授权区分仍未新增模型验证; 正常闭环补全不等于工程实现完成或核心/治理依赖隔离完成.
 
 ## 文件与模型边界
 
@@ -37,6 +40,10 @@ Q78 授权区分已记入 RFC/SPEC, 尚未新增模型验证; 本次范围提案
 - [beamletWithdrawals_mutations_test.qnt](beamletWithdrawals_mutations_test.qnt): 九个故意错误规则入口; 实际错误动作位于
   [mutations/withdrawal.qnt](mutations/withdrawal.qnt) 与
   [mutations/withdrawal_commands.qnt](mutations/withdrawal_commands.qnt).
+- [beamletNormalUse.qnt](beamletNormalUse.qnt): 正常闭环入口, `normalUseAnalysis` 默认使用正常 init/step/safety;
+  [normal/](normal/) 表达提交、Handler、回调、停止策略、事实读取与发现; 增加一组 usage 状态.
+  [beamletNormalUse_test.qnt](beamletNormalUse_test.qnt) 聚合 40 个正常场景,
+  [beamletNormalUse_mutations_test.qnt](beamletNormalUse_mutations_test.qnt) 提供七个预期反例入口.
 - [counterexamples.md](counterexamples.md): 已读取 ITF 后记录的违规前后状态与复现方式.
 - [Mix task](../../tools/mix/tasks/beamlet.check.ex) 与 [Quint 检查器](../../tools/beamlet/quint_checks.ex):
   类型检查、正常场景、抽样及预期反例检查. 直接调用 Quint, 不调用 shell 脚本; 完整日志与 ITF 写入临时目录或指定目录.
@@ -50,6 +57,8 @@ model/quint/
 ├── beamletConflicts.qnt               # 防御性冲突抽样入口
 ├── beamletRules.qnt                   # 规则版本抽样入口
 ├── beamletWithdrawals.qnt             # 范围撤销抽样入口
+├── beamletNormalUse.qnt               # 提交到结果复用的正常闭环入口
+├── normal/                           # state / logic / actions / properties
 ├── base/
 │   ├── types.qnt                      # 领域类型、消息与独立观察记录
 │   └── state.qnt                      # 参数、五组变量、初值、init
@@ -95,6 +104,8 @@ Execution 的 generation 最多 3, query Report ID 与独立的协调 Command ID
 不复用身份. Worker 的 Pending/完成报告分别使用同来源作用域内 ID 1/2, 不代表产品已经采用这种身份结构.
 
 账本与审计列表仍可随重复消息不断增长, 因此这是参与者/身份域有界、轨迹长度受限的抽样模型, 不是有限状态空间穷尽检查.
+正常闭环入口另有最多两个提交目录项, 仅展开首个 Intent 的执行; Handler/上下文/回调关联和抽象结果值的范围见
+[补全边界](normal-use-coverage.md). 原五组状态/九参数未删除; 新入口增加第六组 usage, 原 ITF 仍为五组.
 
 ## 状态与故障前提
 
@@ -175,9 +186,9 @@ invalidLeases 是独立历史见证, leaseValid 不使用它作第二重屏障; 
    增加完整相关报告处置的有界冲突解除例子; 完整产品相关性、预算与错误策略仍未编码. 显式 Cancelled 仍可接受.
    oldSuccessAtCommit 是独立提交见证, 检查提交当刻证据, 不用未来报告追溯推翻已提交结果.
 
-3. queryExternal 代表受信来源形成证据; 不是核心直接信任第三方正文. Callback 的
-   correlation、认证、早到回调与关联持久化用抽象 Execution/grant 关联代替. 已覆盖完成先于 Pending, 尚未验证具体 Callback
-   Adapter 协议.
+3. queryExternal 代表受信来源形成证据; 不是核心直接信任第三方正文. 原核心 Callback 的
+   correlation、认证、早到回调与关联持久化用抽象 Execution/grant 关联代替. 正常入口现已增加独立 ByCallback 与
+   授权时持久 CompletionBinding, 覆盖无查询/释放 Worker 后完成及完成先于 Pending; 仍未验证具体 Callback Adapter 协议.
 
 4. Q61 已确认: Report 冲突计算保留原始证据并独立设 conflict, 保留最近有依据的生命周期/知识投影.
    defensiveConflictProjectionTest 与 conflictDoesNotClearOnNewReportTest 检查 Resolved 和 Waiting
@@ -351,13 +362,13 @@ mix test
 默认三个核心实例各 5,000 条、最多 100 步; 五组核心合法前缀各 1,000 条, 协调原语扩展的普通 init 与合法前缀各 1,000 条;
 命令协议的普通 init 与三个合法前缀各 1,000 条, 防御性冲突扩展六个合法前缀各 1,000 条 (含 allExcludedInit 与
 partiallySupersededInit), 规则版本扩展三个合法前缀、普通退役扩展三个合法前缀及范围撤销扩展四个合法前缀各 1,000 条,
-均最多 100 步. 默认合计 42,000 条轨迹. 使用 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads
-控制每个 Rust 模拟进程的线程上限, --log-dir 指定日志目录. 未指定 --threads 时取 max(div(System.schedulers_online(),
-jobs), 1), 例如 16 个在线 scheduler、jobs=4 时默认每进程 4 线程; 这是保守预算, 不是最优性能保证,
-也不保证准确反映所有容器 CPU 配额. typecheck 与 test 不接收线程参数; 单样本 mutation 反例固定使用 1 个模拟线程. --phase
-支持 all、typecheck、test、simulate、mutations. Mix 仅接受退出 1 且报告 Invariant violated 并产生非空 ITF 的预期
-mutation 结果, 不将类型错误或运行错误视为检出. 重用目录时先删除该次 mutation 的旧 ITF, 防止陈旧文件满足检查. mix test
-检查工具拒绝误报的行为; 不代替 Quint 场景与抽样.
+均最多 100 步. 原 30 组为 42,000 条轨迹, 正常闭环入口另加四组各 1,000 条, 默认合计 46,000 条轨迹. 使用
+--samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads 控制每个 Rust 模拟进程的线程上限, --log-dir
+指定日志目录. 未指定 --threads 时取 max(div(System.schedulers_online(), jobs), 1), 例如 16 个在线 scheduler、jobs=4
+时默认每进程 4 线程; 这是保守预算, 不是最优性能保证, 也不保证准确反映所有容器 CPU 配额. typecheck 与 test
+不接收线程参数; 单样本 mutation 反例固定使用 1 个模拟线程. --phase 支持 all、typecheck、test、simulate、mutations. Mix
+仅接受退出 1 且报告 Invariant violated 并产生非空 ITF 的预期 mutation 结果, 不将类型错误或运行错误视为检出.
+重用目录时先删除该次 mutation 的旧 ITF, 防止陈旧文件满足检查. mix test 检查工具拒绝误报的行为; 不代替 Quint 场景与抽样.
 
 每次运行在日志目录写入 `run-info.txt` (Quint 版本、Rust 后端、在线 scheduler 数、jobs/threads、抽样预算、seed 与阶段) 和
 `timings.tsv` (任务、阶段与运行的 passed/failed 及毫秒墙钟耗时). 重用目录时这两份报告重新生成, 不累计旧计时.

@@ -5,7 +5,9 @@ defmodule Beamlet.QuintChecks do
   @tests "model/quint/beamletCore_test.qnt"
   @conflicts "model/quint/beamletConflicts_test.qnt"
   @mutations "model/quint/beamletCore_mutations_test.qnt"
-  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test)
+  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test beamletNormalUse beamletNormalUse_test beamletNormalUse_mutations_test)
+  @normal_mutations ~w(normalWrongResultValue normalDefinitionOverwritten normalCallbackBindingLost
+    normalExpiredIdempotencyRetry normalSuccessNotAtomic normalContextChanged normalFailureNotAtomic)
   @withdrawal_mutations ~w(withdrawalResurrectsOldTreatment withdrawalOverstepsScope withdrawalWithoutRevision
     uncheckedWithdrawalBasis withdrawalCreatesOutcome withdrawalDeletesEvidence
     withdrawalReplayRetargetsNewDisposition commandIdentitySplitByOperationKind withdrawalReplyBeforeCommit)
@@ -129,11 +131,18 @@ defmodule Beamlet.QuintChecks do
 
   defp jobs(_config, "test") do
     Enum.map(~w(strictTests fencedTests repeatingTests), &test_job(@tests, &1)) ++
-      [test_job(@conflicts, "conflictTests")]
+      [
+        test_job(@conflicts, "conflictTests"),
+        test_job("model/quint/beamletNormalUse_test.qnt", "normalUseTests")
+      ]
   end
 
   defp jobs(_config, "mutations") do
-    Enum.map(@core_mutations, &{:mutation, &1, @mutations}) ++
+    Enum.map(
+      @normal_mutations,
+      &{:mutation, &1, "model/quint/beamletNormalUse_mutations_test.qnt"}
+    ) ++
+      Enum.map(@core_mutations, &{:mutation, &1, @mutations}) ++
       Enum.map(@conflict_mutations, &{:mutation, &1, @conflicts}) ++
       Enum.map(@rule_mutations, &{:mutation, &1, "model/quint/beamletRules_mutations_test.qnt"}) ++
       Enum.map(
@@ -274,7 +283,23 @@ defmodule Beamlet.QuintChecks do
               ~w(withdrawalWitness renewedJudgmentWitness commandReplayWitness conflictFailureWitness withdrawalOriginalReplayWitness crossKindIdentityConflictWitness)
             )
 
-    core ++ prefixes ++ primitives ++ commands ++ conflicts ++ rules ++ retirements ++ withdrawals
+    normal =
+      for init <- ~w(normalInit callbackRunningInit callbackReleasedInit retryPendingInit),
+          do:
+            simulation(
+              "normal-#{init}",
+              "model/quint/beamletNormalUse.qnt",
+              "normalUseAnalysis",
+              init,
+              "normalStep",
+              "normalSafety",
+              config.directed_samples,
+              ~w(submittedWitness reusedWitness callbackWitness releasedCompletionWitness readWitness retryWitness failureAtomicWitness discoveryWitness succeededReached failedReached waitingReached)
+            )
+
+    core ++
+      prefixes ++
+      primitives ++ commands ++ conflicts ++ rules ++ retirements ++ withdrawals ++ normal
   end
 
   defp test_job(file, main),

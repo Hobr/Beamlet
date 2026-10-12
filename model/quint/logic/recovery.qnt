@@ -8,22 +8,28 @@ module coreLogicRecovery {
 
   // 安全替代需要未授权,可靠且仍适用的未执行证据,或显式接受重复风险.
   // 到期,Unknown,查询 NotFound 都不能单独证明旧尝试不会继续调用.
-  pure def safeToReplace(l: Ledger, e: int): bool = {
+  pure def safeToReplaceWithEvidence(l: Ledger, e: int, idempotencyValid: bool): bool = {
     val attempt = l.attempts.get(e)
-    attempt.grant == NoGrant or judgmentKnowledge(l, e) == NotExecutedKnown or ALLOW_REPEAT
+    attempt.grant == NoGrant or judgmentKnowledge(l, e) == NotExecutedKnown or ALLOW_REPEAT or idempotencyValid
   }
 
+  pure def safeToReplace(l: Ledger, e: int): bool = safeToReplaceWithEvidence(l, e, false)
+
   // 有恢复理由与替代安全是两个条件;新的 Execution 身份必须尚未使用.
-  pure def canReplace(l: Ledger, oldExec: int, newExec: int): bool = {
+  pure def canReplaceWithEvidence(l: Ledger, oldExec: int, newExec: int, idempotencyValid: bool): bool = {
     val attempt = l.attempts.get(oldExec)
     val recoveryReason = attempt.grant == NoGrant or attempt.phase == Unknown
       or judgmentKnowledge(l, oldExec) == FailureKnown or judgmentKnowledge(l, oldExec) == NotExecutedKnown
     l.phase == Open and l.current == Current(oldExec)
-      and not(l.attempts.get(newExec).exists) and recoveryReason and safeToReplace(l, oldExec)
+      and not(l.attempts.get(newExec).exists) and recoveryReason
+      and safeToReplaceWithEvidence(l, oldExec, idempotencyValid)
   }
 
+  pure def canReplace(l: Ledger, oldExec: int, newExec: int): bool =
+    canReplaceWithEvidence(l, oldExec, newExec, false)
+
   // 原子切换 current,保留旧 grant/证据;使旧租约失效不等于撤销旧外部调用的可能性.
-  pure def applyReplace(l: Ledger, oldExec: int, newExec: int): Ledger = {
+  pure def applyReplaceWithEvidence(l: Ledger, oldExec: int, newExec: int, idempotencyValid: bool): Ledger = {
     val old = l.attempts.get(oldExec)
     val updatedOld = { ...old, lease: { ...old.lease, invalidated: true } }
     val fresh = { ...emptyAttempt, exists: true }
@@ -31,7 +37,7 @@ module coreLogicRecovery {
       l.invalidLeases.union(Set({ exec: oldExec, generation: old.lease.generation }))
       else l.invalidLeases
     val decision: RetryWitness = {
-      oldExec: oldExec, newExec: newExec, safeAtReplacement: safeToReplace(l, oldExec),
+      oldExec: oldExec, newExec: newExec, safeAtReplacement: safeToReplaceWithEvidence(l, oldExec, idempotencyValid),
     }
     val updated = { ...l, current: Current(newExec),
       attempts: l.attempts.set(oldExec, updatedOld).set(newExec, fresh),
@@ -39,6 +45,9 @@ module coreLogicRecovery {
       history: l.history.append({ kind: AttemptReplaced, exec: Current(newExec) }) }
     advanceJudgment(l, updated)
   }
+
+  pure def applyReplace(l: Ledger, oldExec: int, newExec: int): Ledger =
+    applyReplaceWithEvidence(l, oldExec, newExec, false)
 
   pure def freshQueryId(x: ExternalState, e: int, id: int): bool =
     not(x.emitted.exists(r => r.exec == e and r.origin == ByQuery and r.id == id))
