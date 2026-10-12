@@ -30,5 +30,5 @@ Quint 的整数身份, 观察快照和有界参数只服务于模型检查, 不�
 ## 验证资料
 
 - [模型覆盖与边界](quint/coverage.md): 需求到场景/性质的映射, 最近一次模型验收结果和未覆盖部分.
-- [故意错误规则](quint/counterexamples.md): 76 条 mutation 的检查目标与复现方式.
+- [故意错误规则](quint/counterexamples.md): 82 条 mutation 的检查目标与复现方式.
 - 运行日志和 ITF 由检查工具输出到临时目录或指定的 `--log-dir`, 不纳入本目录.

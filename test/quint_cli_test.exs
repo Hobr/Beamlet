@@ -109,7 +109,9 @@ defmodule Beamlet.QuintCliTest do
       Enum.split_with(commands, fn command ->
         Enum.at(command, 1) in ~w(model/quint/beamletCore.qnt model/quint/beamletExecution.qnt) or
           (Enum.at(command, 1) == "model/quint/beamletMultiIntent.qnt" and
-             Enum.member?(Enum.chunk_every(command, 2, 1, :discard), ["--init", "independentInit"]))
+             Enum.member?(Enum.chunk_every(command, 2, 1, :discard), ["--init", "independentInit"])) or
+          (Enum.at(command, 1) == "model/quint/beamletContinuation.qnt" and
+             Enum.member?(Enum.chunk_every(command, 2, 1, :discard), ["--init", "init"]))
       end)
 
     for {group, samples} <- [{core, "2"}, {directed, "3"}] do
@@ -220,6 +222,18 @@ defmodule Beamlet.QuintCliTest do
     mutants = Enum.filter(commands, &("--out-itf" in &1))
 
     for group <- [checks, tests, mutants], do: assert(group != [])
+
+    for file <-
+          ~w(beamletContinuation beamletContinuation_test beamletContinuation_mutations_test) do
+      assert Enum.any?(checks, &(Enum.at(&1, 1) == "model/quint/#{file}.qnt"))
+    end
+
+    assert Enum.any?(tests, &("--main" in &1 and "continuationTests" in &1))
+
+    assert Enum.count(
+             mutants,
+             &(Enum.at(&1, 1) == "model/quint/beamletContinuation_mutations_test.qnt")
+           ) == 6
 
     for command <- checks ++ tests, do: refute("--n-threads" in command)
     for command <- checks, do: refute("--backend" in command)

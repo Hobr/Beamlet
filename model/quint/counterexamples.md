@@ -1,6 +1,6 @@
 # 故意错误规则索引
 
-76 条 mutation 用来确认指定安全检查能检出典型错误, 不表示正常模型存在这些违规, 也不代表所有错误均已覆盖.
+82 条 mutation 用来确认指定安全检查能检出典型错误, 不表示正常模型存在这些违规, 也不代表所有错误均已覆盖.
 每条从真实转换构造的合法前缀开始, 最后执行一条故意错误转换; 正常 step 不导入这些动作.
 模型覆盖与假设见 [覆盖文档](coverage.md).
 
@@ -109,12 +109,28 @@
 按通知数量汇总的反例确有两个终态结果, 但 slot 集合只有 `{1}`, 缺少 slot 2.
 这些错误分别由指定子性质检出, 不依赖无关观察快照的不一致.
 
+## 部分结果推进: 6 条
+
+入口为 [beamletContinuation_mutations_test.qnt](beamletContinuation_mutations_test.qnt).
+
+| 模块 | 独立检查目标 | 故意错误 |
+| --- | --- | --- |
+| continuationSendBeforeCommit | dispatchOrdering | 无持久决定/后续清单就发送 C |
+| continuationReplayChangesKey | dispatchOrdering | 重启后用另一个 key 发送, 原决定仍保留 |
+| continuationLostDecision | decisionStable | Agent 退出时丢弃已提交决定, 独立提交见证保留 |
+| continuationConsumesWrongIntent | decisionSourcesSound | 将 A 的 Outcome 标成尚未完成的 B 并提交决定 |
+| continuationLaterResultReplacesDecision | decisionStable | 后来的 B 成功覆盖已提交的 A 决定 |
+| continuationReplayChangesDefinition | dispatchOrdering | 原 key 重投却换用新输入, 原决定不变 |
+
+前缀首先满足完整 continuationSafety, 再仅以目标子性质判定违规.
+换 key/定义检查实际发出的请求, 来源检查回查真实 Outcome, 不依赖无关 History/作用域观察的破坏.
+
 ## 复现与判定
 
 全部反例:
 
 ```sh
-mix beamlet.check --phase mutations --log-dir /tmp/beamlet-counterexamples
+mix quint mutations --log-dir /tmp/beamlet-counterexamples
 ```
 
 单条反例, 使用相应入口和模块名:

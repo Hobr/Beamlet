@@ -5,7 +5,10 @@ defmodule Beamlet.QuintChecks do
   @tests "model/quint/beamletCore_test.qnt"
   @conflicts "model/quint/beamletConflicts_test.qnt"
   @mutations "model/quint/beamletCore_mutations_test.qnt"
-  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test beamletNormalUse beamletNormalUse_test beamletNormalUse_mutations_test beamletExecution beamletExecution_test beamletRecovery beamletMultiIntent beamletMultiIntent_test beamletMultiIntent_mutations_test)
+  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test beamletNormalUse beamletNormalUse_test beamletNormalUse_mutations_test beamletExecution beamletExecution_test beamletRecovery beamletMultiIntent beamletMultiIntent_test beamletMultiIntent_mutations_test beamletContinuation beamletContinuation_test beamletContinuation_mutations_test)
+  @continuation_mutations ~w(continuationSendBeforeCommit continuationReplayChangesKey
+    continuationLostDecision continuationConsumesWrongIntent continuationLaterResultReplacesDecision
+    continuationReplayChangesDefinition)
   @multi_mutations ~w(multiCrossIntentReport multiCrossIntentGrant multiSharedIdempotencyContext
     multiSiblingHistoryErased multiPrematureToolJoin multiJoinByNotificationCount
     multiCallbackCorrelationCollision multiLostDependencyManifest)
@@ -138,15 +141,20 @@ defmodule Beamlet.QuintChecks do
         test_job(@conflicts, "conflictTests"),
         test_job("model/quint/beamletNormalUse_test.qnt", "normalUseTests"),
         test_job("model/quint/beamletExecution_test.qnt", "executionProjectionTests"),
-        test_job("model/quint/beamletMultiIntent_test.qnt", "multiIntentTests")
+        test_job("model/quint/beamletMultiIntent_test.qnt", "multiIntentTests"),
+        test_job("model/quint/beamletContinuation_test.qnt", "continuationTests")
       ]
   end
 
   defp jobs(_config, "mutations") do
     Enum.map(
-      @multi_mutations,
-      &{:mutation, &1, "model/quint/beamletMultiIntent_mutations_test.qnt"}
+      @continuation_mutations,
+      &{:mutation, &1, "model/quint/beamletContinuation_mutations_test.qnt"}
     ) ++
+      Enum.map(
+        @multi_mutations,
+        &{:mutation, &1, "model/quint/beamletMultiIntent_mutations_test.qnt"}
+      ) ++
       Enum.map(
         @normal_mutations,
         &{:mutation, &1, "model/quint/beamletNormalUse_mutations_test.qnt"}
@@ -383,6 +391,31 @@ defmodule Beamlet.QuintChecks do
                 multi_witnesses
               )
 
+    continuation_witnesses =
+      ~w(decisionWitness partialDecisionWitness manifestWitness partialSubmissionWitness
+        successorSubmittedWitness recoveredManifestWitness recoveredReadWitness
+        recoveredSuccessorWitness successorCompletedWitness)
+
+    continuation =
+      for {init, step, samples} <- [
+            {"init", "healthyStep", config.samples},
+            {"partialInit", "healthyStep", config.directed_samples},
+            {"decidedInit", "step", config.directed_samples},
+            {"submittedInit", "step", config.directed_samples},
+            {"closedInit", "step", config.directed_samples}
+          ],
+          do:
+            simulation(
+              "continuation-#{init}",
+              "model/quint/beamletContinuation.qnt",
+              "continuationAnalysis",
+              init,
+              step,
+              "safety",
+              samples,
+              continuation_witnesses
+            )
+
     core ++
       prefixes ++
       primitives ++
@@ -392,7 +425,7 @@ defmodule Beamlet.QuintChecks do
       retirements ++
       withdrawals ++
       normal ++
-      execution ++ recovery ++ projections ++ multi_intent
+      execution ++ recovery ++ projections ++ multi_intent ++ continuation
   end
 
   defp test_job(file, main),

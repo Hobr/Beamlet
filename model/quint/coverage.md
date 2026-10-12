@@ -24,10 +24,12 @@
 | 多 Agent 独立提交, 跨 Intent 不串写 | 两个完整账本, 带 scope 的消息, 独立 before/after 见证 | directoryScoped, scopeIsolation, multiExecutionSafety |
 | 一个 Worker 会话故障影响全部 Intent 槽 | 共享 alive/incarnation, 各 Intent 的易失 local slot | sharedSessionsSafe, transportScoped |
 | Tool Call 收齐原依赖后汇总, 重启恢复关联 | 调用方持久 manifest/aggregate, 易失 refs/results | callerFactsScoped, toolRoundsSound; multi 场景 |
+| 单步部分 Success 驱动下一 Intent, 决策先于发送且恢复不改身份 | 三个完整账本, 调用方持久 ProgressRecord 与易失结果缓存 | decisionSourcesSound, decisionStable, nextManifestSound, dispatchOrdering; continuation 场景 |
 | 后置协调, 命令重投, 取代, 规则退役与撤销 | 完整参考账本, 判断版本, 原命令结果和显式作用范围 | repeating/conflicts 场景及 properties/reconciliation, commands, withdrawal |
 
 确定场景位于 [scenarios/](scenarios/), 反例目标见 [mutation 索引](counterexamples.md).
-首版执行, 正常, 恢复和多 Intent 入口不包含治理类型. 完整参考仍保留执行/协调/治理组合检查,
+首版执行, 正常, 恢复, 多 Intent 和部分推进入口不包含治理类型.
+部分推进的调用方决定不等于 Beamlet 的后置协调/治理决定. 完整参考仍保留执行/协调/治理组合检查,
 命令与治理账本内部尚未进一步拆分.
 
 ## 状态与有界参数
@@ -49,7 +51,7 @@ Intent.
 | agentLocals | 重启时丢失, 可重新解析/读取的引用与结果缓存 |
 | scopeObservation | 仅用于隔离检查的真实转换前后快照 |
 
-并发界限为两个 Intent, 两个 Agent, 两个 Tool Call, 两个共享 Worker; 每 Intent 最多两个 Execution.
+原并发实例的界限为两个 Intent, 两个 Agent, 两个 Tool Call, 两个共享 Worker; 每 Intent 最多两个 Execution.
 单 Intent 模型同样最多两个 Worker/Execution.时钟 0..6, TTL=2, incarnation≤2, 每 Execution generation≤3,
 Report/协调 Command ID 域为 1..4.达到身份边界后禁用新动作, 不重用旧身份.
 账本和审计列表仍可增长, 因此这是参与者/身份域有界, 轨迹长度受限的模型.
@@ -57,6 +59,12 @@ Report/协调 Command ID 域为 1..4.达到身份边界后禁用新动作, 不�
 Report/Outcome 的整数业务值只表达相等与冲突. 并发模型故意复用相同局部 Execution/report/token 数字来检查 scope;
 回调关联的算术表示只在本有界域内单射, 不规定产品编码.
 `registered`, `scopeObservation`, 首次结果, 提交/授权/替代快照等是验证见证, 不规定公开字段或 SQL schema.
+
+部分推进入口将 Intent 域扩为 1..3, 保留两轮/两个 Agent, 但固定由 Agent 1 拥有一个持久决策槽.
+增加 `progress`: 决策记录保存步骤/规则版本, 原轮次/消费 slot/Intent/完整 Outcome 与下一轮请求定义/key.
+`commits` 独立保存最初提交见证; 注册/汇总时的 restart 次数与重启后的读取只检查覆盖, 不参与授权.
+Agent 崩溃只清空易失局部信息, 持久决定和两轮清单仍保留; 此处假定调用方存储有原子提交与持久性.
+`i*10+execution` 在 Intent=1..3, execution=1..2 范围仍单射, 不证明真实 correlation 编码安全.
 
 ## 外部保证与抽象收窄
 
@@ -74,6 +82,9 @@ Report/Outcome 的整数业务值只表达相等与冲突. 并发模型故意复
   Claim 与得知 token 合并; 领取响应丢失后的原分配恢复由存储契约规定, 尚未在模型中展开.
 - 多 Intent 的外部资源事实彼此独立, 不模拟同一业务对象竞争. 调用方持久 manifest/aggregate 是前提;
   Pending/Unknown 不满足依赖, 示例等待全部 Succeeded/Failed/Cancelled, 不隐式取消兄弟或跨 Intent 回滚.
+  部分推进另检查从原轮次某一已读 Succeeded 驱动 C; 不将 A/B 误判收齐, 不取消兄弟.
+  决策提交, 后续清单, Beamlet 提交是三个可恢复步骤, 没有跨存储共同事务.
+  仅检查单步/单 owner 的固定规则与一个结果消费; 不验证随机/LLM 决策重算或多实例并发决策.
   汇总完成不保证随后 Agent 副作用只执行一次.
 - 投影检查仅对照无协调处置的普通守卫和转换, 不外推为所有治理行为或参数的等价证明.
 
@@ -100,19 +111,22 @@ Q78 的撤销专属授权区别尚未补入 Quint 场景; 现有扩展检查不�
 
 ## 最近一次模型验收
 
-以下为文档整理前已完成的模型验收结果, 文档整理不改变执行规则或安全性质:
+本次部分推进扩展后重新执行全部类型入口, 正常场景与 mutation, 原双 Intent 回归保留.
+下表将新检查与此前并发采样分开:
 
 | 检查 | 结果 |
 | --- | --- |
-| 类型 | 19 个入口通过 |
-| 确定场景 | 281 个通过: strict 23, fenced 2, repeating 79, conflicts 81, normal 49, projection 5, multi 42 |
-| 预期反例 | 76 条均产生实际不变量违规和非空 ITF; 包含 8 条并发错误 |
-| 并发采样 | 20,000 条, 最多 100 步, Rust 后端, 未观察到所检查 Safety 违规 |
-| 工具与结构 | 12 个 Mix 测试通过; 121 个 Quint 文件无循环导入且各不超过 200 行 |
+| 类型 | 22 个入口通过 |
+| 确定场景 | 306 个通过: strict 23, fenced 2, repeating 79, conflicts 81, normal 49, projection 5, multi 42, continuation 25 |
+| 预期反例 | 82 条均产生实际不变量违规和非空 ITF; 包含原 8 条并发与新增 6 条部分推进错误 |
+| 本次部分推进采样 | 14,000 条, seed=42, 最多 100 步, Rust 后端, 未观察到所检查 Safety 违规 |
+| 历史双 Intent 采样 | 20,000 条, 最多 100 步, Rust 后端, 未观察到所检查 Safety 违规 |
+| 工具与结构 | 13 个 Mix 测试通过; 132 个 Quint 文件无循环导入且各不超过 200 行 |
 
 并发采样使用 seed=42 的 15,000 条及 seed=123 的 5,000 条, 四线程/进程, 最多三个并行任务.
 前者独立 Agent 主组 10,000 条, 五个定向组各 1,000; 后者五个定向组各 1,000.
-没有重新运行全部历史单 Intent 采样组, 不能把当前默认 69,000 条预算作为本次已经执行的数量.
+这些双 Intent 采样为历史证据, 本次未重新运行全部历史采样组.
+当前默认全量模拟预算为 54 组/78,000 条, 不是本次已经执行的数量.
 
 | 并发起点 | step | 检查侧重 |
 | --- | --- | --- |
@@ -142,6 +156,31 @@ Q78 的撤销专属授权区别尚未补入 Quint 场景; 现有扩展检查不�
 emptyInit 故障组仅 4 条观察到双调用, 因此保留正常组和合法深前缀; 浅路径无违规不能代替完成覆盖.
 这些数字是覆盖见证, 不是完成概率或 Liveness 保证.
 
+### 本次部分推进采样
+
+五组均检查 continuationSafety, 配置四线程/进程, 最多两个并行任务.
+正常主组从原轮次开始, 不是注入已完成的 C; 定向前缀均由真实提交, 启动, 报告与决策动作构成.
+
+| 起点 | step | 轨迹 | 有原依赖 Open 时提交 C | 重启后建立后续清单 | 重启后读取 C | 重启后汇总 C | C 轮汇总 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| init | healthyStep | 10,000 | 2,883 | 0 | 0 | 0 | 3,727 |
+| partialInit | healthyStep | 1,000 | 449 | 0 | 0 | 0 | 839 |
+| decidedInit | step | 1,000 | 150 | 144 | 221 | 187 | 232 |
+| submittedInit | step | 1,000 | 1,000 | 0 | 291 | 191 | 378 |
+| closedInit | step | 1,000 | 1,000 | 0 | 273 | 173 | 484 |
+
+主组观察到持久决定 7,474 条, 后续清单 7,464 条, C 提交 7,394 条.
+partialInit 中 A 已 Success/B 仍 Open 且尚无决定; 三组故障前缀分别从决定已提交, C 已提交, C 已 Success 开始.
+submittedInit/closedInit 的提交见证在前缀已成立, 不算新发送或重放覆盖;
+回复丢失后原身份复用另有确定场景与换 key/定义反例.
+C 汇总可以包含 Succeeded/Failed/Cancelled, 不是外部副作用成功次数.
+恢复列记录重启后实际发生的注册, 读取与首次汇总动作, 不由当前 restart 次数和旧完成状态推断.
+决定在前缀已提交的组不重记新决定; 正常组不含故障, 恢复见证为零符合该 profile.
+以上计数可重叠, 只说明这些路径被观察到, 不给出完成概率, 公平性或 Liveness 保证.
+
+全部类型/场景/反例日志与 ITF 位于 `/tmp/beamlet-continuation-regression`,
+五组采样日志和预算摘要位于 `/tmp/beamlet-continuation-sampling`; 不把产物写入源码树.
+
 ## 工程验收边界
 
 仍需实际实现验证: SQL 锁/隔离/持久性与响应丢失, codec 和值域预算, 可信路由与签名/ACL, 外部键无碰撞, provider
@@ -149,11 +188,9 @@ emptyInit 故障组仅 4 条观察到双调用, 因此保留正常组和合法�
 归档清理, Byzantine 和外部 exactly-once 均未获得证明. 当前没有 Runtime, 真实 SQL 后端或第三方 Adapter 的测试结果.
 [整体架构](../spec/runtime-architecture.md), [History 契约](../spec/core-state-machines.md) 与
 [执行环境契约](../spec/handler-recovery-contracts.md) 补充了工程要求, 尚未增加对应资源匹配,
-完整审计材料或部署协议的模型覆盖. 部分结果推进/await_any/quorum 仅明确为调用方责任,
-当前依赖汇总示例不能作为其通用验证证据. 后续验收依赖见 [实现路线](../spec/implementation-roadmap.md);
-文档补齐不扩大上述模型验收数字.
-
-补验入口: [部分推进草案](../spec/multi-intent-and-tool-calls.md) 给出三 Intent/两轮/一个持久决定槽的拟验证范围,
-[Operation 样例](../spec/operation-handler-contracts.md) 给出四类资源协议的前提与失败窗口,
-[研究确认清单](../spec/implementation-roadmap.md) 区分待确认语义与后续实现选择.
-这些新增材料尚无对应 Quint 类型/转换, 不计入当前 281 场景或 76 mutation; 状态形状确认后逐步补验.
+完整审计材料或部署协议的模型覆盖. 部分结果推进新增了单步有界例子, 仍不能作为任意 await_any/quorum,
+无限步骤或调用方数据库实现的通用验证证据. 后续验收依赖见 [实现路线](../spec/implementation-roadmap.md);
+[部分推进契约](../spec/multi-intent-and-tool-calls.md) 与本次例子相对应.
+[Operation 样例](../spec/operation-handler-contracts.md) 给出的真实资源协议前提与失败窗口, 以及
+[研究确认清单](../spec/implementation-roadmap.md) 中 Claim 回复丢失, 资源匹配与 History 提交关联, 仍需各自补验,
+不能由部分推进扩展顺带宣称覆盖.
