@@ -1,6 +1,8 @@
 # 故意错误规则的反例记录
 
-这些反例来自独立 mutation 模块, 不表示正常模型发生了同样的违规. 每条前缀通过真实守卫从 init 到达, 并在每一步检查 safety; 最后执行一条故意错误规则. Quint 0.32.0 / Rust, 输入 seed 42, max-samples 1, max-steps 1. init 内的合法前缀会出现在 ITF 中, 因此实际状态数量大于两条.
+这些反例来自独立 mutation 模块, 不表示正常模型发生了同样的违规. 每条前缀通过真实守卫从 init 到达, 并在每一步检查 safety;
+最后执行一条故意错误规则. Quint 0.32.0 / Rust, 输入 seed 42, max-samples 1, max-steps 1. init 内的合法前缀会出现在 ITF
+中, 因此实际状态数量大于两条.
 
 | 模块 | 被破坏性质 | 前缀转换数 | 违规转换数 |
 | --- | --- | ---: | ---: |
@@ -62,81 +64,109 @@
 | withdrawalCreatesOutcome | withdrawalCommandsNonterminal | 27 | 1 |
 | withdrawalDeletesEvidence | reconciledEvidencePreserved | 27 | 1 |
 
-### duplicateOutcome
+## duplicateOutcome
 
-- 违规前: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded]; commits=1; invocations=1; receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
-- 违规后: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded, OutcomeCancelled]; commits=2; invocations=1; receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
+- 违规前: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded]; commits=1; invocations=1;
+  receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
+- 违规后: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded, OutcomeCancelled]; commits=2; invocations=1;
+  receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
 
 ### overwriteOutcome
 
-- 违规前: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded]; commits=1; invocations=1; receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
-- 违规后: Intent=Closed; current=1; clock=0; outcomes=[OutcomeCancelled]; commits=1; invocations=1; receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
+- 违规前: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded]; commits=1; invocations=1;
+  receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
+- 违规后: Intent=Closed; current=1; clock=0; outcomes=[OutcomeCancelled]; commits=1; invocations=1;
+  receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
 
 ### reviveExpiredLease
 
-- 违规前: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=0; receipts-in-flight=0; E1: Prepared/NoKnowledge, generation=1, invalidated=true, grant=NoGrant.
-- 违规后: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=0; receipts-in-flight=0; E1: Prepared/NoKnowledge, generation=1, invalidated=false, grant=NoGrant.
+- 违规前: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=0; receipts-in-flight=0; E1:
+  Prepared/NoKnowledge, generation=1, invalidated=true, grant=NoGrant.
+- 违规后: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=0; receipts-in-flight=0; E1:
+  Prepared/NoKnowledge, generation=1, invalidated=false, grant=NoGrant.
 
 ### negativeQueryRetry
 
-- 违规前: Intent=Open; current=1; clock=2; outcomes=[]; commits=0; invocations=0; receipts-in-flight=1; E1: Unknown/NoKnowledge, generation=1, invalidated=true, grant=StartGrant.
-- 违规后: Intent=Open; current=2; clock=2; outcomes=[]; commits=0; invocations=0; receipts-in-flight=1; E1: Unknown/NoKnowledge, generation=1, invalidated=true, grant=StartGrant; E2: Prepared/NoKnowledge, generation=0, invalidated=true, grant=NoGrant.
+- 违规前: Intent=Open; current=1; clock=2; outcomes=[]; commits=0; invocations=0; receipts-in-flight=1; E1:
+  Unknown/NoKnowledge, generation=1, invalidated=true, grant=StartGrant.
+- 违规后: Intent=Open; current=2; clock=2; outcomes=[]; commits=0; invocations=0; receipts-in-flight=1; E1:
+  Unknown/NoKnowledge, generation=1, invalidated=true, grant=StartGrant; E2: Prepared/NoKnowledge, generation=0,
+  invalidated=true, grant=NoGrant.
 
 ### incarnationInheritance
 
-- 违规前: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=0; receipts-in-flight=0; E1: StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
-- 违规后: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=1; receipts-in-flight=0; E1: StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
+- 违规前: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=0; receipts-in-flight=0; E1:
+  StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
+- 违规后: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=1; receipts-in-flight=0; E1:
+  StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
 
 ### grantAfterClosure
 
-- 违规前: Intent=Closed; current=1; clock=0; outcomes=[OutcomeCancelled]; commits=1; invocations=0; receipts-in-flight=0; E1: Prepared/NoKnowledge, generation=1, invalidated=false, grant=NoGrant.
-- 违规后: Intent=Closed; current=1; clock=0; outcomes=[OutcomeCancelled]; commits=1; invocations=0; receipts-in-flight=0; E1: StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
+- 违规前: Intent=Closed; current=1; clock=0; outcomes=[OutcomeCancelled]; commits=1; invocations=0;
+  receipts-in-flight=0; E1: Prepared/NoKnowledge, generation=1, invalidated=false, grant=NoGrant.
+- 违规后: Intent=Closed; current=1; clock=0; outcomes=[OutcomeCancelled]; commits=1; invocations=0;
+  receipts-in-flight=0; E1: StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
 
 ### pendingRegression
 
-- 违规前: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded]; commits=1; invocations=1; receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
-- 违规后: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded]; commits=1; invocations=1; receipts-in-flight=1; E1: Waiting/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
+- 违规前: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded]; commits=1; invocations=1;
+  receipts-in-flight=1; E1: Resolved/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
+- 违规后: Intent=Closed; current=1; clock=0; outcomes=[OutcomeSucceeded]; commits=1; invocations=1;
+  receipts-in-flight=1; E1: Waiting/SuccessKnown, generation=1, invalidated=false, grant=StartGrant.
 
 ### unknownFailure
 
-- 违规前: Intent=Open; current=1; clock=2; outcomes=[]; commits=0; invocations=0; receipts-in-flight=0; E1: Unknown/NoKnowledge, generation=1, invalidated=true, grant=StartGrant.
-- 违规后: Intent=Closed; current=1; clock=2; outcomes=[OutcomeFailed]; commits=1; invocations=0; receipts-in-flight=0; E1: Unknown/NoKnowledge, generation=1, invalidated=true, grant=StartGrant.
+- 违规前: Intent=Open; current=1; clock=2; outcomes=[]; commits=0; invocations=0; receipts-in-flight=0; E1:
+  Unknown/NoKnowledge, generation=1, invalidated=true, grant=StartGrant.
+- 违规后: Intent=Closed; current=1; clock=2; outcomes=[OutcomeFailed]; commits=1; invocations=0; receipts-in-flight=0;
+  E1: Unknown/NoKnowledge, generation=1, invalidated=true, grant=StartGrant.
 
 ### earlyReceipt
 
-- 违规前: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=1; receipts-in-flight=0; E1: StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
-- 违规后: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=1; receipts-in-flight=1; E1: StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
+- 违规前: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=1; receipts-in-flight=0; E1:
+  StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
+- 违规后: Intent=Open; current=1; clock=0; outcomes=[]; commits=0; invocations=1; receipts-in-flight=1; E1:
+  StartAuthorized/NoKnowledge, generation=1, invalidated=false, grant=StartGrant.
 
 ### oldSuccessFailure
 
-- 合法前缀: 调用方接受重复风险, 第一尝试到期后替代为 E2. 保存 E1 的成功报告, 再保存 E2 的失败报告. 两个尝试都有确定结果, Intent 保持 Open, current=2, 两份原始证据均保留.
+- 合法前缀: 调用方接受重复风险, 第一尝试到期后替代为 E2. 保存 E1 的成功报告, 再保存 E2 的失败报告. 两个尝试都有确定结果,
+  Intent 保持 Open, current=2, 两份原始证据均保留.
 - 故意错误规则: 只检查当前失败和没有 Unknown, 忽略尚未协调的旧成功证据, 提交 OutcomeFailed.
-- 违规后: Intent=Closed; outcomes=[OutcomeFailed]; commits=1; oldSuccessAtCommit=true. 独立的 failureRespectsOldSuccess 在提交当刻检出违规.
-- 该检查不要求后来才到达的成功报告追溯推翻已有 Outcome; 见证记录的是提交前已经保存的证据. 本反例采用独立的重复风险实例, 不改变其他 mutation 的禁止重复前提.
+- 违规后: Intent=Closed; outcomes=[OutcomeFailed]; commits=1; oldSuccessAtCommit=true. 独立的 failureRespectsOldSuccess
+  在提交当刻检出违规.
+- 该检查不要求后来才到达的成功报告追溯推翻已有 Outcome; 见证记录的是提交前已经保存的证据. 本反例采用独立的重复风险实例,
+  不改变其他 mutation 的禁止重复前提.
 
 ### unauthorizedReconciliation / unregisteredReconciliation
 
 - 合法前缀同 oldSuccessFailure, 已存旧成功和当前失败, Intent Open.
-- 故意错误规则绕过主体守卫, 分别保存 Operator(2) 的决定或未登记规则身份 3 / 语义版本 1 的自动决定 (Q74 前使用 AutomaticRule(3) 抽象).
-- 违规后: reports=2; decisions 从 0 变为 1; actorQualified=false, contractQualified=true. 即使契约依据与证据快照合格, 主体或规则未获授权仍不能接受决定.
+- 故意错误规则绕过主体守卫, 分别保存 Operator(2) 的决定或未登记规则身份 3 / 语义版本 1 的自动决定 (Q74 前使用
+  AutomaticRule(3) 抽象).
+- 违规后: reports=2; decisions 从 0 变为 1; actorQualified=false, contractQualified=true. 即使契约依据与证据快照合格,
+  主体或规则未获授权仍不能接受决定.
 
 ### staleReconciliation
 
 - 合法前缀在原两份报告后保存新的查询成功报告, reports=3.
 - 故意错误规则提交只审查原两份报告的决定.
-- 违规后: decisions 从 0 变为 1; 主体与契约条件合格, 但 reviewedRevision=7 与 acceptedRevision=8 不同, reconciliationQualified 检出过期快照.
+- 违规后: decisions 从 0 变为 1; 主体与契约条件合格, 但 reviewedRevision=7 与 acceptedRevision=8 不同,
+  reconciliationQualified 检出过期快照.
 
 ### permanentReconciliation
 
-- 合法前缀先提交精确作用域内的有效排除决定, 后收到新的查询成功证据. 原决定历史仍保留, 原始 reports 从 2 增至 3, 旧处置不再直接解除新证据阻塞.
+- 合法前缀先提交精确作用域内的有效排除决定, 后收到新的查询成功证据. 原决定历史仍保留, 原始 reports 从 2 增至 3,
+  旧处置不再直接解除新证据阻塞.
 - 故意错误规则将“曾经有协调决定”视为永久已协调, 提交 OutcomeFailed.
-- 违规后: decisions=1; outcomes=[OutcomeFailed]; oldSuccessAtCommit=true. failureRespectsOldSuccess 检出未经新审查的失败终结.
+- 违规后: decisions=1; outcomes=[OutcomeFailed]; oldSuccessAtCommit=true. failureRespectsOldSuccess
+  检出未经新审查的失败终结.
 
 ### silentlyRefreshedCommand
 
 - 旧人工请求审查两份报告, 提交前第三份查询成功报告到达.
 - 故意错误规则自动更新审查快照并执行排除, 却将旧请求保存为原命令.
-- 违规后: commands 0 → 1, decisions 0 → 1; 原请求 reviewedRevision=7, 实际决定 reviewedRevision=8. 主体与新决定本身可以合格, 但 commandExecutionMatchesRequest 检出人工请求被静默改义.
+- 违规后: commands 0 → 1, decisions 0 → 1; 原请求 reviewedRevision=7, 实际决定 reviewedRevision=8.
+  主体与新决定本身可以合格, 但 commandExecutionMatchesRequest 检出人工请求被静默改义.
 
 ### replayExecutedAgain / overwrittenCommand
 
@@ -161,7 +191,8 @@
 
 - 原排除命令已提交, 后收到新查询报告, 原请求再投.
 - 故意错误规则先检查当前快照, 返回 CommandStale, 不改持久账本.
-- 普通证据/唯一性性质仍可成立; 处理时的独立见证记录 previous=1 且请求与原记录相同, commandHandlingSound 检出将已提交重投当作新请求拒绝.
+- 普通证据/唯一性性质仍可成立; 处理时的独立见证记录 previous=1 且请求与原记录相同, commandHandlingSound
+  检出将已提交重投当作新请求拒绝.
 
 ### rejectedCommandExecutedAgain
 
@@ -179,7 +210,8 @@
 
 - 合法前缀已提交排除命令, 原请求重投.
 - 第一条错误规则在 mayRead=false 时返回 CommandCommitted; 持久账本未变, commandReadAuthorized 检出内容返回缺少读取授权.
-- 第二条在 mayRead=true、maySubmit=false 时返回 CommandForbidden; 原记录和请求一致, commandHandlingSound 检出错误要求提交权限才能读取原结果.
+- 第二条在 mayRead=true、maySubmit=false 时返回 CommandForbidden; 原记录和请求一致, commandHandlingSound
+  检出错误要求提交权限才能读取原结果.
 
 ### permissionDenialStoredAsDomainRejection
 
@@ -214,7 +246,9 @@
 ### incompleteConflictCoverage / uncheckedConflictBasis
 
 - Q71 防御性合法前缀显式允许已核验入口提交矛盾查询报告, 保存旧成功、其矛盾失败及当前失败, revision=8, reports=3.
-- 第一条错误规则只保存对旧成功的采用, 遗漏矛盾失败报告: coverageQualified=false, evidenceQualified=true. 它特意提供可通过逐项契约校验的输入, 独立验证覆盖检查不能省略. 第二条覆盖两份相关报告, 却在没有已核验处置依据时提交: coverageQualified=true, evidenceQualified=false.
+- 第一条错误规则只保存对旧成功的采用, 遗漏矛盾失败报告: coverageQualified=false, evidenceQualified=true.
+  它特意提供可通过逐项契约校验的输入, 独立验证覆盖检查不能省略. 第二条覆盖两份相关报告, 却在没有已核验处置依据时提交:
+  coverageQualified=true, evidenceQualified=false.
 - 两者都把 decisions 从 0 增至 1; conflictCoverageSound 分别检出覆盖或依据不足.
 
 ### erasedConflictHistory / deletedConflictReport
@@ -225,8 +259,10 @@
 
 ### terminalBeforeConflictResolution / permanentConflictDisposition
 
-- 第一条在尚无冲突处置时直接提交 OutcomeFailed. 第二条先合法处置两份报告, 后收到新的成功报告, 原处置不再适用, 却仍提交失败.
-- terminalConflictsResolved 根据提交当刻的独立 conflictsAtCommit=true 检出未经解除阻塞的成功/失败终结, 不用未来报告追溯推翻已提交结果.
+- 第一条在尚无冲突处置时直接提交 OutcomeFailed. 第二条先合法处置两份报告, 后收到新的成功报告, 原处置不再适用,
+  却仍提交失败.
+- terminalConflictsResolved 根据提交当刻的独立 conflictsAtCommit=true 检出未经解除阻塞的成功/失败终结,
+  不用未来报告追溯推翻已提交结果.
 
 ### earlyConflictReply
 
@@ -234,7 +270,8 @@
 - 故意错误规则返回 CommandCommitted, durable 保持不变.
 - commandRepliesSound 检出没有原子持久结果的成功回复.
 
-上述 Q71 前缀放宽来源一致性以检查防御性处理; 不是声称正常资源生成器产生了矛盾事实. 整组契约依据依然是受信、已核验输入, 不是客户端声明.
+上述 Q71 前缀放宽来源一致性以检查防御性处理; 不是声称正常资源生成器产生了矛盾事实. 整组契约依据依然是受信、已核验输入,
+不是客户端声明.
 
 ### excludedAllUsesCachedKnowledge
 
@@ -252,13 +289,15 @@
 
 - 合法前缀已有一项完整处置, 新取代命令在途.
 - 故意错误规则接受遗漏引用或引用不存在决定的新处置, 并将 supersessionQualified 伪造为 true.
-- supersessionLinksSound 根据接受前缀检查实际目标与覆盖, 不依赖该布尔值即认定合格; 旧绑定未被明确取代时, dispositionBindingsUnique 也能检出同报告多个当前绑定.
+- supersessionLinksSound 根据接受前缀检查实际目标与覆盖, 不依赖该布尔值即认定合格; 旧绑定未被明确取代时,
+  dispositionBindingsUnique 也能检出同报告多个当前绑定.
 
 ### overbroadSupersession
 
 - 旧决定处置三份报告; 新请求只重新处置其中两份.
 - 故意错误规则把第三份报告也加入取代范围, 并伪造 admission bool.
-- supersessionLinksSound 检出引用范围超出新决定的报告集合. 第三份报告的原排除不能被顺带撤销, 否则历史 FailureKnown 可能重新影响当前判断.
+- supersessionLinksSound 检出引用范围超出新决定的报告集合. 第三份报告的原排除不能被顺带撤销, 否则历史 FailureKnown
+  可能重新影响当前判断.
 
 ### supersessionRewritesOldDecision
 
@@ -276,7 +315,8 @@
 
 - 合法前缀已有旧成功和当前失败, 指定规则版本的请求在途.
 - 第一条错误规则仅按规则身份接受已退役 v1; 第二条以 v1 条件接受指定 v2 的 Worker 报告, 但 v2 要求查询来源.
-- 两条都伪造 actorQualified=true. automaticRuleVersionsSound 检查实际引用及接受时定义, 分别检出版本未登记和指定版本条件不满足.
+- 两条都伪造 actorQualified=true. automaticRuleVersionsSound 检查实际引用及接受时定义,
+  分别检出版本未登记和指定版本条件不满足.
 
 ### automaticRequestVersionRefreshed
 
@@ -300,7 +340,8 @@
 
 - 合法前缀已接受 v1 的非终结排除处置, Intent Open, 原成功报告当前被排除.
 - 错误规则把普通退役当作撤销, 改写接受时作用范围, 使原适用绑定消失; 原决定内容、命令结果及原报告未改.
-- 即使伪造 durableUnchanged=true, ordinaryRuleRetirementSound 仍比较实际前后绑定并检出丢失. 该见证只观察退役转换, 不阻止后来新证据或显式取代合法改变绑定.
+- 即使伪造 durableUnchanged=true, ordinaryRuleRetirementSound 仍比较实际前后绑定并检出丢失. 该见证只观察退役转换,
+  不阻止后来新证据或显式取代合法改变绑定.
 
 ### retirementBumpsJudgmentRevision
 
@@ -312,7 +353,8 @@
 
 - 合法前缀中 D0 三报告排除, D1 显式取代其中两报告, 随后合法撤销 D1 的两报告范围; D0 只有范围外第三报告继续有效.
 - 错误规则删除 D1 的历史取代链接, 把撤销误做历史回退; D0 的两项旧排除重新出现, 原报告/命令/撤销记录保留.
-- withdrawalScopeSound 对照撤销接受时独立绑定快照与实际前缀, 检出历史回退; decisionsImmutable 和请求/决定一致性也不允许改写 D1 的链接.
+- withdrawalScopeSound 对照撤销接受时独立绑定快照与实际前缀, 检出历史回退; decisionsImmutable
+  和请求/决定一致性也不允许改写 D1 的链接.
 
 ### withdrawalOverstepsScope
 
@@ -327,7 +369,8 @@
 ### uncheckedWithdrawalBasis
 
 - 明确撤销引用结构本身有效, 但接受时可信策略没有核验该撤销范围/依据.
-- 错误规则把 contractQualified 伪造为 true. withdrawalScopeSound 检查实际 withdrawalsAtDecision, 不接受仅靠布尔标志掩盖的未核验撤销.
+- 错误规则把 contractQualified 伪造为 true. withdrawalScopeSound 检查实际 withdrawalsAtDecision,
+  不接受仅靠布尔标志掩盖的未核验撤销.
 
 ### withdrawalCreatesOutcome
 
@@ -354,4 +397,5 @@ quint run model/quint/beamletCore_mutations_test.qnt --main negativeQueryRetry \
   --out-itf /tmp/negative-query-retry.itf.json
 ```
 
-预期退出码 1 且报告 Invariant violated. parse/typecheck/runtime 错误不算预期反例. 这些 mutation 覆盖特定守卫, 不代表已进行全面 mutation 测试.
+预期退出码 1 且报告 Invariant violated. parse/typecheck/runtime 错误不算预期反例. 这些 mutation 覆盖特定守卫,
+不代表已进行全面 mutation 测试.
