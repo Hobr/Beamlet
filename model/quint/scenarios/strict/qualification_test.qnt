@@ -21,12 +21,14 @@ module strictQualificationTests {
     .expect(EXECUTIONS.forall(e => not(authority.durable.attempts.get(e).exists)))
     .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
 
+  // 验证取消只终结 Intent:已经持久化但仍在途的许可之后仍可能引起外部效果.
   run cancellationBeforeGrantDeliveryTest = grantedInit
     .then(cancelIntent).expect(safety)
     .then(receiveGrant(t1)).expect(safety)
     .then(callExternal(t1)).expect(safety)
     .expect(cancelledReached and external.effects == Set(1))
 
+  // 旧 incarnation 不能再调用,但此前已发报告仍按持久 grant 认证,不以当前 incarnation 拒收.
   run oldReportAfterWorkerRestartTest = runningInit
     .then(completeAtResource(1, Success)).expect(safety)
     .then(publishCompletion(t1)).expect(safety)
@@ -51,6 +53,7 @@ module strictQualificationTests {
     CLOCK_VALUES.contains(0), TTL > 0, MAX_INCARNATION >= 2, MAX_GENERATION >= 2,
   })
 
+  // 分别观察许可,实际调用,资源完成与账本知识,防止把这些独立阶段折叠成一个成功动作.
   run authorizationIsNotExecutionTest = grantedInit
     .expect(authority.durable.attempts.get(1).phase == StartAuthorized)
     .expect(external.invocations.length() == 0 and authority.durable.outcomes.length() == 0)

@@ -11,6 +11,7 @@ module repeatingCommandQualificationTests {
     .expect(authority.durable.commands == List(excludedRecord))
     .expect(network.contains(ReconcileReply(CommandCommitted(excludedRecord))))
 
+  // 新证据后的自动重算是新请求;旧 ID 只能取原处理结果,不能用它重新采用当前判断.
   run automaticFreshEvaluationUsesNewCommandTest = oldSuccessCurrentFailureInit
     .then(sendReconciliationCommand({
       ...exclusionCommand, decision: { ...exclusionCommand.decision, actor: AutomaticRule({ id: 2, version: 1 }) },

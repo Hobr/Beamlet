@@ -1,8 +1,9 @@
-// Deterministic scenarios using the shared fixture and real guarded transitions.
+// 防御性纯规则测试:直接构造 Ledger 检查矛盾输入,不声称普通合规资源路径能生成这些报告.
 module strictConflictsTests {
   import strictFixtures.* from "./fixtures"
   export strictFixtures.*
 
+  // 同身份不同正文须保留冲突;终结前阻塞提交,终结后只保存证据而不追溯改写 Outcome.
   run defensiveConflictProjectionTest = {
     val claimed = applyClaim(applyCreate(initialLedger, 1), 1, 1, 1, 0)
     val authorized = applyAuthorize(claimed, t1, 0)

@@ -13,10 +13,13 @@ module coreLogicWorkers {
   pure def applyReceiveGrant(local: LocalState, t: Token): LocalState =
     { ...local, grants: local.grants.union(Set(t)) }
 
+  // 合规 Worker 凭已收到的持久许可调用,不重新读取 Authority 的 phase,current 或墙钟.
+  // 所以到期/取消后仍可能调用;noFuture 表示资源侧已永久排除该尝试的可信协议前提.
   pure def canCall(local: LocalState, x: ExternalState, t: Token): bool =
     local.alive and local.incarnation == t.incarnation and local.grants.contains(t)
       and not(local.started.contains(t.exec)) and not(x.noFuture.contains(t.exec))
 
+  // effects 只见证调用可能产生效果,不代表成功完成;Failure 也可能留下部分业务效果.
   pure def applyCall(x: ExternalState, t: Token, inc: int): ExternalState =
     { ...x, invocations: x.invocations.append({ token: t, incarnationAtCall: inc }),
       effects: x.effects.union(Set(t.exec)) }
@@ -24,6 +27,7 @@ module coreLogicWorkers {
   pure def applyExternalCompletion(x: ExternalState, e: int, kind: ReportKind): ExternalState =
     { ...x, finished: x.finished.set(e, if (kind == Success) ResourceSucceeded else ResourceFailed) }
 
+  // 固定 1/2 仅是同一 Worker token 来源内 Pending/完成报告的有界身份,不是产品 ID 方案.
   pure def pendingReport(t: Token): Report =
     { id: 1, exec: t.exec, kind: Pending, origin: ByWorker(t) }
 
@@ -38,6 +42,7 @@ module coreLogicWorkers {
     { id: 2, exec: t.exec, kind: if (x.finished.get(t.exec) == ResourceSucceeded) Success else Failure,
       origin: ByWorker(t) }
 
+  // 崩溃清空所有局部许可,已调用集合和报告;重启递增 incarnation,不能继承旧代许可.
   pure def applyWorkerCrash(local: LocalState): LocalState =
     { ...initialWorker, alive: false, incarnation: local.incarnation }
 

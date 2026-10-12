@@ -21,6 +21,7 @@ module beamletRules {
   val pinnedV2Witness = scenario::pinnedV2Witness
   val commandReplayReached = scenario::commandReplayReached
   val rejectedCommandStoredReached = scenario::rejectedCommandStoredReached
+  // 默认检查规则版本并存/变化;普通退役须显式选择 retirement*Init 与 retirementStep,后者不会恢复旧登记.
   action init = automaticRulePendingInit
   action step = ruleVersionStep
   val safety = commandSafety

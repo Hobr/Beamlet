@@ -18,6 +18,7 @@ module beamletConflicts {
   val allExcludedWitness = scenario::allExcludedWitness
   val supersessionWitness = scenario::supersessionWitness
 
+  // 默认从合法构造的冲突前缀继续探索;冲突由 fixture 的受信入口扩展产生,普通资源路径不生成矛盾结果.
   action init = conflictInit
   action step = conflictStep
   val safety = conflictSafety

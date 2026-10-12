@@ -12,6 +12,8 @@ module fencedFixtures {
 
   pure val success2: Report = { id: 2, exec: 2, kind: Success, origin: ByWorker(t2) }
 
+  // Worker 已持有许可但尚未调用,是资源排除旧尝试未来执行的关键窗口.
+  // 具体入口绑定 CAN_FENCE=true;必须先可靠排除,再允许替代,不依赖 lease 到期猜测安全.
   action grantHeldInit = init.expect(safety)
     .then(createExecution(1)).expect(safety)
     .then(claimExecution(1, 1)).expect(safety)

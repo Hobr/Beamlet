@@ -10,6 +10,7 @@ module withdrawalMutations {
       .then(sendReconciliationCommand(partialWithdrawalCommand)).expect(commandSafety)
     else withdrawalPendingInit
 
+  // 错误涵盖恢复旧边,越界撤销,漏增版本,未核验依据,错误终结和删证据;都应被专属性质检出.
   action mutantStep = {
     val before = authority.durable
     val request = if (WITHDRAWAL_BUG == 2) partialWithdrawalCommand else withdrawalCommand

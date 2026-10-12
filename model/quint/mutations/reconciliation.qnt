@@ -33,6 +33,7 @@ module coreReconciliationMutations {
     workers' = workers, network' = network, external' = external, clock' = clock,
   }
 
+  // BUG 5..10 分别破坏请求不变,重投去重,原记录,原结果,持久化顺序或分支优先级.
   action brokenCommandHandling = {
     val before = authority.durable
     val refreshed = proposeDecision(before, success1, ExcludeFromJudgment, Operator(1))
@@ -87,6 +88,7 @@ module coreReconciliationMutations {
     }
   }
 
+  // BUG 17..20 覆盖漏增,心跳误增,证据漏增和重置;用独立变化链检出,不能让见证反过来屏蔽动作.
   action brokenJudgmentRevision = {
     val before = authority.durable
     val correct = if (BUG == 17) applyReconcile(before, policy, validExclusion)

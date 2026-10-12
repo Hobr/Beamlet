@@ -11,6 +11,7 @@ module withdrawalCommandMutations {
       .then(sendReconciliationCommand(coordinationUsingWithdrawalId)).expect(commandSafety)
     else withdrawalPendingInit
 
+  // 即使新目标在领域上合格,也不能让同 ID 重投重新撤销它,或按操作种类绕过已有身份.
   action mutantStep = {
     val before = authority.durable
     val request = if (WITHDRAWAL_COMMAND_BUG == 2) coordinationUsingWithdrawalId else withdrawalCommand

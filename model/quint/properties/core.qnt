@@ -5,6 +5,7 @@ module corePropertiesCore {
   import coreLogicOutcomes.* from "../logic/outcomes"
   export coreLogicOutcomes.*
 
+  // 授权/提交资格检查发生当刻的见证,不能用后来过期的租约或 Closed 状态否定合法历史.
   val startupsQualified = authority.durable.starts.foldl(true, (ok, s) =>
     ok and s.openAtGrant and s.currentAtGrant and s.leaseValidAtGrant)
 
@@ -17,6 +18,7 @@ module corePropertiesCore {
     ok and call.incarnationAtCall == call.token.incarnation
       and authority.durable.starts.select(s => s.token == call.token).length() == 1)
 
+  // 限制同一 Execution 主动重入;ALLOW_REPEAT 允许不同 Execution 的效果重复,此性质不证明业务恰好一次.
   val oneCallPerExecution = EXECUTIONS.forall(e =>
     external.invocations.select(call => call.token.exec == e).length() <= 1)
 
@@ -29,14 +31,17 @@ module corePropertiesCore {
 
   val replacementsSafe = authority.durable.retries.foldl(true, (ok, r) => ok and r.safeAtReplacement)
 
+  // 将 Authority 的"未执行"知识对照独立资源事实,防止把一次阴性查询提升为可靠排除证明.
   val notExecutedProofSound = EXECUTIONS.forall(e =>
     (authority.durable.attempts.get(e).knowledge == NotExecutedKnown) implies
       (external.noFuture.contains(e) and not(external.effects.contains(e))))
 
+  // 回执代表持久保存,须同时检查在途回执和 Worker 已接收的回执,不能仅检查一个投影.
   val receiptsOnlyForStored = network.forall(m => match m {
     | StoredReceipt(r) => authority.durable.reports.contains(r) | _ => true
   }) and WORKERS.forall(w => workers.get(w).receipts.forall(r => authority.durable.reports.contains(r)))
 
+  // 每份唯一报告恰好对应一条保存审计;重投不能重复追加,冲突审计另计.
   val reportAuditAtomic = authority.durable.reports.size()
     == authority.durable.history.select(a => a.kind == EvidenceStored).length()
 
@@ -72,6 +77,7 @@ module corePropertiesCore {
   val failureRespectsOldSuccess = authority.durable.commits.foldl(true, (ok, c) =>
     ok and ((c.outcome.kind == OutcomeFailed) implies not(c.oldSuccessAtCommit)))
 
+  // 独立约束唯一,终结状态一致和首值不可改写,分别检出追加第二结果与覆盖第一结果.
   val outcomeUnique = authority.durable.outcomes.length() <= 1 and authority.durable.commits.length() <= 1
 
   val closedIffOutcome = (authority.durable.phase == Closed)

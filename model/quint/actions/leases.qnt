@@ -10,6 +10,7 @@ module coreActionsLeases {
     workers' = workers, network' = network, external' = external, clock' = clock,
   }
 
+  // 将数据库领取与 Worker 得知 token 合并为一步,是此模型的抽象收窄;不验证领取响应丢失协议.
   action claimExecution(e: int, w: int): bool = {
     val local = workers.get(w)
     val nextLedger = applyClaim(authority.durable, e, w, local.incarnation, clock)
@@ -22,6 +23,7 @@ module coreActionsLeases {
     }
   }
 
+  // 同一步先持久化许可再形成回复;消息可丢,但重发只能返回同一份已保存 grant.
   action authorizeStart(t: Token): bool = all {
     authority.online, network.contains(StartRequest(t)),
     canAuthorize(authority.durable, t, clock),

@@ -19,6 +19,7 @@ module coreActionsWorkers {
     clock' = clock,
   }
 
+  // 重发原许可不重新授权,所以即使租约到期或 Intent 已关闭,也不能生成第二次启动记录.
   action resendGrant(t: Token): bool = all {
     authority.online, network.contains(StartRequest(t)),
     authority.durable.attempts.get(t.exec).grant == StartGrant(t),
@@ -29,6 +30,7 @@ module coreActionsWorkers {
     clock' = clock,
   }
 
+  // 与 Authority 事务独立,可在协调器离线,取消或替代之后发生;守卫只使用本地许可/资源排除.
   action callExternal(t: Token): bool = {
     val local = workers.get(t.worker)
     all {
@@ -39,6 +41,7 @@ module coreActionsWorkers {
     }
   }
 
+  // 完成只改变资源事实,不自动修改账本 Knowledge/Outcome;须通过报告接收跨越知识边界.
   action completeAtResource(e: int, kind: ReportKind): bool = all {
     external.effects.contains(e), external.finished.get(e) == ResourceUnfinished,
     kind == Success or kind == Failure,
@@ -68,6 +71,7 @@ module coreActionsWorkers {
     }
   }
 
+  // 崩溃不清除网络中旧消息,也不停掉已发生的资源调用,供重启与迟到报告场景交错.
   action crashWorker(w: int): bool = all {
     workers.get(w).alive,
     authority' = authority, workers' = workers.set(w, applyWorkerCrash(workers.get(w))),

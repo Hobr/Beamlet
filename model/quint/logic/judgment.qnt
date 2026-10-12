@@ -13,10 +13,13 @@ module coreLogicJudgment {
     }),
   }
 
+  // 决定本身也影响判断;仅记录命令缓存/拒绝审计不会改变该视图.
   pure def judgmentView(l: Ledger): JudgmentView = {
     base: judgmentBase(l), decisions: l.decisions.foldl(List(), (ds, w) => ds.append(w.decision)),
   }
 
+  // 只在判断投影实际改变时增长 revision,并保存独立的前后变化链供性质核对.
+  // 组合纯更新可在同一原子动作内增长多次;模型不要求每个事务恰好 +1.
   pure def advanceJudgment(before: Ledger, after: Ledger): Ledger = {
     val oldView = judgmentView(before)
     val newView = judgmentView(after)

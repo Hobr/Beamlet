@@ -3,6 +3,7 @@ module conflictWithdrawalFixtures {
   import conflictFixtures.* from "./fixtures"
   export conflictFixtures.*
 
+  // D0/D1 是 decisions 列表位置 0/1;D1 仅拥有两份报告,failure2 的当前所有者仍是 D0.
   pure val withdrawD1: Set[Supersession] = Set({
     decisionIndex: 1, reports: Set(success1, disputedFailure),
   })
@@ -17,6 +18,7 @@ module conflictWithdrawalFixtures {
   }
 
   // Q77 shares command identity and replay semantics; API/encoding/withdrawal permissions remain undecided.
+  // 固定审查 revision=10 来自 partiallySupersededInit;重投必须保留原目标,不追随新绑定.
   pure val withdrawalCommand: ReconciliationCommand = {
     id: 3, decision: {
       kind: WithdrawDisposition, report: success1, actor: Operator(1), basis: VerifiedWithdrawal,
@@ -43,6 +45,7 @@ module conflictWithdrawalFixtures {
     .then(sendReconciliationCommand(partialWithdrawalCommand)).expect(commandSafety)
     .then(receiveReconciliationCommand(withdrawalPolicy, partialWithdrawalCommand)).expect(commandSafety)
 
+  // 撤销后新决定用新 ID=4,只引用仍由 D0 拥有的 failure2;已撤销的两份报告不恢复旧边.
   def renewedAllExclusion: ReconciliationCommand = {
     id: 4, decision: conflictDecision(authority.durable, failure2,
       ExcludeAllEvidence, excludeAllAcross, Operator(1)),

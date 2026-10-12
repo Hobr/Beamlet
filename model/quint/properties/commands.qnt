@@ -3,6 +3,7 @@ module corePropertiesCommands {
   import coreLogicCommands.* from "../logic/commands"
   export coreLogicCommands.*
 
+  // 两类记录相加只能为一;成功与拒绝分开存储在模型中仍共享同一个身份空间.
   pure def commandIdentityUnique(l: Ledger, id: int): bool =
     commandsForId(l, id).length() + rejectionsForId(l, id).length() == 1
 
@@ -29,6 +30,7 @@ module corePropertiesCommands {
   val commandRecordsImmutable = authority.durable.commands ==
     authority.durable.commandCommits.foldl(List(), (rs, w) => rs.append(w.original))
 
+  // 比较原请求与实际应用决定的完整领域值,包括 revision,规则版本和取代/撤销范围.
   val commandExecutionMatchesRequest = authority.durable.commands.foldl(true, (ok, r) =>
     ok and {
       if (r.decisionIndex >= 0 and r.decisionIndex < authority.durable.decisions.length())
@@ -36,6 +38,7 @@ module corePropertiesCommands {
       else false
     })
 
+  // 首次成功处理恰好增加命令,决定和所需审计;采用结果多一条 OutcomeStored,重投应无新增.
   val commandEffectsAtomic = authority.durable.commandCommits.foldl(true, (ok, w) =>
     ok and w.commandsAfter == w.commandsBefore + 1
       and w.decisionsAfter == w.decisionsBefore + 1
@@ -45,6 +48,7 @@ module corePropertiesCommands {
     ok and r.outcomes == (if (decisionIsTerminal(r.command.decision))
       List(decisionOutcome(r.command.decision)) else List()))
 
+  // 在途回复逐一对应持久原记录,检出"先回复成功/拒绝,再计划保存"的实现错误.
   val commandRepliesSound = network.forall(m => match m {
     | ReconcileReply(reply) => match reply {
         | CommandCommitted(r) => authority.durable.commands.select(stored => stored == r).length() == 1
@@ -61,6 +65,7 @@ module corePropertiesCommands {
     | _ => true
   })
 
+  // 使用处理前身份与权限快照检查分支顺序;后来状态不能让一次错误重投看起来正确.
   pure def commandHandlingCorrect(w: CommandHandlingWitness): bool =
     if (w.previous.length() > 0) {
       val original = w.previous.head()

@@ -3,6 +3,7 @@ module coreLogicRules {
   import coreLogicOutcomes.* from "./outcomes"
   export coreLogicOutcomes.*
 
+  // 示例规则是已核验语义/条件输入;这些整数身份和版本不约定公开编码或部署版本.
   pure val rule1v1: RuleRegistration = {
     rule: { id: 1, version: 1 }, kinds: Set(AdoptSuccess),
     queryRequired: true, evidenceRequired: false,
@@ -28,6 +29,7 @@ module coreLogicRules {
   pure def retiredRulePolicy(p: ReconciliationPolicy, ref: RuleReference): ReconciliationPolicy =
     { ...p, registeredRules: p.registeredRules.filter(r => r.rule != ref) }
 
+  // 记录退役当刻前后绑定和 revision;性质检查此边界,不要求未来新证据后绑定仍不变.
   pure def observeRuleRetirement(x: ExternalState, before: Ledger, after: Ledger,
     p: ReconciliationPolicy, ref: RuleReference): ExternalState = {
     val witness: RuleRetirementWitness = {
@@ -43,6 +45,7 @@ module coreLogicRules {
     r.kinds.contains(d.kind) and (not(r.queryRequired) or d.report.origin == ByQuery)
       and (not(r.evidenceRequired) or d.evidence.size() > 0)
 
+  // 精确版本必须唯一匹配,且按该版本检查条件;同引用存在矛盾定义时不接受新决定.
   pure def registeredRuleQualified(rules: Set[RuleRegistration], d: Decision): bool = match d.actor {
     | Operator(_) => true
     | AutomaticRule(ref) => {

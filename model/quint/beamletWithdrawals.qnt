@@ -5,6 +5,7 @@ module beamletWithdrawals {
     MAX_GENERATION = 3, TTL = 2, ALLOW_REPEAT = true, CAN_FENCE = false) as scenario
     from "./scenarios/conflicts/withdrawal_fixtures"
 
+  // 默认前缀已有 D0 全部排除,D1 部分取代及待处理撤销;后续检查范围移除和原命令重投.
   action init = scenario::withdrawalPendingInit
   action withdrawalPendingInit = scenario::withdrawalPendingInit
   action withdrawnInit = scenario::withdrawnInit

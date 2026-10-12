@@ -3,6 +3,7 @@ module coreLogicReconciliation {
   import coreLogicRules.* from "./rules"
   export coreLogicRules.*
 
+  // 只在构造新提案时捕获当前 revision/取代引用;接收时不能替调用者刷新请求.
   pure def proposeDecision(l: Ledger, r: Report, kind: DecisionKind, actor: DecisionActor): Decision = withSupersessions(l, {
     kind: kind, report: r, actor: actor,
     basis: if (kind == AdoptSuccess or kind == AdoptFailure) VerifiedCompletion else ContractExclusion,
@@ -14,6 +15,7 @@ module coreLogicReconciliation {
     | AutomaticRule(_) => registeredRuleQualified(p.registeredRules, d)
   }
 
+  // policy 是 Authority 已核验的主体/契约事实;集合成员关系抽象核验成立,不证明真实依据.
   pure def decisionContractQualified(p: ReconciliationPolicy, d: Decision): bool =
     if (d.kind == WithdrawDisposition) d.basis == VerifiedWithdrawal
       and p.withdrawals.contains(d.supersedes)
@@ -23,6 +25,8 @@ module coreLogicReconciliation {
       and d.evidence.forall(i => i.treatment == ExcludeEvidence)
     else d.report.kind == Success and d.basis == ContractExclusion and p.excludable.contains(d.report)
 
+  // 冲突处置保守覆盖全部历史冲突尝试的已存报告及主报告,每份恰好一项处置.
+  // 撤销只移除明确范围,不负责解除冲突,因此不要求覆盖其他冲突报告.
   pure def decisionCoverageQualified(l: Ledger, d: Decision): bool = {
     val required = conflictReports(l)
     if (d.kind == WithdrawDisposition) d.evidence.size() == 0
@@ -35,6 +39,7 @@ module coreLogicReconciliation {
         and i.treatment == (if (decisionIsTerminal(d)) KeepEvidence else ExcludeEvidence))
   }
 
+  // 除整体契约输入外还独立检查逐项依据与保留证据的一致性,防止相互矛盾的结果同时被采用.
   pure def decisionEvidenceQualified(p: ReconciliationPolicy, d: Decision): bool =
     if (d.kind == WithdrawDisposition) d.evidence.size() == 0
     else if (d.evidence.size() == 0) d.kind != AdoptFailure and d.kind != ExcludeAllEvidence
@@ -54,6 +59,7 @@ module coreLogicReconciliation {
     exec: Current(d.report.exec),
   }
 
+  // 按处理当刻重验版本,主体,契约,覆盖和取代目标;终结提案还检查处置后的结果资格.
   pure def canReconcile(l: Ledger, p: ReconciliationPolicy, d: Decision): bool =
     l.phase == Open and decisionScopeCurrent(l, d)
       and l.reports.contains(d.report) and reportSourceValid(l, d.report)
@@ -85,6 +91,7 @@ module coreLogicReconciliation {
     advanceJudgment(l, updated)
   }
 
+  // 采用结果时决定与终结在一次提交中完成;排除/撤销只改变判断,不制造 Outcome.
   pure def applyReconcileAndMaybeCommit(l: Ledger, p: ReconciliationPolicy, d: Decision): Ledger = {
     val recorded = applyReconcile(l, p, d)
     if (decisionIsTerminal(d))

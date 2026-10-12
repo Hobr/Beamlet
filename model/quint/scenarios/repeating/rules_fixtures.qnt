@@ -3,6 +3,7 @@ module repeatingRuleFixtures {
   import repeatingFixtures.* from "./fixtures"
   export repeatingFixtures.*
 
+  // 同一规则 v1/v2 可并存;v2 要求查询来源,新命令须按明确指定的那一版解释.
   pure val bothVersionPolicy: ReconciliationPolicy = {
     ...reconciliationPolicy, registeredRules: Set(rule1v1, rule2v1, rule2v2),
   }
@@ -57,6 +58,7 @@ module repeatingRuleFixtures {
     | _ => false
   }).length() > 0
 
+  // 非确定切换可信登记输入以检查版本兼容性;单向普通退役另用 retirementStep.
   action ruleVersionStep = any {
     stepWithCommands(bothVersionPolicy), receiveAnyReconciliationCommand(upgradedRulePolicy),
     sendReconciliationCommand({ ...automaticV1Command, id: 3, decision:

@@ -3,6 +3,8 @@ module coreLogicOutcomes {
   import coreLogicDispositions.* from "./dispositions"
   export coreLogicDispositions.*
 
+  // Success/Failure 要求当前且证据合格;Failed 还须排除授权未知风险和未协调的旧成功.
+  // 显式取消使用 NoCurrent,不依赖创建 Execution 或解决结果冲突.
   pure def ordinarySourceEligible(l: Ledger, o: Outcome): bool = match o.exec {
     | NoCurrent => o.kind == OutcomeCancelled
     | Current(e) => l.current == Current(e) and noConflicts(l) and {
@@ -15,6 +17,7 @@ module coreLogicOutcomes {
       }
   }
 
+  // 协调可以采用旧成功;采用失败仍须来自 current,并遵守未知风险/旧成功阻塞条件.
   pure def adoptedResultEligible(l: Ledger, o: Outcome): bool =
     noConflicts(l) and l.decisions.select(w =>
       o.exec == Current(w.decision.report.exec) and applicableBindings(l).exists(b =>
@@ -30,6 +33,7 @@ module coreLogicOutcomes {
   pure def canCommit(l: Ledger, o: Outcome): bool =
     l.phase == Open and l.outcomes.length() == 0 and sourceEligible(l, o)
 
+  // 调用方先核验 canCommit;Outcome,Closed,首结果见证和 History 由同一原子动作保存.
   pure def applyCommit(l: Ledger, o: Outcome): Ledger = {
     val witness: CommitWitness = {
       outcome: o, openAtCommit: l.phase == Open, sourceEligible: sourceEligible(l, o),
@@ -42,6 +46,7 @@ module coreLogicOutcomes {
     advanceJudgment(l, updated)
   }
 
+  // 普通合格成功随证据接收一起终结;失败仅存事实,是否停止尝试由独立 finishFailure 决定.
   pure def recordAndMaybeCommit(l: Ledger, r: Report): Ledger = {
     val recorded = applyReport(l, r)
     val outcome: Outcome = { kind: OutcomeSucceeded, exec: Current(r.exec) }

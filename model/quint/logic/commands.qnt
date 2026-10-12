@@ -9,6 +9,7 @@ module coreLogicCommands {
   pure def rejectionsForId(l: Ledger, id: int): List[RejectedCommandRecord] =
     l.rejections.select(r => r.command.id == id)
 
+  // 成功与明确领域拒绝共用 Intent 内身份域;也不按采用/排除/撤销种类拆分去重空间.
   pure def commandIdKnown(l: Ledger, id: int): bool =
     commandsForId(l, id).length() > 0 or rejectionsForId(l, id).length() > 0
 
@@ -25,6 +26,7 @@ module coreLogicCommands {
     not(commandIdKnown(l, c.id)) and submitActorAllowed(p, c.decision) and canReconcile(l, p, c.decision)
 
   // Record the submitted request separately from the decision actually applied.
+  // outcomes 是原处理结果快照,非查询当前 Outcome;非终结命令的原结果始终是空列表.
   pure def recordCommittedCommand(before: Ledger, applied: Ledger, c: ReconciliationCommand): Ledger = {
     val record: CommandRecord = {
       command: c, outcomes: applied.outcomes, decisionIndex: before.decisions.length(),
@@ -42,6 +44,7 @@ module coreLogicCommands {
   pure def applyNewCommand(l: Ledger, p: ReconciliationPolicy, c: ReconciliationCommand): Ledger =
     recordCommittedCommand(l, applyReconcileAndMaybeCommit(l, p, c.decision), c)
 
+  // Stale 保存拒绝当刻的判断上下文,后续证据或权限改善不能改写该身份的原结果.
   pure def rejectionFor(l: Ledger, c: ReconciliationCommand): RejectedCommandRecord = {
     val result = if (not(decisionScopeCurrent(l, c.decision)))
       ReviewStale({ revision: l.revision, current: l.current, reports: l.reports, view: judgmentView(l) }) else DecisionIneligible
@@ -70,12 +73,16 @@ module coreLogicCommands {
     { ...updated, rejectionCommits: updated.rejectionCommits.append(witness) }
   }
 
+  // 先查已处理身份,再核验新提交:重投不再执行,提交权限拒绝不进入领域,不占用身份.
+  // 允许提交但无读取权限时仍可持久处理;是否显示结果由回复逻辑单独控制.
   pure def processCommand(l: Ledger, p: ReconciliationPolicy, c: ReconciliationCommand,
     a: CommandAccess): Ledger =
     if (commandIdKnown(l, c.id) or not(commandSubmissionAllowed(p, c, a))) l
     else if (canAcceptCommand(l, p, c)) applyNewCommand(l, p, c)
     else recordRejectedCommand(l, p, c, a)
 
+  // 每次形成回复都检查当前读取权限;可读重投返回原记录,不重验旧 revision 或规则登记.
+  // 与 processCommand 从同一 before 计算并由 action 一起提交;此纯函数自身不持久化结果.
   pure def commandReplyWithAccess(l: Ledger, p: ReconciliationPolicy, c: ReconciliationCommand,
     a: CommandAccess): CommandReply = {
     val previous = commandsForId(l, c.id)
@@ -97,6 +104,7 @@ module coreLogicCommands {
   pure def commandReplyFor(l: Ledger, p: ReconciliationPolicy, c: ReconciliationCommand): CommandReply =
     commandReplyWithAccess(l, p, c, fullCommandAccess)
 
+  // 独立记录处理前身份/资格和处理后效果,用于检出重复执行,偷换请求或过早回复.
   pure def observeCommandWithAccess(x: ExternalState, before: Ledger, after: Ledger,
     p: ReconciliationPolicy, c: ReconciliationCommand, a: CommandAccess, reply: CommandReply): ExternalState = {
     val witness: CommandHandlingWitness = {

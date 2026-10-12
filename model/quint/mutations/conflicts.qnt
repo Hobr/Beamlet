@@ -17,6 +17,7 @@ module conflictMutations {
     else if (BUG == 3 or BUG == 7) resolvedConflictInit
     else conflictInit.then(sendReconciliationCommand(exclusionCommand)).expect(commandSafety)
 
+  // 故意绕过 can*,有些分支还伪造资格摘要;覆盖/取代等性质须从原始结构独立检出.
   action mutantStep = {
     val before = authority.durable
     val omitted = conflictDecision(before, success1, AdoptSuccess, Set(keep(success1)), Operator(1))

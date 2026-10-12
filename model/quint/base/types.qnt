@@ -3,10 +3,12 @@ module coreBaseTypes {
 
   type IntentPhase = Open | Closed
 
+  // 生命周期表示 Authority 的协议进度;Unknown 是已授权但结果不明,不等同于失败.
   type ExecutionPhase = Prepared | StartAuthorized | Waiting | Unknown | Resolved
 
   type CurrentExecution = NoCurrent | Current(int)
 
+  // Knowledge 来自已保存证据;NotFound 只表示查询未找到,不能推出 NotExecutedKnown.
   type Knowledge = NoKnowledge | SuccessKnown | FailureKnown | NotExecutedKnown
 
   type ReportKind = Pending | Success | Failure | NotFound | NotExecuted
@@ -15,6 +17,7 @@ module coreBaseTypes {
 
   type ResourceResult = ResourceUnfinished | ResourceSucceeded | ResourceFailed
 
+  // incarnation 隔离 Worker 重启,generation 隔离同一 Execution 的再次领取.
   type Token = { exec: int, worker: int, incarnation: int, generation: int }
 
   type LeaseKey = { exec: int, generation: int }
@@ -72,6 +75,7 @@ module coreBaseTypes {
 
   type DispositionBinding = { decisionIndex: int, item: EvidenceDisposition }
 
+  // reviewedRevision 锁定审查视图;evidence 是逐报告处置,supersedes 显式引用被替代/撤销的范围.
   type Decision = {
     kind: DecisionKind, report: Report, actor: DecisionActor, basis: DecisionBasis,
     reviewedRevision: int, evidence: Set[EvidenceDisposition], supersedes: Set[Supersession],
@@ -85,6 +89,7 @@ module coreBaseTypes {
     phase: IntentPhase, current: CurrentExecution, reports: Set[Report], attempts: int -> JudgmentAttempt,
   }
 
+  // 接受当刻的独立快照供性质回查;后来的权限,规则或证据不能重解释这次决定.
   type DecisionWitness = {
     decision: Decision, acceptedCurrent: CurrentExecution, acceptedReports: Set[Report],
     acceptedRevision: int, acceptedBase: JudgmentBase,
@@ -156,6 +161,7 @@ module coreBaseTypes {
 
   type RetryWitness = { oldExec: int, newExec: int, safeAtReplacement: bool }
 
+  // 规格账本混合协议状态和历史见证;firstOutcome,*Witness 等观察记录不代表产品表结构.
   type Ledger = {
     phase: IntentPhase, current: CurrentExecution, attempts: int -> Attempt,
     revision: int, judgmentChanges: List[JudgmentChange],
@@ -169,6 +175,7 @@ module coreBaseTypes {
 
   type AuthorityState = { online: bool, durable: Ledger }
 
+  // Worker 局部状态全部易失;重启通过新 incarnation 拒绝旧许可,已发消息仍可在网络中.
   type LocalState = {
     alive: bool, incarnation: int, leases: Set[Token], grants: Set[Token],
     started: Set[int], reports: Set[Report], receipts: Set[Report],
@@ -183,6 +190,7 @@ module coreBaseTypes {
     previousRevision: int, nextRevision: int, durableUnchanged: bool,
   }
 
+  // 外部调用/结果与 Authority 知识分离;marks 和处理/退役见证仅用于验证与覆盖观察.
   type ExternalState = {
     invocations: List[Invocation], effects: Set[int], finished: int -> ResourceResult,
     noFuture: Set[int], emitted: Set[Report], marks: Set[str],

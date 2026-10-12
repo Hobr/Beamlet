@@ -14,6 +14,7 @@ module repeatingFixtures {
 
   pure val failure2: Report = { ...success2, kind: Failure }
 
+  // 具体入口接受重复风险:旧尝试到期且已被替代,但 Worker 仍持有 t1 并可继续调用.
   action replacementInit = init.expect(safety)
     .then(createExecution(1)).expect(safety)
     .then(claimExecution(1, 1)).expect(safety)
@@ -28,6 +29,7 @@ module repeatingFixtures {
     .then(authorizeStart(t2)).expect(safety)
     .then(receiveGrant(t2)).expect(safety)
 
+  // 构造"旧成功 + 当前失败"合法窗口:两边结果都已知,普通 Failed 仍应被旧成功阻塞.
   action oldSuccessCurrentFailureInit = replacementInit
     .then(callExternal(t1)).expect(safety)
     .then(completeAtResource(1, Success)).expect(safety)
@@ -51,6 +53,7 @@ module repeatingFixtures {
   action commandStep = stepWithCommands(reconciliationPolicy)
 
   // Fixed proposals preserve what the caller reviewed before delayed delivery.
+  // revision=7 来自上方真实前缀的判断变化;故意固定为 pure 值以测试延迟处理,不能随当前值刷新.
   pure val exclusionCommand: ReconciliationCommand = {
     id: 1, decision: {
       kind: ExcludeFromJudgment, report: success1, actor: Operator(1), basis: ContractExclusion,
@@ -85,6 +88,7 @@ module repeatingFixtures {
     .then(sendReconciliationCommand(exclusionCommand)).expect(commandSafety)
     .then(receiveReconciliationCommand(reconciliationPolicy, exclusionCommand)).expect(commandSafety)
 
+  // 两份请求先同时在途再顺序处理;同 ID 异内容优先报身份冲突,新 ID 才校验审查版本.
   action competingCommandsInit(first: ReconciliationCommand, second: ReconciliationCommand): bool =
     oldSuccessCurrentFailureInit
       .then(sendReconciliationCommand(first)).expect(commandSafety)
@@ -108,6 +112,7 @@ module repeatingFixtures {
 
   pure val querySuccess4: Report = { ...querySuccess, id: 4 }
 
+  // 在发送与处理之间插入新证据,真实保存 stale 拒绝;该前缀已成立的见证不算后续新增覆盖.
   action rejectedStaleInit = oldSuccessCurrentFailureInit
     .then(sendReconciliationCommand(exclusionCommand)).expect(commandSafety)
     .then(queryExternal(1, 3)).expect(commandSafety)

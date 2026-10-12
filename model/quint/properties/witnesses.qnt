@@ -1,4 +1,6 @@
 // Reachability witnesses; not transition guards.
+// 通过 quint run --witnesses 观察可达性;这些谓词不是要求每条轨迹最终满足的活性性质.
+// marks 只标记事件发生过,不能把它们加入动作守卫以排除本应探索的交错.
 module corePropertiesWitnesses {
   import coreLogicDispositions.* from "../logic/dispositions"
   export coreLogicDispositions.*

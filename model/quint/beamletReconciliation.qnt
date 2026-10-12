@@ -12,6 +12,7 @@ module beamletReconciliation {
     operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(firstSuccess), resolutions: Set(), withdrawals: Set(),
   }
 
+  // 两个 step 对应不同验证范围:领域决定资格,以及加入请求/重投/权限的完整命令协议.
   action reconciliationStep = stepWithReconciliation(policy)
   action commandStep = stepWithCommands(policy)
 }

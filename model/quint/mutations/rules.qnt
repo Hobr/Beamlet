@@ -13,6 +13,7 @@ module ruleVersionMutations {
       .then(sendReconciliationCommand(automaticV2Command)).expect(commandSafety)
     else automaticRulePendingInit
 
+  // 分别模拟忽略版本,借用他版条件,接收时偷换版本,重解释历史,以及退役后错误拒绝重投.
   action mutantStep = {
     val before = authority.durable
     val request = if (RULE_BUG == 3) queryV1Command

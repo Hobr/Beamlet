@@ -1,6 +1,6 @@
 // Defensive checked-ingress simulation, bounded contract inputs and legal prefixes.
 module conflictFixtures {
-
+  // 单一未绑定状态由各测试组共享;常量在根入口绑定,避免多实例导致场景状态彼此隔离.
   import beamletCore.* from "../../beamletCore"
   export beamletCore.*
 
@@ -41,12 +41,12 @@ module conflictFixtures {
 
   pure val failWithUnknownOld = excludeAllConflict.union(Set(keep(failure2)))
 
+  // resolutions 是受信的整组契约事实;覆盖守卫仍独立检查,不能以登记过为由省略冲突报告.
   pure val policy: ReconciliationPolicy = {
     operators: Set(1), registeredRules: Set(rule1v1, rule2v1, rule4v1, rule5v1), excludable: Set(success1),
     resolutions: Set(excludeOldConflict, acceptOldConflict, failCurrentConflict, resolveBothConflicts,
       excludeAllConflict, excludeAllBoth, excludeAllAcross, failWithUnknownOld), withdrawals: Set(),
   }
-
   // Trusted ingress boundary, deliberately separate from resource-generated queryExternal.
   // Authentication, parsing and the truth of the evidence remain assumptions.
   action offerCheckedEvidence(r: Report): bool = all {
@@ -82,10 +82,10 @@ module conflictFixtures {
     .then(publishCompletion(t2)).expect(commandSafety)
     .then(receiveReport(failure2)).expect(commandSafety)
 
+  // 明确放宽查询与资源结果的一致性,插入已过抽象入口核验的矛盾报告来检查防御性处理.
   action conflictInit = readyInit
     .then(offerCheckedEvidence(disputedFailure)).expect(commandSafety)
     .then(receiveReport(disputedFailure)).expect(commandSafety)
-
   action queriedConflictInit = conflictInit
     .then(offerCheckedEvidence(querySuccess)).expect(commandSafety)
     .then(receiveReport(querySuccess)).expect(commandSafety)
@@ -182,10 +182,10 @@ module conflictFixtures {
     .then(sendReconciliationCommand(wideExclusionCommand)).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, wideExclusionCommand)).expect(commandSafety)
 
+  // D0 排除三份报告后,D1 只取代两份:failure2 仍绑定 D0;完整历史与原命令结果保留.
   action partiallySupersededInit = wideExcludedInit
     .then(sendReconciliationCommand(freshPartialExclusion)).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, freshPartialExclusion)).expect(commandSafety)
-
   val supersessionWitness = supersessionReached
 
   val allExcludedWitness = allExcludedReached

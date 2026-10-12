@@ -21,6 +21,7 @@ module coreLogicLeases {
     { exec: e, worker: lease.worker, incarnation: lease.incarnation, generation: lease.generation }
   }
 
+  // 相等即到期;invalidated 是持久屏障.invalidLeases 仅作历史见证,不参与此守卫.
   pure def leaseValid(l: Ledger, t: Token, now: int): bool = {
     val lease = l.attempts.get(t.exec).lease
     lease.claimed and lease.worker == t.worker and lease.incarnation == t.incarnation
@@ -28,6 +29,7 @@ module coreLogicLeases {
       and now < lease.expiresAt
   }
 
+  // 同一 Execution 只能在从未授权的 Prepared 阶段重新领取;已授权未知须走替代尝试协议.
   pure def canClaim(l: Ledger, e: int, now: int): bool = {
     val attempt = l.attempts.get(e)
     val lease = attempt.lease
@@ -37,6 +39,7 @@ module coreLogicLeases {
       and (not(lease.claimed) or lease.invalidated or now >= lease.expiresAt)
   }
 
+  // 再次领取原子记下旧代失效并分配新 generation;不能通过回拨时钟重用旧 token.
   pure def applyClaim(l: Ledger, e: int, w: int, inc: int, now: int): Ledger = {
     val attempt = l.attempts.get(e)
     val old = attempt.lease
@@ -51,6 +54,7 @@ module coreLogicLeases {
       invalidLeases: invalid, history: history.append({ kind: Claimed, exec: Current(e) }) }
   }
 
+  // 启动许可提交时同时核验 Open,current 和有效租约;许可持久化不代表已经外部调用.
   pure def canAuthorize(l: Ledger, t: Token, now: int): bool = {
     val attempt = l.attempts.get(t.exec)
     l.phase == Open and l.current == Current(t.exec) and attempt.exists
@@ -58,6 +62,7 @@ module coreLogicLeases {
       and leaseValid(l, t, now)
   }
 
+  // apply* 仅构造新值,不自带准入守卫;调用方必须先检查 can*(mutation 有意绕过).
   pure def applyAuthorize(l: Ledger, t: Token, now: int): Ledger = {
     val attempt = l.attempts.get(t.exec)
     val witness: StartWitness = {
@@ -76,6 +81,7 @@ module coreLogicLeases {
     lease.claimed and not(lease.invalidated) and now >= lease.expiresAt
   }
 
+  // 到期终止租约控制权,不撤回已经持久化的 grant;Waiting/Resolved 的既有投影保留.
   pure def applyExpire(l: Ledger, e: int): Ledger = {
     val attempt = l.attempts.get(e)
     val lease = { ...attempt.lease, invalidated: true }
@@ -96,6 +102,7 @@ module coreLogicLeases {
     l.phase == Open and l.current == Current(t.exec) and leaseValid(l, t, now)
       and now + TTL > l.attempts.get(t.exec).lease.expiresAt
 
+  // 心跳只改租约控制信息,不改变 judgmentView,因此不推进审查 revision.
   pure def applyRenew(l: Ledger, t: Token, now: int): Ledger = {
     val attempt = l.attempts.get(t.exec)
     { ...l, attempts: l.attempts.set(t.exec,

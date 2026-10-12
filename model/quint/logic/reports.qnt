@@ -3,6 +3,8 @@ module coreLogicReports {
   import coreLogicJudgment.* from "./judgment"
   export coreLogicJudgment.*
 
+  // 报告资格使用持久 grant 关联,不要求当前租约有效;旧 Worker 报告仍可作为历史证据.
+  // ByQuery 抽象已通过受信入口核验的来源,不验证真实认证或外部正文真实性.
   pure def reportSourceValid(l: Ledger, r: Report): bool = {
     val attempt = l.attempts.get(r.exec)
     val originValid = match r.origin {
@@ -13,6 +15,7 @@ module coreLogicReports {
     attempt.exists and originValid
   }
 
+  // 去重身份包含来源作用域;同一身份不同内容是冲突,而不是覆盖旧报告.
   pure def sameReportIdentity(a: Report, b: Report): bool =
     a.id == b.id and a.exec == b.exec and a.origin == b.origin
 
@@ -25,12 +28,15 @@ module coreLogicReports {
     identityConflict or resultConflict
   }
 
+  // Pending/NotFound 都不提供确定结果;只有可靠的 NotExecuted 才证明未执行.
   pure def knowledgeOf(kind: ReportKind): Knowledge =
     if (kind == Success) SuccessKnown
     else if (kind == Failure) FailureKnown
     else if (kind == NotExecuted) NotExecutedKnown
     else NoKnowledge
 
+  // 原始证据只增不删.冲突标志保持,同时保留最近有依据的生命周期与 Knowledge.
+  // 迟到 Pending 不把 Resolved 回退为 Waiting,NotFound 只设置 negativeSeen.
   pure def applyReport(l: Ledger, r: Report): Ledger = {
     val attempt = l.attempts.get(r.exec)
     val conflict = attempt.conflict or reportConflicts(l, r)

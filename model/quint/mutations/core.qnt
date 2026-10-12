@@ -145,6 +145,7 @@ module coreMutations {
     external' = external, clock' = clock,
   }
 
+  // BUG 将合法窗口,一个故意错误动作和目标性质配成一组;只在最后一步制造违规.
   action mutantInit =
     if (BUG == 1 or BUG == 2) closedInit
     else if (BUG == 3) expiredPreparedInit
@@ -166,6 +167,7 @@ module coreMutations {
     else if (BUG == 8) closeUnknownAsFailed
     else acknowledgeBeforeDurability
 
+  // 指向应检出的具体性质,避免把其他偶然失败误当作目标防线有效.
   val mutantInvariant =
     if (BUG == 1) outcomeUnique
     else if (BUG == 2) outcomeImmutable

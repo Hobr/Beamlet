@@ -7,6 +7,8 @@ module coreActionsEvidence {
   import coreLogicWorkers.* from "../logic/workers"
   export coreLogicWorkers.*
 
+  // 保存证据,可能的成功终结与持久化回执原子形成;Closed 或旧租约不妨碍合格证据入账.
+  // 保留在途报告以允许重复交付;duplicate 分支只补发回执,不重复记账.
   action receiveReport(r: Report): bool = all {
     authority.online, network.contains(ResultReport(r)),
     reportSourceValid(authority.durable, r), not(authority.durable.reports.contains(r)),
@@ -26,6 +28,7 @@ module coreActionsEvidence {
     }
   }
 
+  // 查询只发送受信证据,不直接改变 Authority;与正常报告共享接收/保存路径.
   action queryExternal(e: int, id: int): bool = {
     val r = queryReport(external, e, id)
     all {
@@ -39,6 +42,7 @@ module coreActionsEvidence {
     }
   }
 
+  // 资源原子地建立"未发生且未来不再发生"事实后发 NotExecuted;普通 NotFound 没有此能力.
   action fenceAtResource(e: int, id: int): bool = {
     val r: Report = { id: id, exec: e, kind: NotExecuted, origin: ByQuery }
     all {
@@ -75,6 +79,7 @@ module coreActionsEvidence {
     }
   }
 
+  // 只有已保存的完全相同报告可直接确认;同身份不同正文必须保留并检测冲突.
   action acknowledgeDuplicate(r: Report): bool = all {
     authority.online, network.contains(ResultReport(r)), authority.durable.reports.contains(r),
     not(network.contains(StoredReceipt(r))),
@@ -92,6 +97,7 @@ module coreActionsEvidence {
     }
   }
 
+  // Worker 仅在尚未获持久化回执时重投本地报告;丢回执不应造成重复 EvidenceStored 审计.
   action resendReport(r: Report): bool = match r.origin {
     | ByWorker(t) => all {
         workers.get(t.worker).alive, workers.get(t.worker).incarnation == t.incarnation,

@@ -6,11 +6,14 @@ module coreLogicRecovery {
   pure def applyClockMove(x: ExternalState, old: int, nextTime: int): ExternalState =
     if (nextTime < old) { ...x, marks: x.marks.union(Set("clockBackward")) } else x
 
+  // 安全替代需要未授权,可靠且仍适用的未执行证据,或显式接受重复风险.
+  // 到期,Unknown,查询 NotFound 都不能单独证明旧尝试不会继续调用.
   pure def safeToReplace(l: Ledger, e: int): bool = {
     val attempt = l.attempts.get(e)
     attempt.grant == NoGrant or judgmentKnowledge(l, e) == NotExecutedKnown or ALLOW_REPEAT
   }
 
+  // 有恢复理由与替代安全是两个条件;新的 Execution 身份必须尚未使用.
   pure def canReplace(l: Ledger, oldExec: int, newExec: int): bool = {
     val attempt = l.attempts.get(oldExec)
     val recoveryReason = attempt.grant == NoGrant or attempt.phase == Unknown
@@ -19,6 +22,7 @@ module coreLogicRecovery {
       and not(l.attempts.get(newExec).exists) and recoveryReason and safeToReplace(l, oldExec)
   }
 
+  // 原子切换 current,保留旧 grant/证据;使旧租约失效不等于撤销旧外部调用的可能性.
   pure def applyReplace(l: Ledger, oldExec: int, newExec: int): Ledger = {
     val old = l.attempts.get(oldExec)
     val updatedOld = { ...old, lease: { ...old.lease, invalidated: true } }
@@ -39,6 +43,7 @@ module coreLogicRecovery {
   pure def freshQueryId(x: ExternalState, e: int, id: int): bool =
     not(x.emitted.exists(r => r.exec == e and r.origin == ByQuery and r.id == id))
 
+  // 未完成时只生成 NotFound;可靠 NotExecuted 必须由 fenceAtResource 另行建立.
   pure def queryReport(x: ExternalState, e: int, id: int): Report = {
     val result = x.finished.get(e)
     val kind = if (result == ResourceSucceeded) Success

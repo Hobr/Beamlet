@@ -3,6 +3,7 @@ module conflictWithdrawalTests {
   import conflictWithdrawalFixtures.* from "./withdrawal_fixtures"
   export conflictWithdrawalFixtures.*
 
+  // W 移除 D1 两份绑定后只剩 D0 的 failure2;旧成功/冲突恢复阻塞,finishFailure 必须 disabled.
   run withdrawalDoesNotRestoreEarlierDispositionTest = withdrawnInit
     .expect(authority.durable.phase == Open and authority.durable.outcomes == List())
     .expect(authority.durable.revision == 11 and authority.durable.decisions.length() == 3)
@@ -39,6 +40,7 @@ module conflictWithdrawalTests {
     .expect(noConflicts(authority.durable) and judgmentKnowledge(authority.durable, 1) == NoKnowledge)
     .expect(authority.durable.revision == 12 and authority.durable.outcomes == List())
 
+  // 重投已经撤销其处置的旧命令仍返回原成功记录;读取原结果不等于恢复原来的判断效力.
   run withdrawnOriginalCommandReplaysWithoutReestablishingTreatmentTest = withdrawnInit
     .then(sendReconciliationCommand(wideExclusionCommand)).expect(commandSafety)
     .then(receiveReconciliationCommand(withdrawalPolicy, wideExclusionCommand)).expect(commandSafety)

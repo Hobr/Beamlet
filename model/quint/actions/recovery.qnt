@@ -5,6 +5,7 @@ module coreActionsRecovery {
   import coreLogicRecovery.* from "../logic/recovery"
   export coreLogicRecovery.*
 
+  // 允许墙钟双向跳变以暴露仅凭 now < expiresAt"复活"旧租约的错误.
   action moveClockTo(nextTime: int): bool = all {
     CLOCK_VALUES.contains(nextTime), nextTime != clock,
     authority' = authority, workers' = workers, network' = network,
@@ -16,6 +17,7 @@ module coreActionsRecovery {
     moveClockTo(nextTime)
   }
 
+  // 取消争夺唯一 Outcome,不保证外部效果停止;已发许可和迟到报告仍可继续处理.
   action cancelIntent = {
     val outcome: Outcome = { kind: OutcomeCancelled, exec: NoCurrent }
     all {
@@ -25,6 +27,7 @@ module coreActionsRecovery {
     }
   }
 
+  // 已知 Failure 只是事实;这个动作抽象策略决定不再尝试,仍须满足普通终结资格.
   action finishFailure(e: int): bool = {
     val outcome: Outcome = { kind: OutcomeFailed, exec: Current(e) }
     all {
@@ -40,6 +43,7 @@ module coreActionsRecovery {
     workers' = workers, network' = network, external' = external, clock' = clock,
   }
 
+  // 数据库已提交状态按前提持久保留;此故障模型只停用 Authority 动作,不模拟 WAL/掉电恢复.
   action crashCoordinator = all {
     authority.online, authority' = { ...authority, online: false },
     workers' = workers, network' = network,

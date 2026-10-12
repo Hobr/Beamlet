@@ -5,6 +5,7 @@ module repeatingRetirementFixtures {
 
   pure val retiredV1Policy = retiredRulePolicy(bothVersionPolicy, rule2v1.rule)
 
+  // 先接受 v1 处置再退役:既有处置与原命令结果保留,只阻止后续新提交使用该版本.
   action ordinaryRetirementInit = automaticRuleCommittedInit
     .then(retireRuleVersion(bothVersionPolicy, rule2v1.rule)).expect(commandSafety)
 
