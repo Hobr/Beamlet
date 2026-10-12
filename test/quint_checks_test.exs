@@ -51,9 +51,11 @@ defmodule Beamlet.QuintChecksTest do
           value <- ~w(0 -1 not-an-integer),
           do: [flag, value]
 
-    for args <- invalid_numbers ++ [["--phase", "oops"], ["--unknown"], ["extra"]] do
+    for args <-
+          invalid_numbers ++
+            [["oops"], ["--unknown"], ["typecheck", "test"], ["--phase", "test"]] do
       assert_raise Mix.Error, ~r/must be positive|Invalid arguments|Unknown phase/, fn ->
-        Mix.Tasks.Beamlet.Check.run(args)
+        Mix.Tasks.Quint.run(args)
       end
     end
   end

@@ -44,10 +44,43 @@ defmodule Beamlet.QuintCliTest do
     %{dir: dir, calls: calls, logs: Path.join(dir, "logs")}
   end
 
+  test "mix quint dispatches each positional phase through the registered task", %{
+    calls: calls,
+    logs: logs
+  } do
+    for {phase, expected_commands} <- [
+          {"typecheck", ~w(typecheck)},
+          {"test", ~w(test)},
+          {"simulate", ~w(run)},
+          {"mutations", ~w(run test)},
+          {"all", ~w(run test typecheck)}
+        ] do
+      File.rm(calls)
+      phase_logs = Path.join(logs, phase)
+      Mix.Task.reenable("quint")
+
+      capture_io(fn ->
+        Mix.Task.run("quint", [
+          phase,
+          "--samples",
+          "1",
+          "--directed-samples",
+          "1",
+          "--log-dir",
+          phase_logs
+        ])
+      end)
+
+      assert read_commands(calls) |> Enum.map(&hd/1) |> Enum.uniq() |> Enum.sort() ==
+               expected_commands
+
+      assert File.read!(Path.join(phase_logs, "run-info.txt")) =~ "phase=#{phase}\n"
+    end
+  end
+
   test "explicit thread budget is forwarded to every Rust simulation", %{calls: calls, logs: logs} do
     capture_io(fn ->
-      Mix.Tasks.Beamlet.Check.run([
-        "--phase",
+      Mix.Tasks.Quint.run([
         "simulate",
         "--samples",
         "2",
@@ -87,8 +120,7 @@ defmodule Beamlet.QuintCliTest do
 
   test "logs describe the effective run configuration and elapsed wall times", %{logs: logs} do
     capture_io(fn ->
-      Mix.Tasks.Beamlet.Check.run([
-        "--phase",
+      Mix.Tasks.Quint.run([
         "typecheck",
         "--jobs",
         "2",
@@ -123,7 +155,7 @@ defmodule Beamlet.QuintCliTest do
 
     # Reusing the directory must start a fresh report, not accumulate old timings.
     capture_io(fn ->
-      Mix.Tasks.Beamlet.Check.run(["--phase", "typecheck", "--log-dir", logs])
+      Mix.Tasks.Quint.run(["typecheck", "--log-dir", logs])
     end)
 
     [^header | fresh_rows] =
@@ -142,8 +174,7 @@ defmodule Beamlet.QuintCliTest do
     logs: logs
   } do
     capture_io(fn ->
-      Mix.Tasks.Beamlet.Check.run([
-        "--phase",
+      Mix.Tasks.Quint.run([
         "simulate",
         "--samples",
         "1",
@@ -168,7 +199,7 @@ defmodule Beamlet.QuintCliTest do
     logs: logs
   } do
     capture_io(fn ->
-      Mix.Tasks.Beamlet.Check.run([
+      Mix.Tasks.Quint.run([
         "--samples",
         "2",
         "--directed-samples",
@@ -182,6 +213,7 @@ defmodule Beamlet.QuintCliTest do
       ])
     end)
 
+    assert File.read!(Path.join(logs, "run-info.txt")) =~ "phase=all\n"
     commands = read_commands(calls)
     checks = Enum.filter(commands, &(hd(&1) == "typecheck"))
     tests = Enum.filter(commands, &(hd(&1) == "test"))
@@ -207,7 +239,7 @@ defmodule Beamlet.QuintCliTest do
 
     capture_io(fn ->
       assert_raise Mix.Error, ~r/Quint failed \(exit 2\)/, fn ->
-        Mix.Tasks.Beamlet.Check.run(["--phase", "simulate", "--jobs", "1", "--log-dir", logs])
+        Mix.Tasks.Quint.run(["simulate", "--jobs", "1", "--log-dir", logs])
       end
     end)
 

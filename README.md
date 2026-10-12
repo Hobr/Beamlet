@@ -33,14 +33,7 @@ MIX_ENV=prod mix compile
 mix test
 
 # Quint
-## Quint model checks
-mix beamlet.check
-
-## Low-budget full regression
-mix beamlet.check --samples 20 --directed-samples 20
-
-## Single phase
-mix beamlet.check --phase typecheck/test/simulate/mutations
+mix quint {all/typecheck/test/simulate/mutations}
 ```
 
 ## Thanks

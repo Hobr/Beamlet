@@ -33,14 +33,7 @@ MIX_ENV=prod mix compile
 mix test
 
 # Quint
-## Quint 模型检查
-mix beamlet.check
-
-## 低预算完整回归
-mix beamlet.check --samples 20 --directed-samples 20
-
-## 单独运行
-mix beamlet.check --phase typecheck/test/simulate/mutations
+mix quint {all/typecheck/test/simulate/mutations}
 ```
 
 ## 感谢
