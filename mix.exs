@@ -6,7 +6,6 @@ defmodule Beamlet.Specs.MixProject do
       app: :beamlet_specs,
       version: "0.1.0",
       elixir: "~> 1.20",
-      elixirc_paths: ["tools"],
       deps: []
     ]
   end

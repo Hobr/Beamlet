@@ -59,6 +59,6 @@ defmodule Mix.Tasks.Quint do
       if config[key] < 1, do: Mix.raise("--#{key} must be positive")
     end
 
-    Beamlet.QuintChecks.run(config)
+    Mix.QuintChecks.run(config)
   end
 end

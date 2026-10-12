@@ -144,5 +144,5 @@ quint run model/quint/beamletNormalUse_mutations_test.qnt --main normalExtendedI
 
 预期退出码 1, 实际 `Invariant violated` 和非空 ITF.解析, 类型或运行错误不算检出.
 ITF 包含合法初始化前缀与违规转换, 状态数量可大于两条.
-[检查器](../../tools/beamlet/quint_checks.ex) 管理每条 mutation 的入口和输出; 检查前清除对应旧 ITF,
+[检查器](../../lib/mix/quint_checks.ex) 管理每条 mutation 的入口和输出; 检查前清除对应旧 ITF,
 避免旧文件造成误报. 详细前后状态保留在运行产物中.

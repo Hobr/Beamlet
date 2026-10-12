@@ -21,7 +21,7 @@
 
 根目录的 `_test.qnt` 聚合确定场景, `_mutations_test.qnt` 提供故意错误入口.
 `beamletConflicts_test.qnt` 同时提供分离的正常和 mutation 实例. 完整入口与运行配置由
-[Quint 检查器](../../tools/beamlet/quint_checks.ex) 管理.
+[Quint 检查器](../../lib/mix/quint_checks.ex) 管理.
 
 ## 检查命令
 

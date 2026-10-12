@@ -1,4 +1,4 @@
-defmodule Beamlet.QuintChecks do
+defmodule Mix.QuintChecks do
   @moduledoc false
   @root Path.expand("../..", __DIR__)
   @core "model/quint/beamletCore.qnt"

@@ -1,4 +1,4 @@
-defmodule Beamlet.QuintChecksTest do
+defmodule Mix.QuintChecksTest do
   use ExUnit.Case, async: true
 
   setup do
@@ -10,7 +10,7 @@ defmodule Beamlet.QuintChecksTest do
 
   test "an invariant violation requires its generated trace", %{trace: trace} do
     File.write!(trace, ~s({"states": [{}, {}]}))
-    assert :ok = Beamlet.QuintChecks.validate_counterexample!(1, "Invariant violated", trace)
+    assert :ok = Mix.QuintChecks.validate_counterexample!(1, "Invariant violated", trace)
   end
 
   test "parse and runtime failures never count as detected mutations", %{trace: trace} do
@@ -18,7 +18,7 @@ defmodule Beamlet.QuintChecksTest do
 
     for output <- ["Error [QNT404]: Name not found", "Runtime error", "No violation found"] do
       assert_raise Mix.Error, fn ->
-        Beamlet.QuintChecks.validate_counterexample!(1, output, trace)
+        Mix.QuintChecks.validate_counterexample!(1, output, trace)
       end
     end
   end
@@ -28,20 +28,20 @@ defmodule Beamlet.QuintChecksTest do
 
     for status <- [0, 2, 137] do
       assert_raise Mix.Error, fn ->
-        Beamlet.QuintChecks.validate_counterexample!(status, "Invariant violated", trace)
+        Mix.QuintChecks.validate_counterexample!(status, "Invariant violated", trace)
       end
     end
   end
 
   test "missing or empty traces cannot satisfy the check", %{trace: trace} do
     assert_raise Mix.Error, fn ->
-      Beamlet.QuintChecks.validate_counterexample!(1, "Invariant violated", trace)
+      Mix.QuintChecks.validate_counterexample!(1, "Invariant violated", trace)
     end
 
     File.write!(trace, "")
 
     assert_raise Mix.Error, fn ->
-      Beamlet.QuintChecks.validate_counterexample!(1, "Invariant violated", trace)
+      Mix.QuintChecks.validate_counterexample!(1, "Invariant violated", trace)
     end
   end
 
