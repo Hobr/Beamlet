@@ -1,8 +1,8 @@
 // Intentionally broken rules; each initializer follows real guarded transitions.
 module oldSuccessMutation {
 
-  import beamletCore.* from "../beamletCore"
-  export beamletCore.*
+  import beamletExecution.* from "../beamletExecution"
+  export beamletExecution.*
 
   pure val t1: Token = { exec: 1, worker: 1, incarnation: 1, generation: 1 }
 

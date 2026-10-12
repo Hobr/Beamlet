@@ -5,9 +5,9 @@ defmodule Beamlet.QuintChecks do
   @tests "model/quint/beamletCore_test.qnt"
   @conflicts "model/quint/beamletConflicts_test.qnt"
   @mutations "model/quint/beamletCore_mutations_test.qnt"
-  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test beamletNormalUse beamletNormalUse_test beamletNormalUse_mutations_test)
+  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test beamletNormalUse beamletNormalUse_test beamletNormalUse_mutations_test beamletExecution beamletExecution_test beamletRecovery)
   @normal_mutations ~w(normalWrongResultValue normalDefinitionOverwritten normalCallbackBindingLost
-    normalExpiredIdempotencyRetry normalSuccessNotAtomic normalContextChanged normalFailureNotAtomic)
+    normalExpiredIdempotencyRetry normalSuccessNotAtomic normalContextChanged normalFailureNotAtomic normalExtendedIdempotencyWindow)
   @withdrawal_mutations ~w(withdrawalResurrectsOldTreatment withdrawalOverstepsScope withdrawalWithoutRevision
     uncheckedWithdrawalBasis withdrawalCreatesOutcome withdrawalDeletesEvidence
     withdrawalReplayRetargetsNewDisposition commandIdentitySplitByOperationKind withdrawalReplyBeforeCommit)
@@ -133,7 +133,8 @@ defmodule Beamlet.QuintChecks do
     Enum.map(~w(strictTests fencedTests repeatingTests), &test_job(@tests, &1)) ++
       [
         test_job(@conflicts, "conflictTests"),
-        test_job("model/quint/beamletNormalUse_test.qnt", "normalUseTests")
+        test_job("model/quint/beamletNormalUse_test.qnt", "normalUseTests"),
+        test_job("model/quint/beamletExecution_test.qnt", "executionProjectionTests")
       ]
   end
 
@@ -171,7 +172,7 @@ defmodule Beamlet.QuintChecks do
               main,
               init,
               "step",
-              "commandSafety",
+              if(main in ~w(strictTests fencedTests), do: "safety", else: "commandSafety"),
               config.directed_samples
             )
 
@@ -297,9 +298,57 @@ defmodule Beamlet.QuintChecks do
               ~w(submittedWitness reusedWitness callbackWitness releasedCompletionWitness readWitness retryWitness failureAtomicWitness discoveryWitness succeededReached failedReached waitingReached)
             )
 
+    execution = [
+      simulation(
+        "execution-core",
+        "model/quint/beamletExecution.qnt",
+        "executionAnalysis",
+        "init",
+        "step",
+        "safety",
+        config.samples
+      )
+    ]
+
+    recovery =
+      for init <-
+            ~w(init callbackRunningInit callbackReleasedInit retryPendingInit retryAuthorizedInit),
+          do:
+            simulation(
+              "recovery-#{init}",
+              "model/quint/beamletRecovery.qnt",
+              "recoveryAnalysis",
+              init,
+              "step",
+              "safety",
+              config.directed_samples,
+              ~w(recoveryCompletionWitness callbackRedeliveryWitness policyStopWitness succeededReached
+                failedReached workerRestartReached coordinatorRestartReached messageLossReached expiryReached clockBackwardReached retryWitness)
+            )
+
+    projections =
+      for init <- ~w(normalInit callbackReleasedInit retryPendingInit),
+          do:
+            simulation(
+              "projection-#{init}",
+              "model/quint/beamletExecution_test.qnt",
+              "executionProjectionTests",
+              init,
+              "recoveryStep",
+              "projectionSafety",
+              config.directed_samples
+            )
+
     core ++
       prefixes ++
-      primitives ++ commands ++ conflicts ++ rules ++ retirements ++ withdrawals ++ normal
+      primitives ++
+      commands ++
+      conflicts ++
+      rules ++
+      retirements ++
+      withdrawals ++
+      normal ++
+      execution ++ recovery ++ projections
   end
 
   defp test_job(file, main),

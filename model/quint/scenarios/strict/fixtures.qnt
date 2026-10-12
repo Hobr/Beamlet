@@ -1,8 +1,8 @@
 // One shared unbound core instance and legal shared prefixes; scenario groups reuse this state.
 module strictFixtures {
 
-  import beamletCore.* from "../../beamletCore"
-  export beamletCore.*
+  import beamletExecution.* from "../../beamletExecution"
+  export beamletExecution.*
 
   pure val t1: Token = { exec: 1, worker: 1, incarnation: 1, generation: 1 }
 

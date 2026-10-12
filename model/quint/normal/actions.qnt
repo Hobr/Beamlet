@@ -81,7 +81,7 @@ module normalUseActions {
       authority' = { ...authority, durable: after },
       usage' = { ...usage, acceptances: usage.acceptances.append({ report: r,
         before: authority.durable, after: after, stop: stopRequired(usage, authority.durable),
-        definition: focused(usage).request.definition }),
+        definition: focused(usage).request.definition, binding: usage.bindings.get(r.exec), at: usage.contractTime }),
         marks: if (r.kind == Failure and after.outcomes.length() > authority.durable.outcomes.length())
           usage.marks.union(Set(AtomicFailureMark)) else usage.marks },
       workers' = workers, network' = network.union(Set(StoredReceipt(r))), external' = external, clock' = clock,

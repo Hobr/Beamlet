@@ -1,6 +1,8 @@
 # SPEC: Operation / Handler 契约
 
-状态: 草案. 本文记录 Q36-Q45 已确认要求, 不定义最终物理字段、codec、网络传输或具体 Handler Interface.
+状态: 上位语义草案, 记录 Q36-Q45 已确认要求. 首版逻辑 Interface 与具体选择已补在
+[受限值/消息](persistent-values-and-messages.md)、[Handler/恢复](handler-recovery-contracts.md) 和
+[原子存储命令](storage-command-contracts.md); 最终物理字段、codec 和网络传输仍由实现满足这些契约.
 
 相关文档: [领域语言](../../GLOSSARY.md), [核心状态机](core-state-machines.md),
 [RFC 0001](../rfc/0001-core-boundaries.md).
@@ -24,7 +26,8 @@
 - 逻辑合法性、内容等价、存储字节与 wire 字节分别定义, 不以任意 term 可编码作为合法性判断.
 - 本决策不选择具体 codec, 也不允许不受限的任意 JSON. 实际后端的数值、文本和 round-trip 限制需要验证.
 
-待定: 数值范围/精度、文本规范化、空值与缺省、大小/深度预算、特殊类型表示、产物可达性和生命周期.
+首版选择见 [持久值 v1](persistent-values-and-messages.md): 受限整数、精确文本/结构相等、缺省与 null 区分、
+规范表示及大小/深度/节点预算; 特殊业务类型和产物生命周期由版本化 Operation 契约规定. 具体 codec 尚未实现.
 
 ## 3. Report 身份与重投
 
@@ -36,7 +39,8 @@
 - 内容 hash 可以辅助检查, 不替代报告身份; 不直接以未定义稳定性的 codec 字节建立长期内容身份.
 - 已持久化确认与 Outcome 接受的区别、冲突处置和资格检查遵守核心状态机 SPEC.
 
-待定: 身份作用域、报告类型、逻辑内容等价、编码校验、冲突存储及接收结论的查询格式.
+首版逻辑 envelope、来源身份域、内容等价、冲突保留和 Stored/DuplicateStored/ConflictStored 见
+[消息契约](persistent-values-and-messages.md); 具体 wire codec/物理存储与真实认证仍待实现验证.
 
 ## 4. Handler 能力
 
@@ -92,8 +96,9 @@ Handler 不默认具备以下能力, 必须声明条件:
   自动规则须明确允许该操作且条件合格. 原结果读取仍按独立读取权限判断, 不要求当前撤销权限.
   不由此指定新角色框架、ACL 或权限编码; 新授权区分场景与真实实现尚未补充.
 
-待定: 声明与快照字段、权限和资源需求、兼容 Handler 选择、外部键映射及条件验证,
-协调规则版本表示/登记/退役与解释材料保留、决定身份/取代关系表示与条件核验契约.
+首版 Handler 声明/快照材料、兼容选择、外部 key/scope/protocol 映射及条件核验见
+[Handler 契约](handler-recovery-contracts.md). 具体凭据/驱动映射待实现; 后置协调规则的登记/退役、
+决定身份/取代表示和真实条件核验仍未细化.
 
 ## 5. 回调转换
 
@@ -108,7 +113,8 @@ Handler 不默认具备以下能力, 必须声明条件:
 - 关联身份不等于认证凭证, 不直接使用绑定 Worker incarnation 的启动许可作为第三方回调凭证.
 - 已撤权或 Closed 时仍可保存合法证据, 但不绕过资格或重新打开 Intent.
 
-待定: 关联字段、认证机制、重放防护与保留策略.
+首版持久关联、可信来源映射、早到回调准入、重放/重投和保留责任见
+[回调契约](handler-recovery-contracts.md). 各 provider 的实际验签算法、凭据配置和 inbox 实现须单独符合性验证.
 
 ## 6. 待验证场景
 
@@ -135,4 +141,6 @@ Handler 不默认具备以下能力, 必须声明条件:
 - 提交确认丢失或上层重启时可重用该身份; 计划迁移保持身份. 无 key 的请求创建新逻辑操作.
 - namespace 不是权限证明. Runtime 不自动识别业务等价, 上层必须保存或重建稳定提交身份.
 
-待定: 定义相等规则、字段名称与规范化、提交身份保留周期、控制变更 revision 与并发冲突, 权威数据集合的路由.
+首版定义相等、文本精确比较、持续身份保留和权威集合身份见 [提交消息契约](persistent-values-and-messages.md),
+查找/建立的并发处理见 [存储命令](storage-command-contracts.md). 首版不提供运行中控制修改命令;
+具体字段/wire codec、部署路由及后置控制 revision 仍须实现或后续设计.

@@ -49,12 +49,30 @@ module normalUseProperties {
       | BoundHandler(b) => b.handler.idempotent and w.at <= b.handler.validThrough
           and b.definition == w.definition and b.context == w.context
     })))
+  // Check the original window independently of retryHandlerQualified and the new declaration.
+  val retryCallsOriginalContract = usage.retries.foldl(true, (ok, r) => ok
+    and ((not(r.repeatAccepted) and not(safeToReplace(r.before, r.oldExec))) implies (match r.binding {
+      | NoHandler => false
+      | BoundHandler(old) => usage.launches.foldl(true, (valid, call) => valid
+          and (call.token.exec == r.newExec implies call.at <= old.handler.validThrough))
+    })))
+  // Recompute from the original definition, grant/knowledge and accepted contract window.
+  pure def observedStopRequired(d: Definition, l: Ledger, b: HandlerBinding, at: int): bool =
+    d.policy == StopOnFailure or EXECUTIONS.filter(e => l.attempts.get(e).exists).size() >= 2
+      or (match l.current {
+        | NoCurrent => false
+        | Current(e) => not(l.attempts.get(e).grant == NoGrant
+            or l.attempts.get(e).knowledge == NotExecutedKnown or ALLOW_REPEAT
+            or (match b {
+              | NoHandler => false
+              | BoundHandler(s) => s.handler.idempotent and at <= s.handler.validThrough
+            }))
+      })
   pure def acceptanceSound(w: AcceptanceObservation): bool = {
     val recorded = applyReport(w.before, w.report)
     val o: Outcome = { kind: if (w.report.kind == Success) OutcomeSucceeded else OutcomeFailed,
       exec: Current(w.report.exec), value: w.report.value }
-    val shouldStop = w.definition.policy == StopOnFailure
-      or EXECUTIONS.filter(e => w.before.attempts.get(e).exists).size() >= 2
+    val shouldStop = observedStopRequired(w.definition, w.before, w.binding, w.at)
     val terminal = (w.report.kind == Success or (w.report.kind == Failure and shouldStop)) and canCommit(recorded, o)
     w.stop == shouldStop and w.after.reports.contains(w.report)
       and w.after.history.length() >= w.before.history.length() + 1
@@ -66,8 +84,15 @@ module normalUseProperties {
     and w.definition == focused(usage).request.definition and acceptanceSound(w))
   val factReadsSound = usage.reads.foldl(true, (ok, w) => ok
     and w.reports == w.ledger.reports and w.outcomes == w.ledger.outcomes)
-  val normalSafety = commandSafety and submissionIdentitySound and handlerLaunchesSound
-    and retryContractsSound and normalAcceptanceAtomic and factReadsSound
+  val policyStopsSound = usage.stops.foldl(true, (ok, w) => ok
+    and w.definition == focused(usage).request.definition
+    and observedStopRequired(w.definition, w.before, w.binding, w.at)
+    and w.after.phase == Closed and w.before.phase == Open
+    and w.after.outcomes.length() == w.before.outcomes.length() + 1
+    and w.after.reports == w.before.reports and w.after.history.length() == w.before.history.length() + 1)
+  val normalSafety = safety and submissionIdentitySound and handlerLaunchesSound
+    and retryContractsSound and normalAcceptanceAtomic and factReadsSound and policyStopsSound
+    and retryCallsOriginalContract
 
   val submittedWitness = usage.marks.contains(SubmittedMark)
   val reusedWitness = usage.marks.contains(ReusedMark)

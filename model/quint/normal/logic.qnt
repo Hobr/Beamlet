@@ -43,7 +43,8 @@ module normalUseLogic {
     u.retries.foldl(true, (ok, w) => ok and ((w.newExec == e and not(w.repeatAccepted)
       and not(safeToReplace(w.before, w.oldExec))) implies (match w.binding {
         | NoHandler => false
-        | BoundHandler(b) => h.protocol == b.handler.protocol and h.idempotent and now <= h.validThrough
+        | BoundHandler(b) => h.protocol == b.handler.protocol and h.idempotent
+            and now <= h.validThrough and now <= b.handler.validThrough
       })))
 
   pure def bindingFor(u: UseState, h: Handler): HandlerBinding = BoundHandler({
@@ -62,9 +63,14 @@ module normalUseLogic {
     | BoundHandler(b) => b.handler.idempotent and now <= b.handler.validThrough
         and b.definition == focused(u).request.definition and b.context == focused(u).context
   }
+  // RetryOnce is a maximum, not an obligation to call after its safety basis expires.
   pure def stopRequired(u: UseState, l: Ledger): bool =
     focused(u).request.definition.policy == StopOnFailure
       or EXECUTIONS.filter(e => l.attempts.get(e).exists).size() >= 2
+      or (match l.current {
+        | NoCurrent => false
+        | Current(e) => not(safeToReplaceWithEvidence(l, e, idempotencyValid(u, e, u.contractTime)))
+      })
 
   pure def receiveWithPolicy(u: UseState, l: Ledger, r: Report): Ledger = {
     val recorded = recordAndMaybeCommit(l, r)

@@ -1,6 +1,7 @@
 # SPEC: lease 与权限
 
-状态: 草案. 记录 Q19、Q28、Q46-Q49、Q52-Q56 已确认规则. 具体时间精度、存储字段与最终 Interface 尚未完成.
+状态: 上位语义草案, 记录 Q19、Q28、Q46-Q49、Q52-Q56 已确认规则. 首版时间/计数、拒绝时失效屏障及
+原子命令 Interface 已细化到 [存储命令契约](storage-command-contracts.md); 真实 SQL/驱动尚无实现验证.
 
 相关文档: [核心状态机](core-state-machines.md), [Handler 契约](operation-handler-contracts.md),
 [RFC 0001](../rfc/0001-core-boundaries.md).
@@ -27,13 +28,14 @@
 - 数据库时间可能前跳或后跳. TTL 不承诺真实经过时间的精确上界, 更不证明外部操作终止.
 - Worker 可以用本地计时安排心跳和提示, 但不推翻 Authority 裁决.
 
-待定: 时间单位、精度、采样点、取时方法、检测异常的诊断和测试配置.
+首版采用 UTC epoch 整数毫秒, 在取得事务保护后采样; PostgreSQL 与 SQLite 的取时/量化约束、
+锁等待跨 expiry 和回拨测试见 [存储契约 §4/§7](storage-command-contracts.md). 具体驱动查询与诊断配置仍须实现验证.
 
 ## 3. generation 与 incarnation
 
 - Execution 领取权限有持久 generation, 由 Authority 分配并绑定 Worker incarnation.
 - 重新领取使用新 generation, 普通续租不改变 generation.
-- generation 不重置复用. 计数表示与耗尽处理待定, 不允许通过复用旧代恢复旧资格.
+- generation 不重置复用. 首版采用非回绕正 64-bit 计数, 耗尽拒绝新领取并保留事实; 不复用旧代恢复资格.
 - 临时控制请求必须匹配当前 generation 与 incarnation, 并满足相应 lease 条件.
 - 旧代不能续租、申请启动或执行旧 lease 保护的动作.
 - 报告不因携带旧代就一律丢弃; 按来源、身份及独立结果资格验证.
@@ -122,6 +124,6 @@ History 恢复全部续租.
 
 ## 11. 仍需确认
 
-- 启动请求身份、重复响应和 Worker 实际启动一次的协议.
-- 临时协调动作、generation 存储及最终原子命令 Interface.
+- 启动与领取请求的身份/重投、时间采样和原子命令已在首版存储契约细化; 真实 Worker/SQL 仍待符合性验证.
+- 后置临时协调动作、物理字段与各驱动事务映射.
 - 数据库配置、真实故障/掉电保证和迁移中断恢复.

@@ -5,21 +5,26 @@
 
 当前已暂停治理分支的继续细化, 优先 [首版范围与模型收敛提案](../spec/first-release-scope.md).
 已确认首版对无法安全解决的 Unknown/冲突保持 Open、提供事实读取, 暂不提供人工裁定接口.
-现有模型仍是组合参考规格, 尚未按核心/命令/治理实际隔离; 不因这里有验证场景就要求首版交付全部能力.
-[依赖切割计划](dependency-cut-plan.md) 已列出实际耦合和分步验证要求, 尚未执行物理拆分.
-[正常使用审查](normal-use-audit.md) 发现的独立回调、稳定提交身份/业务值、Handler 条件与失败原子接受缺口,
-已增加 [正常闭环补全模型](normal-use-coverage.md), 复用同一执行账本并增加提交/契约抽象与正常 profile.
-原 Q77 的 185 场景/60 反例保留, 新增 40 个正常场景与七个 mutation.
-当前检查点: 13 个类型入口、225 个正常场景、67 条预期反例通过;
-正式回归 46,000 条及额外 seed 的 10,000 条抽样未观察到所检查不变量违规, 具体配置/覆盖见补全记录.
-Q78 授权区分仍未新增模型验证; 正常闭环补全不等于工程实现完成或核心/治理依赖隔离完成.
+已建立 [独立执行核心](beamletExecution.qnt), 正常入口和恢复入口不再导入治理状态/类型.
+原 beamletCore 保留为完整组合参考; 命令/治理内部账本仍共同保留. [依赖切割记录](dependency-cut-plan.md)
+列出实际切分和资产归属; [执行核心与恢复覆盖](execution-core-coverage.md) 记录最新验证及边界.
+[正常使用审查](normal-use-audit.md) 和 [第一轮正常闭环补全](normal-use-coverage.md) 保留历史证据.
+原场景/反例名称保留, 当前 runner 接入 16 个类型入口、239 个正常场景、68 条预期反例及
+43 组 / 59,000 条默认抽样. 本轮 239 场景、68 条预期反例通过, 完成 68,000 条抽样,
+其中最后窗口修正后为 10,000 条增量; 实际起点/配置、分检查点结果和边界见最新覆盖记录.
+新增恢复组合、提前停止、原幂等窗口限制与测试专用投影对照, 共享 lease/报告/Worker 纯规则.
+首版工程契约见 [原子存储命令](../spec/storage-command-contracts.md)、[受限值与消息](../spec/persistent-values-and-messages.md)
+及 [Handler/恢复](../spec/handler-recovery-contracts.md). Q78 授权区分仍后置; 尚无真实 SQL/Adapter 实现验证.
 
 ## 文件与模型边界
 
-- [beamletCore.qnt](beamletCore.qnt): 主入口, 组合 `step`、扩展 step 与 Safety 性质, 再导出分层模块的公共定义. 三个双
+- [beamletExecution.qnt](beamletExecution.qnt): 首版独立执行入口, 不包含协调命令或治理账本.
+- [beamletRecovery.qnt](beamletRecovery.qnt): 正常能力与崩溃/丢包/时间/重投组合, 四组合法起点.
+- [beamletExecution_test.qnt](beamletExecution_test.qnt): 无处置投影对照, 只用于测试; 不被生产入口导入.
+- [beamletCore.qnt](beamletCore.qnt): 完整组合参考入口, 组合 `step`、扩展 step 与 Safety 性质, 再导出分层模块的公共定义. 三个双
   Worker 实例分别为禁止重复、显式接受重复风险、具备可靠资源排除协议; singleWorker 用于早期增量验证.
 - [beamletCore_test.qnt](beamletCore_test.qnt): 保持原模块名的测试入口, 聚合 `scenarios/` 中的 104 个确定场景:
-  strictTests 23 个、fencedTests 2 个、repeatingTests 79 个. 前缀只使用真实转换并逐步检查 safety;
+  strictTests 23 个、fencedTests 2 个已依赖独立执行核心, repeatingTests 79 个保留组合参考. 前缀只使用真实转换并逐步检查 safety;
   拒绝行为另检查守卫及实际 disabled action.
 - [beamletCore_mutations_test.qnt](beamletCore_mutations_test.qnt): 保持原模块名与 BUG 编号的 mutation 入口, 30
   个故意错误规则位于 `mutations/`, 从合法前缀产生可定位的反例. 不属于正常 step.
@@ -42,8 +47,8 @@ Q78 授权区分仍未新增模型验证; 正常闭环补全不等于工程实�
   [mutations/withdrawal_commands.qnt](mutations/withdrawal_commands.qnt).
 - [beamletNormalUse.qnt](beamletNormalUse.qnt): 正常闭环入口, `normalUseAnalysis` 默认使用正常 init/step/safety;
   [normal/](normal/) 表达提交、Handler、回调、停止策略、事实读取与发现; 增加一组 usage 状态.
-  [beamletNormalUse_test.qnt](beamletNormalUse_test.qnt) 聚合 40 个正常场景,
-  [beamletNormalUse_mutations_test.qnt](beamletNormalUse_mutations_test.qnt) 提供七个预期反例入口.
+  [beamletNormalUse_test.qnt](beamletNormalUse_test.qnt) 聚合 49 个正常场景,
+  [beamletNormalUse_mutations_test.qnt](beamletNormalUse_mutations_test.qnt) 提供八个预期反例入口.
 - [counterexamples.md](counterexamples.md): 已读取 ITF 后记录的违规前后状态与复现方式.
 - [Mix task](../../tools/mix/tasks/beamlet.check.ex) 与 [Quint 检查器](../../tools/beamlet/quint_checks.ex):
   类型检查、正常场景、抽样及预期反例检查. 直接调用 Quint, 不调用 shell 脚本; 完整日志与 ITF 写入临时目录或指定目录.
@@ -52,7 +57,9 @@ Q78 授权区分仍未新增模型验证; 正常闭环补全不等于工程实�
 
 ```text
 model/quint/
-├── beamletCore.qnt                    # 主入口: step / safety / 具体实例
+├── beamletExecution.qnt               # 首版执行核心
+├── beamletRecovery.qnt                # 正常与恢复组合
+├── beamletCore.qnt                    # 完整组合参考: step / safety / 具体实例
 ├── beamletReconciliation.qnt          # 协调与命令抽样入口
 ├── beamletConflicts.qnt               # 防御性冲突抽样入口
 ├── beamletRules.qnt                   # 规则版本抽样入口
@@ -78,12 +85,14 @@ model/quint/
 └── mutations/                        # 故意错误规则与专用合法前缀
 ```
 
-建议从主入口开始, 再读 [共享状态](base/state.qnt) 与 [类型](base/types.qnt), 按问题进入对应的
+首版从独立执行入口开始, 再读 [执行状态](base/execution_state.qnt) 与 [共同类型](base/execution_types.qnt);
+协调/治理参考使用原 [组合状态](base/state.qnt) 与 [扩展类型](base/types.qnt). 按问题进入对应的
 `logic/`、`actions/`、`properties/`. 测试入口仍在根目录, 实际场景按实例和职责分组; 每个实例的各组通过同一个 fixture
 共享状态, 不各自实例化核心. 当前 Quint 文件最多 200 行, 后续新增内容按职责拆分, 不把规则或场景重新堆回入口.
 
 依赖方向为 **入口 → 动作/性质 → 纯逻辑 → 公共状态/类型**; 纯逻辑内部按判断投影、报告、处置、终结、协调、命令逐层组合,
-无循环导入. 核心五个 `var` 与九个模型参数只在 `base/state.qnt` 声明一次. `scenarios/conflicts/fixtures.qnt`
+无循环导入. 九个模型参数只在 `base/execution_values.qnt` 声明一次;
+首版/组合分别在 `base/execution_state.qnt` 和 `base/state.qnt` 拥有各自五组变量, 单实例路径不混用两种状态. `scenarios/conflicts/fixtures.qnt`
 只提供防御性输入、合法前缀与扩展 step, 不包含 `run` 或 mutant 动作.
 
 **Quint 0.32 常量绑定约束:** 内部模块只使用未绑定的 `import ... .*` 与 `export ... .*`, 在最外层具体运行/测试/mutation
@@ -362,7 +371,7 @@ mix test
 默认三个核心实例各 5,000 条、最多 100 步; 五组核心合法前缀各 1,000 条, 协调原语扩展的普通 init 与合法前缀各 1,000 条;
 命令协议的普通 init 与三个合法前缀各 1,000 条, 防御性冲突扩展六个合法前缀各 1,000 条 (含 allExcludedInit 与
 partiallySupersededInit), 规则版本扩展三个合法前缀、普通退役扩展三个合法前缀及范围撤销扩展四个合法前缀各 1,000 条,
-均最多 100 步. 原 30 组为 42,000 条轨迹, 正常闭环入口另加四组各 1,000 条, 默认合计 46,000 条轨迹. 使用
+均最多 100 步. 原 30 组为 42,000 条轨迹, 正常闭环四组增加 4,000 条, 独立核心增加 5,000 条、恢复五组与投影三组增加 8,000 条, 默认合计 43 组 / 59,000 条轨迹. 使用
 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads 控制每个 Rust 模拟进程的线程上限, --log-dir
 指定日志目录. 未指定 --threads 时取 max(div(System.schedulers_online(), jobs), 1), 例如 16 个在线 scheduler、jobs=4
 时默认每进程 4 线程; 这是保守预算, 不是最优性能保证, 也不保证准确反映所有容器 CPU 配额. typecheck 与 test

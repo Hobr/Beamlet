@@ -1,66 +1,58 @@
-# 模型依赖切割计划
+# 模型依赖切割计划与执行记录
 
-状态: 结构提案, 尚未执行; 正常使用覆盖/完整性与 SPEC 一致性验收之前暂停实施.
-首版保持无法安全解决的 Unknown/冲突为 Open、提供事实读取、后置人工裁定已确认.
-[正常使用审查](normal-use-audit.md) 保留补全前的正常闭环缺口;
-[正常闭环补全](normal-use-coverage.md) 已新增对应最小抽象与场景, 最新实际验证结果见该页.
-本页仍未执行结构实验, 正常闭环补全不等于完成依赖切割.
-本页依据当前源码列出切割点, 不批准新协议、产品 Interface 或 SQL 字段; 不改动现有 .qnt 和 Mix 检查器.
+状态: 第一阶段核心独立已执行. 正常使用补全后, 按本轮请求建立 beamletExecution 并迁移首版执行/正常入口;
+原组合模型保留, 命令和治理内部尚未进一步拆分. 实际验证与资产归属见 [执行核心覆盖](execution-core-coverage.md).
+首版仍对无法安全解决的 Unknown/冲突保持 Open、提供事实读取, 后置人工裁定.
 
-## 1. 当前耦合在哪里
+## 1. 已处理的耦合
 
-| 实际位置 | 当前耦合 | 切割目标 |
+| 原耦合 | 实际切分 | 保留约束 |
 | --- | --- | --- |
-| [base/types.qnt](base/types.qnt) / [base/state.qnt](base/state.qnt) | Ledger 包含决定、命令/拒绝、规则解释与绑定见证; Message 同时包含启动/报告和协调消息; init 初始化全部扩展 | 区分核心执行类型、扩展状态和独立观察. 首版类型不要求调用者了解注册表或处置链 |
-| [logic/judgment.qnt](logic/judgment.qnt) | judgmentView 在核心证据投影上附加全部 Decision; advanceJudgment 被报告、lease、替代及终结路径调用 | 分开核心判断材料与扩展判断材料, 保留相关变化推进版本的契约和独立变化链检查 |
-| [logic/dispositions.qnt](logic/dispositions.qnt) | 原始证据/风险判断与取代、撤销、当前绑定在同一模块 | 抽出普通证据与风险判定; 当前处置计算留给协调/治理, 不用空壳类型或恒真守卫假装隔离 |
-| [logic/outcomes.qnt](logic/outcomes.qnt) | 普通完成和旧证据采用共用 sourceEligible, 直接依赖 dispositions | 核心保留普通结果来源资格与终结公共约束; 组合层单独核验协调采用, 不能引入 forceCommit |
-| [logic/recovery.qnt](logic/recovery.qnt) | 替代守卫读取当前处置后的 judgmentKnowledge; messageTokens 匹配协调消息种类 | 首版恢复只解释核心证据与可靠排除/重复风险依据; 扩展消息的解释留在组合层 |
-| [beamletCore.qnt](beamletCore.qnt) | 无条件导入协调动作及命令/治理性质, safety 包含版本、退役、取代、撤销 | 核心入口只组合执行动作与核心性质; 完整命令/治理检查由组合入口承担 |
-| [properties/reconciliation.qnt](properties/reconciliation.qnt) | conflictHistoryPreserved、terminalConflictsResolved 与规则/处置性质混放 | 核心仍检查原冲突保留与非取消终结时的阻塞; 扩展性质按职责保留, 不整文件丢弃 |
+| 大 Ledger/Message/ExternalState 包含决定、命令/拒绝、规则与观察 | `base/execution_state.qnt` 单独拥有五组执行状态; `base/state.qnt` 保留组合账本 | 核心没有治理字段, 不是填空列表模拟隔离 |
+| lease/报告更新直接推进判断版本 | `execution_leases` / `execution_reports` 提供共享纯更新, 原 logic adapters 再 advanceJudgment | 组合参考仍验证审查版本与历史变化链 |
+| Worker 计算耦合原大状态 | `execution_worker_values` 共享纯 Worker/资源计算, 两种 transport 类型各自适配 | incarnation、原 grant、实际调用和回执性质保留 |
+| 原始证据与处置链混合解释 | `execution_evidence` 只解释原始证据/风险; 原 dispositions 继续解释明确协调 | 核心原冲突与未解释旧成功仍阻塞相应终结 |
+| 普通结果和旧结果采用共用资格路径 | `execution_outcomes` 只保留普通结果; 原 outcomes 保留 adoptedResultEligible | 两者都保留 Outcome 唯一/不可变、Open 和来源风险守卫 |
+| recovery 解释协调消息和处置 | `execution_recovery` 只解释执行消息与原始知识 | 到期/Unknown/NotFound 不单独授权重试 |
+| 核心入口无条件导入治理动作/性质 | 新 beamletExecution + normal/recovery 为首版; beamletCore 留作组合参考 | 旧治理动作/性质与组合检查不删除 |
+| 冲突历史性质混在协调文件 | 独立 execution properties 保留原始矛盾/结果值冲突与提交时阻塞检查 | 迟到冲突保留, 不追溯改写 Outcome; Cancelled 独立 |
 
-这些依赖即使治理动作在普通 step 中不触发也存在. 多个根入口共用同一个大 Ledger, 尚不等于多个职责独立的模型.
+目标方向仍为治理扩展 -> 协调命令 -> 执行安全核心. 本阶段完成核心可独立理解/执行,
+没有把现有命令/治理重新包装成三个 Runtime 引擎, 也没有引入调用方自报的“已批准”放行通道.
 
-## 2. 最小 seam
+## 2. seam 与共享方式
 
-目标依赖方向为治理扩展 -> 协调命令 -> 执行安全核心, 组合入口负责原子联动与跨层检查.
-这是规格职责, 不是三套 Runtime 引擎. 第一优先级是核心独立; 命令/治理先保留组合参照, 不要求一次拆完.
+`base/execution_types` / `execution_values` 不拥有 protocol var, 提供共同领域类型、九个参数和不可变默认值.
+共享纯 lease/report/Worker 逻辑使用 Quint 推断的开放 record, 保留调用方附加的扩展字段;
+组合 adapter 显式维护判断版本, 首版无需知道 Decision/注册表/取代链.
 
-- 核心 Interface 只提供执行事实、审查可见的证据/资格投影及普通执行/终结守卫. 原始报告与外部结果仍分别表达.
-- 核心不接收调用方自报的“已批准/可解除阻塞”布尔值. 协调改变证据解释时, 组合层必须核验当前范围、依据与资格,
-  并在同一抽象原子步骤更新判断/版本、记录决定及条件合格的 Outcome.
-- 普通完成要求当前尝试资格; 未来合格旧成功采用不机械套用这一普通路径条件, 但不能绕过 Outcome 唯一/不可变、
-  Open/Closed 和相应结果风险守卫. 两种来源资格保持明确, 不藏进通用 transition 框架.
-- 首版模型没有处置链: 原始未协调冲突阻止普通结果采用, 未解释的旧成功阻止普通 Failed;
-  不额外禁止无冲突的合格成功或显式 Cancelled. 后置裁定不等于报告被忽略.
-- 独立 Start/Commit/Retry 见证仍用于检查真实转换. 观察状态可按验证职责组织, 不变成执行守卫或公开持久化 schema.
+相同 AuditKind 词汇保留两个扩展 History 标签以兼容组合记录, 核心不读取它们作守卫.
+两种 ledger 的 frame wiring 和普通/协调结果解释仍各自明确; 通过共享规则、迁移资产及测试专用投影对照约束漂移.
+不以重复代码行数或文件数量作为切分成败判断.
 
-具体类型和函数签名须在结构实验中确认. 本页不要求创建新的 Storage/Handler Adapter 或改变五组核心状态的职责.
+核心 Start/Commit/Retry、原结果与失效历史见证保留. Handler/停止见证只用于独立回查历史事实,
+不成为运行守卫或公开持久化 schema. 没有 forceCommit 路径或隐式清除冲突/旧成功.
 
-## 3. 先做一个小实验, 再切状态
+## 3. 迁移和组合检查
 
-1. 先抽出原始证据查询, 让无处置的普通结果/替代判定能独立表达. 在现有组合模型中对照旧判定,
-   有处置的路径继续用原逻辑; 不同时迁移全部类型、命令和场景.
-2. 再分开核心类型、判断投影和观察, 切断核心对 Decision、RuleRegistration、Supersession、WithdrawDisposition 的依赖,
-   创建可独立执行的核心入口. 不以只换入口名字作为完成标准.
-3. 协调/治理保留原完整行为和独立见证, 逐项登记场景/反例的新位置; 保留组合入口重验旧成功、冲突、重投和终结交互.
+- 原 strictTests 23、fencedTests 2 通过修改原 fixture 依赖迁至独立核心; 原 run 名称/断言及路径保留.
+- 原 normalUseTests 40 迁至独立核心, 加 9 个恢复/停止/旧窗口场景, 共 49.
+- 执行九条 mutation 和 oldSuccessFailure 改依赖独立核心; 原七条 normal mutation 保留并补新窗口反例.
+- repeatingTests 79、conflictTests 81 与其余 50 条 mutation 保留原组合模型.
+- 新增五个无处置投影场景和三组 recoveryStep 投影抽样, 核对普通 guards/更新; 不外推为治理行为的等价证明.
+- 保留原完整抽样组, 另加独立核心与五组恢复; 最新运行配置和结果见覆盖页.
 
-继续使用现有 base/logic/actions/properties/scenarios/mutations 布局, 文件不超过 200 行、无环导入,
-每个实例共用一个未绑定 fixture 并在外层一次性绑定参数. 不恢复旧目录布局或先删除原模型.
+`test/quint_structure_test.exs` 检查首版入口的传递依赖不含组合参考、测试/mutation 或治理类型,
+以及所有 Quint 导入无环/每文件不超过 200 行. 参数仍在外层一次性绑定, 单实例 fixture 共享状态.
 
-## 4. 回归资产与验收
+## 4. 后续边界
 
-| 资产 | 保留要求 |
-| --- | --- |
-| 启动/到期/重启/报告/Outcome 核心场景及反例 | 核心可独立运行, 既有违规不能因删见证而消失 |
-| 原始冲突、旧成功与当前失败、可靠排除和显式重复风险 | 首版必须保留这些安全约束, 不能作为治理功能一并删去 |
-| 协调身份、拒绝原结果、审查版本与读取权限 | 后置参考模型继续可执行; 不要求首版提供裁定接口 |
-| 完整冲突处置、全部排除、取代、版本/退役/撤销 | 保留扩展和组合验证; 原命令结果/Outcome 不变, 新证据不能被旧处置自动涵盖 |
+协调命令与治理账本继续共同保留, 暂无继续物理拆分的首版要求. 原授权、版本、取代/撤销约束仍约束未来功能,
+Q78 撤销专属授权尚无新增验证. 不因功能后置降低既有安全规则.
 
-现有基线是 185 个正常场景、60 个实际反例, 不是本页新增验证. 迁移前后须列出名称/归属对照,
-用无扩展状态下的投影对照检查核心行为, 并重跑各模型和组合检查; ITF 核对请求、作用范围、判断版本与实际状态变化.
-不要求新核心假装直接运行全部治理场景, 也不能把总数相同当作语义等价或穷尽证明.
+多 Intent 完整执行、实际 SQL 并发/掉电、codec、签名和外部幂等前提转交工程符合性验证;
+本轮已补三份 [首版工程契约](../spec/first-release-scope.md), 尚无 Runtime/真实 Adapter 实现结果.
+抽样和局部投影检查不是穷尽正确性或全参数语义等价证明.
 
-本页产生时只有源码依赖检查和文档校验, 未执行拆分或运行新核心. 随后正常使用审查已重跑既有类型/场景及覆盖诊断,
-不等于执行了本页拆分方案. Q78 授权区分仍未新增验证.
-关联: [首版范围](../spec/first-release-scope.md), [现有验证基线](README.md), [反例记录](counterexamples.md).
+关联: [正常使用审查](normal-use-audit.md)、[正常闭环补全](normal-use-coverage.md)、
+[最新验证](execution-core-coverage.md)、[反例记录](counterexamples.md).

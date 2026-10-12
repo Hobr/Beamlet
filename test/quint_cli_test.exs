@@ -73,7 +73,9 @@ defmodule Beamlet.QuintCliTest do
     end
 
     {core, directed} =
-      Enum.split_with(commands, &(Enum.at(&1, 1) == "model/quint/beamletCore.qnt"))
+      Enum.split_with(commands, fn command ->
+        Enum.at(command, 1) in ~w(model/quint/beamletCore.qnt model/quint/beamletExecution.qnt)
+      end)
 
     for {group, samples} <- [{core, "2"}, {directed, "3"}] do
       assert group != []

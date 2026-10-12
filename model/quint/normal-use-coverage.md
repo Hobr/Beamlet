@@ -12,7 +12,9 @@
 `mutations/normal.qnt` 提供专用故意错误规则. 正常入口不导入测试或 mutation.
 
 正常入口复用同一份核心 Authority/Worker/外部资源账本, 并增加一组 `usage` 状态,
-保存提交目录、Handler 快照、提交传输集合及独立观察. 原五组变量、九个核心参数保留.
+保存提交目录、Handler 快照、提交传输集合及独立观察. 五组变量、九个核心参数保留.
+后续已切换到不含治理状态的独立执行核心; 本页下方运行记录保留第一轮检查点,
+最新依赖/恢复组合、提前停止与原幂等窗口修正见 [执行核心覆盖](execution-core-coverage.md).
 旧入口仍以已建立的 Open Intent 开始, 用于原来的执行与治理检查; 正常入口把它看作尚未激活的槽位,
 只有提交已建立聚焦 Intent 后才能建立 Execution. 新测试不直接重置执行账本构造前缀.
 
@@ -40,7 +42,8 @@
 | 不确定性不因预算耗尽变失败 | 沿用 noUnresolvedRisk、旧成功/冲突阻塞, 策略不绕过 canCommit | unknownBudgetDoesNotCreateFailureTest、原有 unknownFailure / oldSuccessFailure 反例 |
 | Q15/Q34 重启后发现工作与事实读取 | 一致持久快照读取; 从 Prepared/Waiting/Unknown 当前尝试发现候选, 不授予许可 | unknownFactsReadableAfterRestartTest、preparedWorkRediscoveredTest、factReadsSound |
 
-`normalSafety` 合取原 `commandSafety` 与提交身份、Handler/实际调用、重试契约、原子接受和读取性质.
+`normalSafety` 合取独立执行 `safety` 与提交身份、Handler/实际调用、重试契约、原子接受和读取性质.
+后续增加停止见证和原幂等窗口的独立回查; 第一轮组合账本的 commandSafety 仍由原组合入口检查.
 检查实际记录与独立前后快照; 不能只用一个“已合格”标志代替检查.
 停止决定还从原定义策略和尝试数量独立重算; 故意伪造 stop=false 也不能掩盖漏终结.
 新增回调/取消竞争场景覆盖先取消保留迟到证据、先完成后取消禁用, 正常随机 profile 仍不主动取消.
@@ -146,7 +149,8 @@ callbackRunningInit 也不主动释放 Worker. callbackReleasedInit 已释放 Wo
 仍不覆盖真实 codec/值域预算、签名与权限协议、SQL/Ecto 并发/掉电、全局调度、跨 Intent 执行、
 Authority 迁移、归档清理、Byzantine、外部 exactly-once 或公平性/Liveness 证明.
 这些边界不阻止检查首版正常闭环的上述最小语义.
-Q78 撤销专属授权仍未新增验证, 治理继续后置. 本轮不执行依赖切割、不实现 Runtime.
+Q78 撤销专属授权仍未新增验证, 治理继续后置. 第一轮未执行依赖切割; 后续已完成核心独立,
+见 [执行核心覆盖](execution-core-coverage.md). 尚无 Runtime 实现.
 
 后续改动提交身份、Operation 兼容、回调关联、重试条件或失败接受时,
 先更新相应纯逻辑/场景与正常 profile, 再改实现; 不以实现中的错误反向放宽规格.

@@ -9,6 +9,10 @@ module normalUseMutations {
     else if (BUG == 2) submittedInit
     else if (BUG == 3 or BUG == 6) callbackRunningInit
     else if (BUG == 4) retryPendingInit.then(normalClock(4))
+    else if (BUG == 8) retryPendingInit.then(normalReplace(1, 2))
+      .then(normalClaim(2, 2)).then(normalRequest(t2))
+      .then(normalAuthorize(t2, { ...idempotentHandler, validThrough: 6 })).then(normalGrant(t2))
+      .then(normalClock(4))
     else preparedInit.then(normalAuthorize(t1, syncHandler)).then(normalGrant(t1)).then(normalCall(t1))
       .then(normalComplete(1, Failure, 2)).then(normalPublish(t1))
 
@@ -41,23 +45,28 @@ module normalUseMutations {
     val recorded = applyReport(before, r)
     all {
       authority' = { ...authority, durable: recorded },
-      usage' = { ...usage, acceptances: usage.acceptances.append({ report: r, before: before, after: recorded, stop: true, definition: focused(usage).request.definition }) },
+      usage' = { ...usage, acceptances: usage.acceptances.append({ report: r, before: before, after: recorded, stop: true, definition: focused(usage).request.definition, binding: usage.bindings.get(r.exec), at: usage.contractTime }) },
       workers' = workers, network' = network, external' = external, clock' = clock,
     }
   } else if (BUG == 6) all {
     usage' = { ...usage, bindings: usage.bindings.set(1, BoundHandler({
       handler: callbackHandler, definition: definition, context: 9 })) },
     authority' = authority, workers' = workers, network' = network, external' = external, clock' = clock,
+  } else if (BUG == 8) all {
+    callExternal(t2),
+    usage' = { ...usage, launches: usage.launches.append({ token: t2,
+      binding: usage.bindings.get(2), completion: authority.durable.attempts.get(2).completion,
+      authorizationStored: authority.durable.attempts.get(2).grant == StartGrant(t2), at: usage.contractTime }) },
   } else {
     val r = completionReport(external, t1)
     val before = authority.durable
     val recorded = applyReport(before, r)
     all {
       authority' = { ...authority, durable: recorded },
-      usage' = { ...usage, acceptances: usage.acceptances.append({ report: r, before: before, after: recorded, stop: false, definition: focused(usage).request.definition }) },
+      usage' = { ...usage, acceptances: usage.acceptances.append({ report: r, before: before, after: recorded, stop: false, definition: focused(usage).request.definition, binding: usage.bindings.get(r.exec), at: usage.contractTime }) },
       workers' = workers, network' = network, external' = external, clock' = clock,
     }
   }
-  val mutantInvariant = normalSafety
+  val mutantInvariant = if (BUG == 8) retryCallsOriginalContract else normalSafety
   run mutationCaughtTest = mutantInit.expect(normalSafety).then(mutantStep).expect(not(mutantInvariant))
 }

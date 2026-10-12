@@ -1,7 +1,7 @@
 // Normal-use contracts are abstract logical values, not approved SQL/API fields.
 module normalUseState {
-  import beamletCore.* from "../beamletCore"
-  export beamletCore.*
+  import beamletExecution.* from "../beamletExecution"
+  export beamletExecution.*
 
   type RetryPolicy = StopOnFailure | RetryOnce
   type Definition = { operation: int, input: int, constraint: int, policy: RetryPolicy }
@@ -26,7 +26,11 @@ module normalUseState {
     oldExec: int, newExec: int, binding: HandlerBinding, at: int, repeatAccepted: bool,
     before: Ledger, definition: Definition, context: int,
   }
-  type AcceptanceObservation = { report: Report, before: Ledger, after: Ledger, stop: bool, definition: Definition }
+  type AcceptanceObservation = {
+    report: Report, before: Ledger, after: Ledger, stop: bool, definition: Definition,
+    binding: HandlerBinding, at: int,
+  }
+  type StopObservation = { before: Ledger, after: Ledger, definition: Definition, binding: HandlerBinding, at: int }
   type ReadObservation = { reports: Set[Report], outcomes: List[Outcome], ledger: Ledger }
   type UseMark = SubmittedMark | ReusedMark | DefinitionConflictMark | ReadMark | ReleasedMark
     | CallbackMark | PendingMark | RetriedMark | QueriedMark | AtomicFailureMark | DiscoveredMark
@@ -34,7 +38,7 @@ module normalUseState {
     entries: List[SubmissionEntry], creations: List[SubmissionEntry],
     requests: Set[SubmissionRequest], replies: Set[SubmissionReply], submissions: List[SubmissionObservation],
     bindings: int -> HandlerBinding, launches: List[LaunchObservation], retries: List[RetryObservation],
-    acceptances: List[AcceptanceObservation], reads: List[ReadObservation], marks: Set[UseMark],
+    acceptances: List[AcceptanceObservation], stops: List[StopObservation], reads: List[ReadObservation], marks: Set[UseMark],
     discovered: Set[int], contractTime: int,
   }
   var usage: UseState
@@ -53,7 +57,7 @@ module normalUseState {
   pure val initialUse: UseState = {
     entries: List(), creations: List(), requests: Set(), replies: Set(), submissions: List(),
     bindings: EXECUTIONS.mapBy(_ => NoHandler), launches: List(), retries: List(),
-    acceptances: List(), reads: List(), marks: Set(), discovered: Set(), contractTime: 0,
+    acceptances: List(), stops: List(), reads: List(), marks: Set(), discovered: Set(), contractTime: 0,
   }
   // The core Open ledger is a dormant slot until submission creates focused Intent 1.
   // Slot 2 checks submission identity separation only; its executions are out of scope.

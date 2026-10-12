@@ -436,6 +436,28 @@ quint run model/quint/beamletNormalUse_mutations_test.qnt --main normalWrongResu
   --out-itf /tmp/normal-wrong-result.itf.json
 ```
 
+## 执行核心隔离后的反例回归
+
+原 67 条在 `/tmp/beamlet-model-convergence-full` 全部产生预期违规, ITF 均已解码并核对实际状态变化.
+执行九条和 oldSuccessFailure 现依赖独立核心, 原名称/BUG/指定性质保留; 其余协调/治理反例仍在组合参考.
+正常七条在最终增量检查中再次检出, 并新增以下第八条, 当前总计 68 条.
+
+| 模块 | 被破坏性质 | 合法前缀步数 | 核对的实际变化 |
+| --- | --- | ---: | --- |
+| normalExtendedIdempotencyWindow | retryCallsOriginalContract | 17 | 原窗口到 3、新声明到 6、contractTime=4; 错误调用使 invocations/launches 从 1 增至 2, 原 binding 不变 |
+
+新 ITF 位于 `/tmp/beamlet-convergence-final/normalExtendedIdempotencyWindow.itf.json`, 共 19 个状态、六组变量.
+错误动作只绕过调用契约守卫, 保留真实授权、原定义/上下文和调用观察; 独立性质比较调用时间与旧窗口.
+这是本轮修复前确实可复现的模型漏洞: `newHandlerCannotExtendOriginalWindowTest` 修复前失败、修复后通过.
+修复后正常授权/调用同时受原窗口和当前窗口限制, 不能仅靠部署的新声明延长旧外部 key 保证.
+
+```sh
+quint run model/quint/beamletNormalUse_mutations_test.qnt --main normalExtendedIdempotencyWindow \
+  --init mutantInit --step mutantStep --invariant mutantInvariant \
+  --max-samples 1 --max-steps 1 --seed 42 --backend rust --n-threads 1 \
+  --out-itf /tmp/normal-extended-window.itf.json
+```
+
 完整 ITF 由 [Mix 检查器](../../tools/beamlet/quint_checks.ex) 写入日志目录. 全部复跑:
 
 ```console

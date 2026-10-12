@@ -3,7 +3,8 @@
 状态: 草案. 本文归纳已确认的核心语义及 Q30-Q35 的存储范围决策; 尚未确定的数据字段、数据库映射和特殊协议不应视为隐含批准.
 本文不是完整实现规范. 已确认首版对无法安全解决的 Unknown/冲突保持 Open 并提供事实读取,
 暂不提供人工协调裁定接口; 本文的协调/治理语义仍保留为后续约束, 不放宽核心阻塞规则.
-分期见 [首版范围](first-release-scope.md).
+分期见 [首版范围](first-release-scope.md). 首版工程细化见 [原子存储命令](storage-command-contracts.md)、
+[持久值与消息](persistent-values-and-messages.md) 及 [Handler/恢复策略](handler-recovery-contracts.md).
 
 相关文档: [领域语言](../../GLOSSARY.md), [RFC 0001](../rfc/0001-core-boundaries.md).
 
@@ -80,7 +81,7 @@ StartAuthorized 不是 Running 的同义词. Resolved 不表示报告绝对真�
 - Start Authorization 绑定可序列化的 Worker incarnation. 重启产生新 incarnation, 不能直接继承旧许可重新调用.
 - 授权已提交而外部调用尚未发生时崩溃也可能产生保守 Unknown; 没有 Running 报告不能证明未执行.
 - 派发重投保留同一 Execution 身份; 报告重投只重投证据; 外部重新执行属于新的安全决策. 三者不得混同.
-- 同一 Execution ID 不是外部幂等保证. 启动请求和响应的幂等处理细节尚待定义.
+- 同一 Execution ID 不是外部幂等保证. 启动请求的 token 身份、原许可回复与领取重投规则见首版存储命令契约.
 - 未授权启动的 Prepared 可以重新投递; Authority 原子确认从未授予启动许可且旧领取资格失效后, 可让新 Worker 领取同一
   Execution.
 - 已授予许可则新 incarnation 不接续旧许可调用 Handler. 再次执行须建立安全的新尝试; 不依据 Worker
@@ -143,7 +144,8 @@ Failed 不证明不存在部分外部副作用. Cancelled 可以终结未解决 
 
 模型对应: [正常闭环入口](../quint/normal-use-coverage.md) 用显式停止/重试策略区分失败事实与终结资格;
 已具备停止依据的合格失败同一步保存报告、Execution、Outcome/Closed 和 History.
-核心原语仍保留先存失败事实、后作停止决定的处理上下文. 这些示例不批准生产预算或错误分类算法.
+核心原语仍保留先存失败事实、后作停止决定的处理上下文. 首版最小策略的额度、提前停止与错误分类边界见
+[Handler/恢复契约](handler-recovery-contracts.md); 不扩展为通用策略治理算法.
 
 ### 6.4 证据协调命令
 
