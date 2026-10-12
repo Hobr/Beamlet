@@ -1,8 +1,9 @@
 # 故意错误规则的反例记录
 
-这些反例来自独立 mutation 模块, 不表示正常模型发生了同样的违规. 每条前缀通过真实守卫从 init 到达, 并在每一步检查 safety;
-最后执行一条故意错误规则. Quint 0.32.0 / Rust, 输入 seed 42, max-samples 1, max-steps 1. init 内的合法前缀会出现在 ITF
-中, 因此实际状态数量大于两条.
+这些反例来自独立 mutation 模块, 不表示正常模型发生了同样的违规. 每条前缀通过真实守卫从 init 到达,
+正常状态按各模块的场景/不变量检查; 最后执行一条故意错误规则. 新增的八类多 Intent / Tool Call 反例及解码前后状态见
+[并发验证记录](multi-intent-coverage.md). Quint 0.32.0 / Rust, 输入 seed 42, max-samples 1, max-steps 1. init
+内的合法前缀会出现在 ITF 中, 因此实际状态数量大于两条.
 
 | 模块 | 被破坏性质 | 前缀转换数 | 违规转换数 |
 | --- | --- | ---: | ---: |

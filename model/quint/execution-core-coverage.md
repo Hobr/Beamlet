@@ -2,14 +2,15 @@
 
 状态: 已建立独立执行核心、迁移首版场景/反例、增加恢复组合和无处置投影对照. 最新实际检查记录见下文.
 原组合参考模型保留; 本页不声称协调命令与治理内部已经进一步拆成独立账本.
+本页保留核心切分检查点; 后续已增加 [两个完整 Intent 与调用方汇总验证](multi-intent-coverage.md), 最新总量见该页.
 
 ## 1. 依赖与状态
 
-- [beamletExecution.qnt](beamletExecution.qnt): 只组合执行动作/性质. Ledger 不含 revision、Decision、命令/拒绝缓存或规则/处置链;
-  Message 只有启动、报告与回执; ExternalState 不含命令处理/规则退役观察.
+- [beamletExecution.qnt](beamletExecution.qnt): 只组合执行动作/性质. Ledger 不含
+  revision、Decision、命令/拒绝缓存或规则/处置链; Message 只有启动、报告与回执; ExternalState 不含命令处理/规则退役观察.
 - [beamletNormalUse.qnt](beamletNormalUse.qnt): 改为依赖上述核心, 增加提交、Handler 与正常接受/读取抽象.
-- [beamletRecovery.qnt](beamletRecovery.qnt): 同一正常状态上组合 crash/restart、失效、双向 lease 时钟、重投/丢包与策略停止;
-  不调用治理动作. `step` 在正常动作与恢复动作之间选择, 没有 Open 的兜底空转.
+- [beamletRecovery.qnt](beamletRecovery.qnt): 同一正常状态上组合 crash/restart、失效、双向 lease
+  时钟、重投/丢包与策略停止; 不调用治理动作. `step` 在正常动作与恢复动作之间选择, 没有 Open 的兜底空转.
 - [beamletCore.qnt](beamletCore.qnt): 保留完整组合参考, 继续验证协调/治理语义及与执行的交互.
 
 共同的领域类型、常量/默认值、lease/报告与 Worker/资源纯计算分别由 `base/execution_*` 和
@@ -21,8 +22,8 @@
 这增加了少量规格代码, 以共享纯规则、迁移场景和投影对照约束漂移; 不靠复制后各自通过就宣称语义等价.
 Quint 参数仍在外层一次绑定, 每个场景共用单一未绑定 fixture.
 
-`test/quint_structure_test.exs` 检查三个首版生产入口的传递导入: 不得依赖组合参考、测试/mutation 或治理类型;
-同时检查全部 Quint 导入无环和每文件不超过 200 行. 生产入口不导入投影参照.
+`test/quint_structure_test.exs` 检查首版生产入口的传递导入 (切分时三个, 后续增加多 Intent 为四个):
+不得依赖组合参考、测试/mutation 或治理类型; 同时检查全部 Quint 导入无环和每文件不超过 200 行. 生产入口不导入投影参照.
 
 ## 2. 场景和反例迁移账
 
@@ -40,7 +41,7 @@ Quint 参数仍在外层一次绑定, 每个场景共用单一未绑定 fixture.
 | 新增 normalExtendedIdempotencyWindow | 正常 mutation 第 8 条 | 独立检查旧窗口, 新 Handler 声明不能延长旧 key 保证 |
 | 其余 50 mutation | 原组合参考不动 | 协调命令/冲突处置/规则/撤销的反例继续检查 |
 
-当前正常场景合计 `23 + 2 + 79 + 81 + 49 + 5 = 239`; mutation 合计 68.
+切分检查点正常场景合计 `23 + 2 + 79 + 81 + 49 + 5 = 239`; mutation 合计 68.
 核心性质仍检查独立授权/提交/替代见证、回执持久性、证据与真实资源分离, 不删除见证缩小状态.
 
 ## 3. 无处置投影对照
@@ -83,7 +84,7 @@ quint run model/quint/beamletExecution_test.qnt --main executionProjectionTests 
   --seed 123 --backend rust --n-threads 4 --verbosity 1
 ```
 
-默认 runner 已接入 16 个类型入口、239 场景、68 条预期反例及 43 组 / 59,000 条抽样.
+切分时默认 runner 接入 16 个类型入口、239 场景、68 条预期反例及 43 组 / 59,000 条抽样.
 其中原 34 组/46,000 条继续保留, 加独立核心 5,000、恢复五组各 1,000、投影三组各 1,000.
 日志记录各自实际 init/step/invariant, 不把已在前缀成立的 witness 计作新事件.
 
@@ -121,10 +122,12 @@ retryPendingInit 在该调度/时间窗口中未观察到重试后成功, 不据
 
 ## 6. 工程契约与边界
 
-本轮补充 [受限值与消息](../spec/persistent-values-and-messages.md)、[原子存储命令](../spec/storage-command-contracts.md)、
+本轮补充
+[受限值与消息](../spec/persistent-values-and-messages.md)、[原子存储命令](../spec/storage-command-contracts.md)、
 [Handler/回调/恢复策略](../spec/handler-recovery-contracts.md). 给出相等/预算、身份/冲突保留、时间与事务守卫、
 启动重投、可信条件、停止策略及两个 SQL 后端的符合性用例; 具体 codec/物理 schema/真实 Adapter 尚无实现结果.
 
-仍只完整展开一个 Intent 执行; 多 Intent 并发、真实 SQL/掉电、签名核验、资源幂等真实性/网络时限需工程验证.
-不包含公平性/Liveness、完整迁移、清理、Byzantine 或外部 exactly-once. Q78 撤销专属授权仍后置.
-没有新增 Runtime/Ecto 实现; 这些结果为抽象场景与有界抽样证据, 不是穷尽证明.
+本页单 Intent 入口仍完整展开一个执行账本; 后续 [多 Intent 组合](multi-intent-coverage.md) 已展开两个完整账本、共享
+Worker 与调用方依赖收集. 真实 SQL/掉电、签名核验、外部 key 编码和资源幂等真实性/网络时限仍需工程验证.
+不包含公平性/Liveness、完整迁移、清理、Byzantine 或外部 exactly-once. Q78 撤销专属授权仍后置. 没有新增 Runtime/Ecto
+实现; 这些结果为抽象场景与有界抽样证据, 不是穷尽证明.

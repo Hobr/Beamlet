@@ -3,29 +3,32 @@
 状态: 首个有界可执行规格. 来源为 [RFC Q1-Q77](../rfc/0001-core-boundaries.md) 与三个 SPEC 草案.
 模型收窄选择不自动成为产品决策. 尚无 Runtime/Ecto 实现代码; Mix 项目仅管理规格验证工具.
 
-当前已暂停治理分支的继续细化, 优先 [首版范围与模型收敛提案](../spec/first-release-scope.md).
-已确认首版对无法安全解决的 Unknown/冲突保持 Open、提供事实读取, 暂不提供人工裁定接口.
-已建立 [独立执行核心](beamletExecution.qnt), 正常入口和恢复入口不再导入治理状态/类型.
-原 beamletCore 保留为完整组合参考; 命令/治理内部账本仍共同保留. [依赖切割记录](dependency-cut-plan.md)
-列出实际切分和资产归属; [执行核心与恢复覆盖](execution-core-coverage.md) 记录最新验证及边界.
-[正常使用审查](normal-use-audit.md) 和 [第一轮正常闭环补全](normal-use-coverage.md) 保留历史证据.
-原场景/反例名称保留, 当前 runner 接入 16 个类型入口、239 个正常场景、68 条预期反例及
-43 组 / 59,000 条默认抽样. 本轮 239 场景、68 条预期反例通过, 完成 68,000 条抽样,
-其中最后窗口修正后为 10,000 条增量; 实际起点/配置、分检查点结果和边界见最新覆盖记录.
-新增恢复组合、提前停止、原幂等窗口限制与测试专用投影对照, 共享 lease/报告/Worker 纯规则.
-首版工程契约见 [原子存储命令](../spec/storage-command-contracts.md)、[受限值与消息](../spec/persistent-values-and-messages.md)
-及 [Handler/恢复](../spec/handler-recovery-contracts.md). Q78 授权区分仍后置; 尚无真实 SQL/Adapter 实现验证.
+当前已暂停治理分支的继续细化, 优先 [首版范围与模型收敛提案](../spec/first-release-scope.md). 已确认首版对无法安全解决的
+Unknown/冲突保持 Open、提供事实读取, 暂不提供人工裁定接口. 已建立 [独立执行核心](beamletExecution.qnt),
+正常入口和恢复入口不再导入治理状态/类型. 原 beamletCore 保留为完整组合参考; 命令/治理内部账本仍共同保留.
+[依赖切割记录](dependency-cut-plan.md) 列出实际切分和资产归属; [执行核心与恢复覆盖](execution-core-coverage.md)
+记录最新验证及边界. [正常使用审查](normal-use-audit.md) 和 [第一轮正常闭环补全](normal-use-coverage.md) 保留历史证据.
+原场景/反例名称保留. 新增 [多 Intent 与 Tool Call 组合](multi-intent-coverage.md), 完整展开两个 Intent、两个 Agent
+与共享 Worker. 当前 runner 接入 19 个类型入口、281 个正常场景、76 条预期反例及 49 组 / 69,000 条默认抽样.
+本次并发补充完成 20,000 条抽样; 既有核心切分的 68,000 条历史记录保留在执行核心覆盖页, 不计入本次数量.
+实际起点/配置、场景与反例结果见各覆盖记录; 默认全量预算不代表本次重新执行了全部历史采样组.
+新增恢复组合、提前停止、原幂等窗口限制与测试专用投影对照, 共享 lease/报告/Worker 纯规则. 首版工程契约见
+[原子存储命令](../spec/storage-command-contracts.md)、[受限值与消息](../spec/persistent-values-and-messages.md) 及
+[Handler/恢复](../spec/handler-recovery-contracts.md). Q78 授权区分仍后置; 尚无真实 SQL/Adapter 实现验证.
 
 ## 文件与模型边界
 
 - [beamletExecution.qnt](beamletExecution.qnt): 首版独立执行入口, 不包含协调命令或治理账本.
+- [beamletMultiIntent.qnt](beamletMultiIntent.qnt): 两个完整 Intent、两个 Agent、共享 Worker 及调用方依赖汇总;
+  [场景入口](beamletMultiIntent_test.qnt) 聚合 42 个场景, [mutation 入口](beamletMultiIntent_mutations_test.qnt)
+  提供八类错误. [使用契约](../spec/multi-intent-and-tool-calls.md) 明确依赖清单归属调用方及跨 Intent 身份/原子性边界.
 - [beamletRecovery.qnt](beamletRecovery.qnt): 正常能力与崩溃/丢包/时间/重投组合, 四组合法起点.
 - [beamletExecution_test.qnt](beamletExecution_test.qnt): 无处置投影对照, 只用于测试; 不被生产入口导入.
-- [beamletCore.qnt](beamletCore.qnt): 完整组合参考入口, 组合 `step`、扩展 step 与 Safety 性质, 再导出分层模块的公共定义. 三个双
-  Worker 实例分别为禁止重复、显式接受重复风险、具备可靠资源排除协议; singleWorker 用于早期增量验证.
+- [beamletCore.qnt](beamletCore.qnt): 完整组合参考入口, 组合 `step`、扩展 step 与 Safety 性质, 再导出分层模块的公共定义.
+  三个双 Worker 实例分别为禁止重复、显式接受重复风险、具备可靠资源排除协议; singleWorker 用于早期增量验证.
 - [beamletCore_test.qnt](beamletCore_test.qnt): 保持原模块名的测试入口, 聚合 `scenarios/` 中的 104 个确定场景:
-  strictTests 23 个、fencedTests 2 个已依赖独立执行核心, repeatingTests 79 个保留组合参考. 前缀只使用真实转换并逐步检查 safety;
-  拒绝行为另检查守卫及实际 disabled action.
+  strictTests 23 个、fencedTests 2 个已依赖独立执行核心, repeatingTests 79 个保留组合参考. 前缀只使用真实转换并逐步检查
+  safety; 拒绝行为另检查守卫及实际 disabled action.
 - [beamletCore_mutations_test.qnt](beamletCore_mutations_test.qnt): 保持原模块名与 BUG 编号的 mutation 入口, 30
   个故意错误规则位于 `mutations/`, 从合法前缀产生可定位的反例. 不属于正常 step.
 - [beamletReconciliation.qnt](beamletReconciliation.qnt): Q63-Q70 的有界协调扩展,
@@ -59,6 +62,8 @@
 model/quint/
 ├── beamletExecution.qnt               # 首版执行核心
 ├── beamletRecovery.qnt                # 正常与恢复组合
+├── beamletMultiIntent.qnt             # 双 Intent / 多 Agent / Tool Call 组合
+├── multi/                            # 作用域、共享 Worker 与调用方依赖
 ├── beamletCore.qnt                    # 完整组合参考: step / safety / 具体实例
 ├── beamletReconciliation.qnt          # 协调与命令抽样入口
 ├── beamletConflicts.qnt               # 防御性冲突抽样入口
@@ -81,7 +86,8 @@ model/quint/
 │   ├── strict/                       # fixture + 生命周期/恢复/冲突/资格测试
 │   ├── fenced/                       # fixture + 可靠资源排除测试
 │   ├── repeating/                    # fixture + 命令/拒绝/权限/判断版本/规则版本/协调/恢复测试
-│   └── conflicts/                    # fixture + 覆盖/全部排除/取代/撤销测试
+│   ├── conflicts/                    # fixture + 覆盖/全部排除/取代/撤销测试
+│   └── multi/                        # 多 Intent 隔离、恢复与调用方汇总场景
 └── mutations/                        # 故意错误规则与专用合法前缀
 ```
 
@@ -91,9 +97,10 @@ model/quint/
 共享状态, 不各自实例化核心. 当前 Quint 文件最多 200 行, 后续新增内容按职责拆分, 不把规则或场景重新堆回入口.
 
 依赖方向为 **入口 → 动作/性质 → 纯逻辑 → 公共状态/类型**; 纯逻辑内部按判断投影、报告、处置、终结、协调、命令逐层组合,
-无循环导入. 九个模型参数只在 `base/execution_values.qnt` 声明一次;
-首版/组合分别在 `base/execution_state.qnt` 和 `base/state.qnt` 拥有各自五组变量, 单实例路径不混用两种状态. `scenarios/conflicts/fixtures.qnt`
-只提供防御性输入、合法前缀与扩展 step, 不包含 `run` 或 mutant 动作.
+无循环导入. 原九个执行参数只在 `base/execution_values.qnt` 声明一次; 多 Intent 模型另在 `multi/state.qnt` 声明
+INTENTS/AGENTS/CALLS, 同样在外层一次绑定. 首版/组合分别在 `base/execution_state.qnt` 和 `base/state.qnt`
+拥有各自五组变量, 单实例路径不混用两种状态. `scenarios/conflicts/fixtures.qnt` 只提供防御性输入、合法前缀与扩展 step,
+不包含 `run` 或 mutant 动作.
 
 **Quint 0.32 常量绑定约束:** 内部模块只使用未绑定的 `import ... .*` 与 `export ... .*`, 在最外层具体运行/测试/mutation
 入口一次性绑定参数. 不要在 fixture 中绑定核心参数后再跨模块再导出: 这种写法可能通过 typecheck, 但执行时报
@@ -108,13 +115,17 @@ model/quint/
 mutantInit / mutantStep. 另核对 604 个原定义正文未改动 (忽略空白、注释与导入), 导入图无环且正常模拟不依赖测试/mutation
 文件. `mix test` 的五个工具测试通过. 这是结构重构回归, 不新增协议语义或穷尽证明.
 
-一个 Intent, 一个逻辑 Authority, 两个 Worker, 最多两个 Execution. 整数时钟取 0..6, TTL=2; incarnation 最多 2, 每个
-Execution 的 generation 最多 3, query Report ID 与独立的协调 Command ID 域各为 1..4. 达到边界后禁用相应新动作,
-不复用身份. Worker 的 Pending/完成报告分别使用同来源作用域内 ID 1/2, 不代表产品已经采用这种身份结构.
+原核心/正常单 Intent 入口使用一个 Intent、一个逻辑 Authority、两个 Worker、最多两个 Execution. 整数时钟取 0..6, TTL=2;
+incarnation 最多 2, 每个 Execution 的 generation 最多 3, query Report ID 与独立的协调 Command ID 域各为 1..4.
+达到边界后禁用相应新动作, 不复用身份. Worker 的 Pending/完成报告分别使用同来源作用域内 ID 1/2,
+不代表产品已经采用这种身份结构.
 
 账本与审计列表仍可随重复消息不断增长, 因此这是参与者/身份域有界、轨迹长度受限的抽样模型, 不是有限状态空间穷尽检查.
-正常闭环入口另有最多两个提交目录项, 仅展开首个 Intent 的执行; Handler/上下文/回调关联和抽象结果值的范围见
-[补全边界](normal-use-coverage.md). 原五组状态/九参数未删除; 新入口增加第六组 usage, 原 ITF 仍为五组.
+原正常闭环入口另有最多两个提交目录项, 仅展开首个 Intent 的执行; Handler/上下文/回调关联和抽象结果值的范围见
+[补全边界](normal-use-coverage.md). 新增的 [多 Intent 入口](multi-intent-coverage.md) 则同时展开两个完整执行账本,
+每个最多两个 Execution, 两个 Agent 与两个 Tool Call; Worker 会话和消息介质共享, 依赖清单属于调用方.
+原五组状态/九参数未删除; 单 Intent 正常入口增加第六组 usage, 原 ITF 仍为五组; 多 Intent 入口独立使用八组状态,
+见对应覆盖记录.
 
 ## 状态与故障前提
 
@@ -371,7 +382,8 @@ mix test
 默认三个核心实例各 5,000 条、最多 100 步; 五组核心合法前缀各 1,000 条, 协调原语扩展的普通 init 与合法前缀各 1,000 条;
 命令协议的普通 init 与三个合法前缀各 1,000 条, 防御性冲突扩展六个合法前缀各 1,000 条 (含 allExcludedInit 与
 partiallySupersededInit), 规则版本扩展三个合法前缀、普通退役扩展三个合法前缀及范围撤销扩展四个合法前缀各 1,000 条,
-均最多 100 步. 原 30 组为 42,000 条轨迹, 正常闭环四组增加 4,000 条, 独立核心增加 5,000 条、恢复五组与投影三组增加 8,000 条, 默认合计 43 组 / 59,000 条轨迹. 使用
+均最多 100 步. 原 30 组为 42,000 条轨迹, 正常闭环四组增加 4,000 条, 独立核心增加 5,000 条、恢复五组与投影三组增加 8,000
+条. 多 Intent 独立 Agent 主组增加 5,000 条, 五个定向组各增加 1,000 条, 默认合计 49 组 / 69,000 条轨迹. 使用
 --samples、--directed-samples 调整预算, --jobs 控制独立进程并发, --threads 控制每个 Rust 模拟进程的线程上限, --log-dir
 指定日志目录. 未指定 --threads 时取 max(div(System.schedulers_online(), jobs), 1), 例如 16 个在线 scheduler、jobs=4
 时默认每进程 4 线程; 这是保守预算, 不是最优性能保证, 也不保证准确反映所有容器 CPU 配额. typecheck 与 test

@@ -33,8 +33,8 @@ Handler 实现身份变化不等于 Operation 契约变化; 兼容新实现也�
 首版正常入口默认不接受重复风险; 不能把 `RetryOnce` 本身解释为接受重复效果.
 
 幂等声明必须说明: 外部服务/账户/资源 scope、稳定 key 派生、同输入要求、返回旧结果规则、重复并发请求处理,
-有效期起点/终点及最坏重传/延迟窗口. Intent context 持久且跨 Execution 不变, 不把 Execution ID 或 incarnation 直接用作重试新 key.
-Handler 映射外部 key; 多步骤派生子键要由版本化协议保持稳定, 不能因发布升级换算法.
+有效期起点/终点及最坏重传/延迟窗口. Intent context 持久且跨 Execution 不变, 不把 Execution ID 或 incarnation
+直接用作重试新 key. Handler 映射外部 key; 多步骤派生子键要由版本化协议保持稳定, 不能因发布升级换算法.
 
 后续尝试的替代、授权和调用分别检查仍适用的依据. 保存首次快照不意味着窗口永不失效;
 换兼容 Handler 时仍须匹配原 scope/protocol/key 解释并保留能力. 不得使用新 Handler 的较长静态窗口凭空延长旧 key 保证.
@@ -98,8 +98,9 @@ Unknown、Pending、NotFound、存储/传输错误不映射为确定 Failure. �
 | 已知失败后安全窗口过期 | 不能重调用; 具备终结资格时提前停止 | earlyStopWhenIdempotencyExpiresTest |
 | 窗口过期但结果 Unknown | 保持 Open, 不伪造确定失败 | unknownCannotStopAfterWindowExpiresTest |
 | 查询不支持/认证失败/关联不匹配 | 不形成可信完成事实 | 原 Pending/query/callback 场景; 真实 Adapter 测试 |
-| 两个独立 Intent | 绑定、幂等键、报告与结果不串线 | SQL/Adapter 并发符合性测试; 当前模型仅完整展开第一个 Intent |
+| 两个独立 Intent | 绑定、幂等键、报告与结果不串线 | [双 Intent 完整组合](../quint/multi-intent-coverage.md); 另需 SQL/Adapter 并发符合性测试 |
+| Tool Call 多依赖 | 按稳定身份读取每项 Outcome; 重启从原清单重建 | [调用方组合契约](multi-intent-and-tool-calls.md); 清单由调用方持久保存 |
 
 真实 Adapter 还须覆盖 key 映射稳定性、账户/协议切换拒绝、边界时限/延迟、签名轮换、重复/矛盾内容和受限值解码.
 当前 Quint 检查的是“前提被核验后”的安全关系, 没有真实第三方签名、网络时间保证或 SQL 后端结果.
-多 Intent 调度、公平性/Liveness、Authority 迁移、归档和后置治理仍按首版范围保留边界.
+多 Intent 已检查有界交错与共享 Worker; 实际派发公平性/Liveness、Authority 迁移、归档和后置治理仍按首版范围保留边界.

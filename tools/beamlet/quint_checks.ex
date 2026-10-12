@@ -5,7 +5,10 @@ defmodule Beamlet.QuintChecks do
   @tests "model/quint/beamletCore_test.qnt"
   @conflicts "model/quint/beamletConflicts_test.qnt"
   @mutations "model/quint/beamletCore_mutations_test.qnt"
-  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test beamletNormalUse beamletNormalUse_test beamletNormalUse_mutations_test beamletExecution beamletExecution_test beamletRecovery)
+  @models ~w(beamletCore beamletCore_test beamletCore_mutations_test beamletReconciliation beamletConflicts beamletConflicts_test beamletRules beamletRules_mutations_test beamletWithdrawals beamletWithdrawals_mutations_test beamletNormalUse beamletNormalUse_test beamletNormalUse_mutations_test beamletExecution beamletExecution_test beamletRecovery beamletMultiIntent beamletMultiIntent_test beamletMultiIntent_mutations_test)
+  @multi_mutations ~w(multiCrossIntentReport multiCrossIntentGrant multiSharedIdempotencyContext
+    multiSiblingHistoryErased multiPrematureToolJoin multiJoinByNotificationCount
+    multiCallbackCorrelationCollision multiLostDependencyManifest)
   @normal_mutations ~w(normalWrongResultValue normalDefinitionOverwritten normalCallbackBindingLost
     normalExpiredIdempotencyRetry normalSuccessNotAtomic normalContextChanged normalFailureNotAtomic normalExtendedIdempotencyWindow)
   @withdrawal_mutations ~w(withdrawalResurrectsOldTreatment withdrawalOverstepsScope withdrawalWithoutRevision
@@ -134,15 +137,20 @@ defmodule Beamlet.QuintChecks do
       [
         test_job(@conflicts, "conflictTests"),
         test_job("model/quint/beamletNormalUse_test.qnt", "normalUseTests"),
-        test_job("model/quint/beamletExecution_test.qnt", "executionProjectionTests")
+        test_job("model/quint/beamletExecution_test.qnt", "executionProjectionTests"),
+        test_job("model/quint/beamletMultiIntent_test.qnt", "multiIntentTests")
       ]
   end
 
   defp jobs(_config, "mutations") do
     Enum.map(
-      @normal_mutations,
-      &{:mutation, &1, "model/quint/beamletNormalUse_mutations_test.qnt"}
+      @multi_mutations,
+      &{:mutation, &1, "model/quint/beamletMultiIntent_mutations_test.qnt"}
     ) ++
+      Enum.map(
+        @normal_mutations,
+        &{:mutation, &1, "model/quint/beamletNormalUse_mutations_test.qnt"}
+      ) ++
       Enum.map(@core_mutations, &{:mutation, &1, @mutations}) ++
       Enum.map(@conflict_mutations, &{:mutation, &1, @conflicts}) ++
       Enum.map(@rule_mutations, &{:mutation, &1, "model/quint/beamletRules_mutations_test.qnt"}) ++
@@ -339,6 +347,42 @@ defmodule Beamlet.QuintChecks do
               config.directed_samples
             )
 
+    multi_witnesses =
+      ~w(bothInvokedWitness bothClosedWitness sharedWorkerWitness joinedWitness
+      independentWitness partialJoinWitness recoveredJoinWitness releasedCompletionWitness unknownIsolationWitness)
+
+    multi_intent =
+      [
+        simulation(
+          "multi-independentInit",
+          "model/quint/beamletMultiIntent.qnt",
+          "multiIntentAnalysis",
+          "independentInit",
+          "healthyStep",
+          "safety",
+          config.samples,
+          multi_witnesses
+        )
+      ] ++
+        for {init, step} <- [
+              {"joinedInit", "healthyStep"},
+              {"releasedPairInit", "step"},
+              {"unknownPairInit", "healthyStep"},
+              {"retryPairInit", "step"},
+              {"emptyInit", "step"}
+            ],
+            do:
+              simulation(
+                "multi-#{init}",
+                "model/quint/beamletMultiIntent.qnt",
+                "multiIntentAnalysis",
+                init,
+                step,
+                "safety",
+                config.directed_samples,
+                multi_witnesses
+              )
+
     core ++
       prefixes ++
       primitives ++
@@ -348,7 +392,7 @@ defmodule Beamlet.QuintChecks do
       retirements ++
       withdrawals ++
       normal ++
-      execution ++ recovery ++ projections
+      execution ++ recovery ++ projections ++ multi_intent
   end
 
   defp test_job(file, main),

@@ -1,9 +1,9 @@
 # 首版原子存储命令契约
 
-状态: 首版实现契约草案. 将已确认的 IEO、lease、报告与 History 规则细化为可测试的逻辑 Interface;
-不新增 Runtime、Ecto schema 或通用 transition 引擎. 支持目标仍为 Ecto SQLite/PostgreSQL.
-关联: [核心状态机](core-state-machines.md)、[lease](leases-and-permissions.md)、[值与消息](persistent-values-and-messages.md)、
-[Handler 与恢复](handler-recovery-contracts.md).
+状态: 首版实现契约草案. 将已确认的 IEO、lease、报告与 History 规则细化为可测试的逻辑 Interface; 不新增 Runtime、Ecto
+schema 或通用 transition 引擎. 支持目标仍为 Ecto SQLite/PostgreSQL. 关联:
+[核心状态机](core-state-machines.md)、[lease](leases-and-permissions.md)、[值与消息](persistent-values-and-messages.md)、
+[Handler 与恢复](handler-recovery-contracts.md)、[多 Intent 与调用方组合](multi-intent-and-tool-calls.md).
 
 ## 1. 命令处理公共协议
 
@@ -37,9 +37,10 @@ SQL Adapter 在以下原子边界中读取并重验, 不接收客户端提供的
 | StopKnownFailure | 策略已停止、合格当前错误、无未知风险/未解释旧成功/冲突 | OutcomeFailed、Closed 与来源/停止理由历史 | 已 Closed 读取已有结果; 不重复终结 |
 | CancelIntent | 当前取消权限、Open、无 Outcome | 唯一 Cancelled、Closed 与控制面历史 | 与完成先提交者赢; 不承诺停止外部调用 |
 
-Claim 请求携带调用者观察的 expected generation, 新 token 响应丢失后用 `(execution, worker, incarnation, expected generation)`
-识别原领取, 在相同领取仍有效时返回已分配 token. 不从同一过期请求分配下一代; 要重新领取须读取当前 generation 后提出新请求.
-Quint 当前把 Claim 与得知 token 合并, 因而领取回复丢失属于上述工程符合性场景, 不是模型已验证项.
+Claim 请求携带调用者观察的 expected generation, 新 token 响应丢失后用
+`(execution, worker, incarnation, expected generation)` 识别原领取, 在相同领取仍有效时返回已分配 token.
+不从同一过期请求分配下一代; 要重新领取须读取当前 generation 后提出新请求. Quint 当前把 Claim 与得知 token 合并,
+因而领取回复丢失属于上述工程符合性场景, 不是模型已验证项.
 
 AuthorizeStart 的身份由 `(execution, worker, incarnation, generation)` 确定. 已保存相同 grant 的重投返回原内容,
 即使现时 lease 到期/Intent 已关闭; 回复不表示新许可, 不能携带新 Handler/上下文. 来源与读取权限仍需验证.
@@ -87,8 +88,8 @@ SQLite 必须启用外键及满足持久性目标的 journal/synchronous 配置;
 
 ## 6. 一致读取和候选发现
 
-`ReadFacts(intent)` 返回一个已提交一致快照: 原定义、当前 Execution 与 lease/授权、等待关联、原始报告/冲突、Outcome 和必要 History.
-可以分页 History/报告, 但必须携带稳定快照/游标语义; 首版可先用受限完整读取, 不能拼接互相矛盾的瞬时快照.
+`ReadFacts(intent)` 返回一个已提交一致快照: 原定义、当前 Execution 与 lease/授权、等待关联、原始报告/冲突、Outcome
+和必要 History. 可以分页 History/报告, 但必须携带稳定快照/游标语义; 首版可先用受限完整读取, 不能拼接互相矛盾的瞬时快照.
 当前读取权限独立于提交权限, namespace/Intent ID 不是授权凭证.
 
 `DiscoverWork(cursor, limit)` 从持久事实投影 Open 的 Prepared、Waiting、Unknown 候选, 不返回启动许可.
@@ -110,5 +111,8 @@ SQLite 必须启用外键及满足持久性目标的 journal/synchronous 配置;
 8. SQL busy/deadlock/serialization failure 有界重试, 不外部重调用; 故障后未提交记录不可见.
 9. 同一 Intent 的一致读取与跨 Intent 隔离; 通知全丢、重启后重扫能重新发现候选.
 10. 记录驱动/数据库/存储配置并检查进程终止后的事务恢复; 真实掉电保证另行验收.
+11. 两个 Agent 的相同局部 key 在不同 namespace 独立、同身份同定义复用; 回复丢失/重启后取回 Closed 结果.
+12. 两个 Intent 的局部 Execution/report/token 编号相同, 验证 grant、报告、回执及回调的可信 Intent 作用域;
+    错路由拒绝, 共享 Worker 重启不继承任何 Intent 的旧许可, 不修改另一 Intent 的结果/History.
 
 当前只完成可执行抽象及这份工程验收规格, 尚无真实后端测试结果. 不将 Quint 的原子转换当作上述 SQL 事务实现已经通过.

@@ -1,8 +1,8 @@
 # 首版持久值与消息契约
 
-状态: 首版实现契约草案, 补全已有 Q36-Q45 的受限值与身份语义. 本文给出可用于实现和后端符合性测试的最小选择;
-不是 Runtime 实现, 不规定物理表名、HTTP 路由或最终 Elixir 类型. 本文的 v1 表示本文契约版本, 不改变既有 Operation Identity.
-上位约束见 [Operation / Handler](operation-handler-contracts.md), 原子处理见 [存储命令](storage-command-contracts.md).
+状态: 首版实现契约草案, 补全已有 Q36-Q45 的受限值与身份语义. 本文给出可用于实现和后端符合性测试的最小选择; 不是 Runtime
+实现, 不规定物理表名、HTTP 路由或最终 Elixir 类型. 本文的 v1 表示本文契约版本, 不改变既有 Operation Identity. 上位约束见
+[Operation / Handler](operation-handler-contracts.md), 原子处理见 [存储命令](storage-command-contracts.md).
 
 ## 1. 逻辑值 v1
 
@@ -14,9 +14,9 @@
 | array | 有序逻辑值序列; 顺序影响相等性 |
 | object | 字符串键到逻辑值的映射; 键唯一, 顺序不影响相等性 |
 
-首版 decimal、大整数、二进制和时间由具体 Operation 定义带版本的字符串/对象表示; 不添加会与普通对象碰撞的全局隐式 tagged 解码.
-逻辑值 v1 不接受 float/NaN/Infinity、atom、tuple、PID、Reference、Function、Port 或任意 Elixir term.
-外部 JSON 是一种可选 wire 格式; `1.0`/`1e0` 不能靠浮点解码静默成为 integer. 选择 codec 时须验证或明确拒绝其数值词法.
+首版 decimal、大整数、二进制和时间由具体 Operation 定义带版本的字符串/对象表示; 不添加会与普通对象碰撞的全局隐式 tagged
+解码. 逻辑值 v1 不接受 float/NaN/Infinity、atom、tuple、PID、Reference、Function、Port 或任意 Elixir term. 外部 JSON
+是一种可选 wire 格式; `1.0`/`1e0` 不能靠浮点解码静默成为 integer. 选择 codec 时须验证或明确拒绝其数值词法.
 对象重复键、非法 UTF-8、未配对 surrogate 必须在解码时拒绝, 不能让后写键覆盖前键.
 
 默认资源预算: 单个值的下述规范表示不超过 1 MiB, 容器嵌套深度不超过 32, 总节点不超过 10,000;
@@ -47,8 +47,8 @@ integer 用十进制最短形式, 零为 `0`; 不含空白、BOM 或尾换行. �
   由可信路由确定; namespace/key 不证明读取或提交权限. 不允许同一集合同时由两份独立数据库写入.
 - namespace/key 是非空 UTF-8 字符串, 各不超过 256 bytes; 按原文本精确比较, 无自动归一化.
   所选 SQL collation 必须符合此语义. 空字符串拒绝; 缺省 key 表示无 key, 每次成功处理创建新 Intent.
-- 不可变定义逐字段比较 Operation Identity、逻辑输入、硬约束和初始策略快照, 不比较后来的控制状态、接收时间或 Handler 发布号.
-  不允许未知定义字段被静默丢弃; 契约版本不支持时拒绝. 初始策略的默认值须在持久建立前展开并保存.
+- 不可变定义逐字段比较 Operation Identity、逻辑输入、硬约束和初始策略快照, 不比较后来的控制状态、接收时间或 Handler
+  发布号. 不允许未知定义字段被静默丢弃; 契约版本不支持时拒绝. 初始策略的默认值须在持久建立前展开并保存.
 - 同身份同定义返回同一 Intent 及本次读取到的已提交事实; Closed 时包括既有 Outcome 原业务值.
   同身份不同定义返回 DefinitionConflict, 保留原定义. 与协调 Command ID 的“返回原处理结果”协议区分.
 - 保存 Intent 期间持续保留身份和定义比较材料; Closed 不开始 TTL 倒计时. 首版不删除 Intent/身份,

@@ -11,7 +11,9 @@
 
 提交独立 Effect -> 持久建立 Intent/Execution -> 向可跨设备的 Worker 派发并持久授权 -> 保存报告 ->
 验证后接受唯一 Outcome 或保留可恢复的等待/不确定状态 -> 重启后重新发现工作或复用结果.
-不同 Intent 可以并发. 不要求所有 Intent 自动终结, 不恢复 Agent 调用栈、业务等待集合或依赖图.
+不同 Intent 可以并发. 不要求所有 Intent 自动终结; Agent 调用栈、业务等待集合或依赖图由调用方负责.
+已验证多个 Agent 独立提交和一轮 Tool Call 收集多个 Intent 结果的有界组合, 依赖清单持久化是调用方前提;
+见 [多 Intent 与 Tool Call 契约](multi-intent-and-tool-calls.md).
 
 | 范围 | 建议首版必须具备 | 对应模型 |
 | --- | --- | --- |
@@ -67,6 +69,8 @@
 4. 已补 [消息/值域](persistent-values-and-messages.md)、[Handler/恢复策略](handler-recovery-contracts.md)
    与 [原子存储/SQL 符合性](storage-command-contracts.md) 契约草案. 具体 codec/物理 schema/真实 Adapter 仍是工程落地,
    当前尚无 Runtime 实现或后端测试结果.
+5. 已补 [多 Intent 组合](../quint/multi-intent-coverage.md): 两个完整执行账本、共享 Worker、两个 Agent,
+   以及调用方持久依赖清单/结果汇总; 不新增跨 Intent 原子事务或 Beamlet 的工作流状态.
 
 模型收敛完成不能只以文件数或行数减少衡量: 核心读者无需学习治理规则即可解释执行安全,
 核心正常入口实际不导入治理模块, 核心与组合检查均可独立执行, 所有验证边界明确.
@@ -75,8 +79,10 @@ Q77 的 185 个正常场景、60 个反例和 42,000 条抽样作为保留基线
 正常闭环补全另增加 40 个正常场景、七个 mutation 和四组默认各 1,000 条的抽样入口,
 合计 225 个正常场景、67 条预期反例通过, 46,000 条正式抽样及额外 seed 的 10,000 条抽样未观察到所检查不变量违规;
 这是第一轮正常补全记录. 本轮核心隔离/恢复组合后, 16 类型入口、239 场景与 68 条预期反例通过,
-完成 68,000 条抽样; 默认 runner 为 43 组 / 59,000 条. 分检查点的实际配置/覆盖与可信前提见
-[执行核心覆盖](../quint/execution-core-coverage.md). Q78 授权区分尚未新增验证, 不计入这些检查.
+完成 68,000 条抽样; 该检查点默认 runner 为 43 组 / 59,000 条. 分检查点的实际配置/覆盖与可信前提见
+[执行核心覆盖](../quint/execution-core-coverage.md). 后续并发补充新增 42 场景、八条 mutation 与 20,000 条实际抽样;
+runner 现为 19 类型入口、281 场景、76 条预期反例、49 组 / 69,000 条默认抽样, 实际分组记录见
+[多 Intent 覆盖](../quint/multi-intent-coverage.md). Q78 授权区分尚未新增验证, 不计入这些检查.
 
 关联: [RFC](../rfc/0001-core-boundaries.md), [核心状态机](core-state-machines.md),
 [Handler 契约](operation-handler-contracts.md), [lease 与权限](leases-and-permissions.md),

@@ -74,7 +74,9 @@ defmodule Beamlet.QuintCliTest do
 
     {core, directed} =
       Enum.split_with(commands, fn command ->
-        Enum.at(command, 1) in ~w(model/quint/beamletCore.qnt model/quint/beamletExecution.qnt)
+        Enum.at(command, 1) in ~w(model/quint/beamletCore.qnt model/quint/beamletExecution.qnt) or
+          (Enum.at(command, 1) == "model/quint/beamletMultiIntent.qnt" and
+             Enum.member?(Enum.chunk_every(command, 2, 1, :discard), ["--init", "independentInit"]))
       end)
 
     for {group, samples} <- [{core, "2"}, {directed, "3"}] do
