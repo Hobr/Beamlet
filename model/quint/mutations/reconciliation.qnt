@@ -29,7 +29,7 @@ module coreReconciliationMutations {
     authority.durable.decisions.length() > 0,
     // Incorrectly treats any past disposition as covering newly received evidence.
     authority' = { ...authority, durable: applyCommit(authority.durable,
-      { kind: OutcomeFailed, exec: Current(2) }) },
+      { kind: OutcomeFailed, value: 0, exec: Current(2) }) },
     workers' = workers, network' = network, external' = external, clock' = clock,
   }
 

@@ -63,7 +63,7 @@ module conflictSupersessionTests {
     .then(sendReconciliationCommand(wideExclusionCommand)).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, wideExclusionCommand)).expect(commandSafety)
     .expect(authority.durable.commands.head().outcomes == List())
-    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, value: 0, exec: NoCurrent }))
     .expect(authority.durable.commands.length() == 2 and authority.durable.decisions.length() == 2)
 
   run concurrentSupersessionReviewGoesStaleTest = resolvedConflictInit

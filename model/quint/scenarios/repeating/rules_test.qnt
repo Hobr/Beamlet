@@ -66,7 +66,7 @@ module repeatingRuleTests {
     .then(receiveReconciliationCommand(upgradedRulePolicy, automaticV1Command)).expect(commandSafety)
     .expect(network.contains(ReconcileReply(CommandCommitted(automaticV1Record))))
     .expect(authority.durable.commands.head().outcomes == List())
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
 
   run retiredVersionRejectionRemainsOriginalTest = retiredRuleRejectedInit
     .then(sendReconciliationCommand(automaticV1Command)).expect(commandSafety)

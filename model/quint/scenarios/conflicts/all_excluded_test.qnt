@@ -34,7 +34,7 @@ module conflictAllExcludedTests {
     .then(receiveReport(querySuccess)).expect(commandSafety)
     .then(sendReconciliationCommand({ id: 2, decision: adoption })).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, { id: 2, decision: adoption })).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
     .expect(authority.durable.commands.head().outcomes == List())
 
   run allExcludedNeedsCheckedBasisTest = conflictInit
@@ -65,7 +65,7 @@ module conflictAllExcludedTests {
 
   run allExcludedStillAllowsCancellationTest = allExcludedInit
     .then(cancelIntent).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, value: 0, exec: NoCurrent }))
     .expect(authority.durable.commands.head().outcomes == List())
     .expect(authority.durable.reports.size() == 3 and authority.durable.attempts.get(1).conflict)
 
@@ -97,5 +97,5 @@ module conflictAllExcludedTests {
     .expect(judgmentKnowledge(authority.durable, 1) == FailureKnown)
     .expect(authority.durable.decisions.length() == 2 and authority.durable.commands.head().outcomes == List())
     .then(finishFailure(2)).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
 }

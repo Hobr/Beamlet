@@ -31,7 +31,7 @@ module beamletCore {
     any { step, proposeAnyCommand, receiveAnyReconciliationCommand(p), resendCommittedCommand }
 
   // Safety 是每个可达状态都应满足的合取;历史资格用提交时快照检查,避免以当前状态误判过去.
-  val safety = outcomeUnique and closedIffOutcome and outcomeImmutable
+  val safety = outcomeUnique and closedIffOutcome and outcomeImmutable and outcomeValuesEvidenced
     and startupsQualified and oneStartPerExecution and expirySticky
     and invocationsAuthorized and oneCallPerExecution and commitsQualified and outcomeAuditAtomic
     and replacementsSafe and notExecutedProofSound

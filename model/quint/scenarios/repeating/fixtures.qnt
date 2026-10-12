@@ -8,9 +8,9 @@ module repeatingFixtures {
 
   pure val t2: Token = { exec: 2, worker: 2, incarnation: 1, generation: 1 }
 
-  pure val success1: Report = { id: 2, exec: 1, kind: Success, origin: ByWorker(t1) }
+  pure val success1: Report = { id: 2, exec: 1, kind: Success, value: 0, origin: ByWorker(t1) }
 
-  pure val success2: Report = { id: 2, exec: 2, kind: Success, origin: ByWorker(t2) }
+  pure val success2: Report = { id: 2, exec: 2, kind: Success, value: 0, origin: ByWorker(t2) }
 
   pure val failure2: Report = { ...success2, kind: Failure }
 
@@ -79,10 +79,10 @@ module repeatingFixtures {
   pure val excludedRecord: CommandRecord = { command: exclusionCommand, outcomes: List(), decisionIndex: 0 }
 
   pure val adoptedRecord: CommandRecord = {
-    command: adoptionCommand, outcomes: List({ kind: OutcomeSucceeded, exec: Current(1) }), decisionIndex: 0,
+    command: adoptionCommand, outcomes: List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }), decisionIndex: 0,
   }
 
-  pure val querySuccess: Report = { id: 3, exec: 1, kind: Success, origin: ByQuery }
+  pure val querySuccess: Report = { id: 3, exec: 1, kind: Success, value: 0, origin: ByQuery }
 
   action committedExclusionInit = oldSuccessCurrentFailureInit.expect(commandSafety)
     .then(sendReconciliationCommand(exclusionCommand)).expect(commandSafety)

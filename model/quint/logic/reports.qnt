@@ -11,6 +11,8 @@ module coreLogicReports {
       | ByWorker(t) => t.exec == r.exec and attempt.grant == StartGrant(t)
           and (r.kind == Pending or r.kind == Success or r.kind == Failure)
       | ByQuery => r.kind != Pending
+      | ByCallback(c) => attempt.grant != NoGrant and attempt.completion == CallbackBinding(c)
+          and (r.kind == Success or r.kind == Failure)
     }
     attempt.exists and originValid
   }
@@ -25,7 +27,9 @@ module coreLogicReports {
     val resultConflict = (known == SuccessKnown and (r.kind == Failure or r.kind == NotExecuted))
       or (known == FailureKnown and r.kind == Success)
       or (known == NotExecutedKnown and r.kind == Success)
-    identityConflict or resultConflict
+    val valueConflict = l.reports.exists(old => old.exec == r.exec and old.kind == r.kind
+      and (r.kind == Success or r.kind == Failure) and old.value != r.value)
+    identityConflict or resultConflict or valueConflict
   }
 
   // Pending/NotFound 都不提供确定结果;只有可靠的 NotExecuted 才证明未执行.

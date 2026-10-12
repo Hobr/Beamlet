@@ -8,15 +8,15 @@ module conflictFixtures {
 
   pure val t2: Token = { exec: 2, worker: 2, incarnation: 1, generation: 1 }
 
-  pure val success1: Report = { id: 2, exec: 1, kind: Success, origin: ByWorker(t1) }
+  pure val success1: Report = { id: 2, exec: 1, kind: Success, value: 0, origin: ByWorker(t1) }
 
-  pure val failure2: Report = { id: 2, exec: 2, kind: Failure, origin: ByWorker(t2) }
+  pure val failure2: Report = { id: 2, exec: 2, kind: Failure, value: 0, origin: ByWorker(t2) }
 
-  pure val disputedFailure: Report = { id: 3, exec: 1, kind: Failure, origin: ByQuery }
+  pure val disputedFailure: Report = { id: 3, exec: 1, kind: Failure, value: 0, origin: ByQuery }
 
-  pure val querySuccess: Report = { id: 4, exec: 1, kind: Success, origin: ByQuery }
+  pure val querySuccess: Report = { id: 4, exec: 1, kind: Success, value: 0, origin: ByQuery }
 
-  pure val querySuccess2: Report = { id: 3, exec: 2, kind: Success, origin: ByQuery }
+  pure val querySuccess2: Report = { id: 3, exec: 2, kind: Success, value: 0, origin: ByQuery }
 
   pure def keep(r: Report): EvidenceDisposition =
     { report: r, treatment: KeepEvidence, basis: VerifiedCompletion }

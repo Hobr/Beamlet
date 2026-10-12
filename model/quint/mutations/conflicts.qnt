@@ -26,11 +26,11 @@ module conflictMutations {
       else if (BUG == 2) applyReconcile(before, { ...policy, resolutions: Set() }, exclusion)
       else if (BUG == 3) advanceJudgment(before, { ...before,
         attempts: before.attempts.set(1, { ...before.attempts.get(1), conflict: false }) })
-      else if (BUG == 4 or BUG == 5) applyCommit(before, { kind: OutcomeFailed, exec: Current(2) })
-      else if (BUG == 8) applyCommit(before, { kind: OutcomeFailed, exec: Current(2) })
+      else if (BUG == 4 or BUG == 5) applyCommit(before, { kind: OutcomeFailed, value: 0, exec: Current(2) })
+      else if (BUG == 8) applyCommit(before, { kind: OutcomeFailed, value: 0, exec: Current(2) })
       else if (BUG == 9) {
         val decided = applyReconcile(before, policy, allExclusionCommand.decision)
-        val committed = applyCommit(decided, { kind: OutcomeSucceeded, exec: Current(1) })
+        val committed = applyCommit(decided, { kind: OutcomeSucceeded, value: 0, exec: Current(1) })
         recordCommittedCommand(before, committed, allExclusionCommand)
       }
       else if (BUG == 10 or BUG == 11 or BUG == 12) {

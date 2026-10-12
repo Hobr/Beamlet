@@ -59,7 +59,7 @@ module conflictWithdrawalTests {
     .then(sendReconciliationCommand(withdrawalCommand)).expect(commandSafety)
     .then(receiveReconciliationCommand(withdrawalPolicy, withdrawalCommand)).expect(commandSafety)
     .expect(network.contains(ReconcileReply(CommandCommitted(withdrawalRecord))))
-    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, value: 0, exec: NoCurrent }))
     .expect(authority.durable.commands.nth(2).outcomes == List())
 
   run withdrawalNeedsCheckedGroundsTest = withdrawalPendingInit
@@ -94,7 +94,7 @@ module conflictWithdrawalTests {
     .then(cancelIntent).expect(commandSafety)
     .then(receiveReconciliationCommand(withdrawalPolicy, withdrawalCommand)).expect(commandSafety)
     .expect(authority.durable.decisions.length() == 2)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, value: 0, exec: NoCurrent }))
 
   run withdrawalReplayStillRequiresReadPermissionTest = withdrawnInit
     .then(sendReconciliationCommand(withdrawalCommand)).expect(commandSafety)

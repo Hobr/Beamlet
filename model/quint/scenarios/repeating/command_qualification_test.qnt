@@ -30,7 +30,7 @@ module repeatingCommandQualificationTests {
     })).expect(commandSafety)
     .expect(authority.durable.commands.length() == 2 and authority.durable.decisions.length() == 2)
     .expect(authority.durable.commands.head().command.id == 1)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
 
   run unauthorizedCommandHasNoDecisionTest = oldSuccessCurrentFailureInit
     .then(sendReconciliationCommand(exclusionCommand)).expect(commandSafety)

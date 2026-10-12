@@ -65,7 +65,7 @@ module strictRecoveryTests {
     .then(completeAtResource(1, Success)).expect(safety)
     .then(queryExternal(1, 3)).expect(safety)
     .then(restartCoordinator).expect(safety)
-    .then(receiveReport({ id: 3, exec: 1, kind: Success, origin: ByQuery })).expect(safety)
+    .then(receiveReport({ id: 3, exec: 1, kind: Success, value: 0, origin: ByQuery })).expect(safety)
     .expect(succeededReached and lateReportReached)
     .expect(not(workers.get(1).alive))
 
@@ -78,7 +78,7 @@ module strictRecoveryTests {
     .then(moveClockTo(2)).expect(safety)
     .then(expireLease(1)).expect(safety)
     .expect(not(canReplace(authority.durable, 1, 2)))
-    .expect(not(canCommit(authority.durable, { kind: OutcomeFailed, exec: Current(1) })))
+    .expect(not(canCommit(authority.durable, { kind: OutcomeFailed, value: 0, exec: Current(1) })))
     .then(callExternal(t1)).expect(safety)
     .expect(external.effects == Set(1) and external.noFuture.size() == 0)
     .expect(authority.durable.outcomes.length() == 0)

@@ -50,13 +50,14 @@ module coreLogicReconciliation {
         (i.report.exec == j.report.exec and i.treatment == KeepEvidence and j.treatment == KeepEvidence)
           implies (not(sameReportIdentity(i.report, j.report)) or i.report == j.report)
             and not((i.report.kind == Success and (j.report.kind == Failure or j.report.kind == NotExecuted))
-              or (j.report.kind == Success and (i.report.kind == Failure or i.report.kind == NotExecuted)))))
+              or (j.report.kind == Success and (i.report.kind == Failure or i.report.kind == NotExecuted))
+              or (i.report.kind == j.report.kind and i.report.kind == Success and i.report.value != j.report.value))))
 
       // Q72 permits no retained decisive report; judgmentKnowledge then remains unknown.
 
   pure def decisionOutcome(d: Decision): Outcome = {
     kind: if (d.kind == AdoptFailure) OutcomeFailed else OutcomeSucceeded,
-    exec: Current(d.report.exec),
+    exec: Current(d.report.exec), value: d.report.value,
   }
 
   // 按处理当刻重验版本,主体,契约,覆盖和取代目标;终结提案还检查处置后的结果资格.

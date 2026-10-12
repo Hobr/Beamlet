@@ -9,7 +9,7 @@ module strictConflictsTests {
     val authorized = applyAuthorize(claimed, t1, 0)
     val firstReport = applyReport(authorized, success1)
     val conflict = applyReport(firstReport, failure1)
-    val terminal: Outcome = { kind: OutcomeSucceeded, exec: Current(1) }
+    val terminal: Outcome = { kind: OutcomeSucceeded, value: 0, exec: Current(1) }
     val committed = applyCommit(firstReport, terminal)
     val lateConflict = applyReport(committed, failure1)
     init.expect(all {
@@ -34,7 +34,7 @@ module strictConflictsTests {
     // Reuse the Pending identity with changed content: preserve Waiting, not Resolved.
     val disputed = applyReport(waiting, { ...success1, id: 1 })
     val subsequent = applyReport(disputed, success1)
-    val cancelled: Outcome = { kind: OutcomeCancelled, exec: NoCurrent }
+    val cancelled: Outcome = { kind: OutcomeCancelled, value: 0, exec: NoCurrent }
     init.expect(all {
       disputed.attempts.get(1).phase == Waiting,
       disputed.attempts.get(1).knowledge == NoKnowledge,
@@ -42,7 +42,7 @@ module strictConflictsTests {
       subsequent.attempts.get(1).phase == Waiting,
       subsequent.attempts.get(1).knowledge == NoKnowledge,
       subsequent.attempts.get(1).conflict, subsequent.reports.size() == 3,
-      not(canCommit(subsequent, { kind: OutcomeSucceeded, exec: Current(1) })),
+      not(canCommit(subsequent, { kind: OutcomeSucceeded, value: 0, exec: Current(1) })),
       canCommit(subsequent, cancelled),
       applyCommit(subsequent, cancelled).reports == subsequent.reports,
     })

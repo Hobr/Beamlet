@@ -8,9 +8,9 @@ module fencedFixtures {
 
   pure val t2: Token = { exec: 2, worker: 2, incarnation: 1, generation: 1 }
 
-  pure val excluded1: Report = { id: 3, exec: 1, kind: NotExecuted, origin: ByQuery }
+  pure val excluded1: Report = { id: 3, exec: 1, kind: NotExecuted, value: 0, origin: ByQuery }
 
-  pure val success2: Report = { id: 2, exec: 2, kind: Success, origin: ByWorker(t2) }
+  pure val success2: Report = { id: 2, exec: 2, kind: Success, value: 0, origin: ByWorker(t2) }
 
   // Worker 已持有许可但尚未调用,是资源排除旧尝试未来执行的关键窗口.
   // 具体入口绑定 CAN_FENCE=true;必须先可靠排除,再允许替代,不依赖 lease 到期猜测安全.

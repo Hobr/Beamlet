@@ -19,7 +19,7 @@ module fencedResourceTests {
     .then(publishCompletion(t2)).expect(safety)
     .then(receiveReport(success2)).expect(safety)
     .expect(external.effects == Set(2))
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(2) }))
 
   run fencedOldInvocationIsDisabledTest = grantHeldInit
     .then(fenceAtResource(1, 3)).expect(safety)

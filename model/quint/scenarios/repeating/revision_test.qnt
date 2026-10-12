@@ -28,7 +28,7 @@ module repeatingRevisionTests {
       ...adoptionCommand, decision: { ...adoptionCommand.decision, reviewedRevision: 8,
         supersedes: Set({ decisionIndex: 0, reports: Set(success1) }) },
     })).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
     .expect(authority.durable.revision == 10 and authority.durable.commands.length() == 2)
 
   run pureRejectionAuditDoesNotInvalidateOtherApprovalTest = oldSuccessCurrentFailureInit
@@ -46,7 +46,7 @@ module repeatingRevisionTests {
     .expect(not(oldSuccessNeedsReconciliation(authority.durable, 2)))
     .then(finishFailure(2)).expect(commandSafety)
     .expect(authority.durable.revision == 9)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
 
   run replayAndReadDenialDoNotChangeJudgmentRevisionTest = committedExclusionInit
     .then(sendReconciliationCommand(exclusionCommand)).expect(commandSafety)

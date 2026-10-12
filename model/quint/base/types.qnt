@@ -2,19 +2,15 @@
 module coreBaseTypes {
 
   type IntentPhase = Open | Closed
-
   // 生命周期表示 Authority 的协议进度;Unknown 是已授权但结果不明,不等同于失败.
   type ExecutionPhase = Prepared | StartAuthorized | Waiting | Unknown | Resolved
 
   type CurrentExecution = NoCurrent | Current(int)
-
   // Knowledge 来自已保存证据;NotFound 只表示查询未找到,不能推出 NotExecutedKnown.
   type Knowledge = NoKnowledge | SuccessKnown | FailureKnown | NotExecutedKnown
 
   type ReportKind = Pending | Success | Failure | NotFound | NotExecuted
-
   type OutcomeKind = OutcomeSucceeded | OutcomeFailed | OutcomeCancelled
-
   type ResourceResult = ResourceUnfinished | ResourceSucceeded | ResourceFailed
 
   // incarnation 隔离 Worker 重启,generation 隔离同一 Execution 的再次领取.
@@ -24,26 +20,29 @@ module coreBaseTypes {
 
   type GrantPermission = NoGrant | StartGrant(Token)
 
+  // Opaque correlation, established durably before calling; not a callback credential.
+  type CompletionBinding = NoCompletion | CallbackBinding(int)
+
   type Lease = {
     claimed: bool, worker: int, incarnation: int,
     generation: int, expiresAt: int, invalidated: bool,
   }
 
   type Attempt = {
-    exists: bool, phase: ExecutionPhase, lease: Lease, grant: GrantPermission,
+    exists: bool, phase: ExecutionPhase, lease: Lease, grant: GrantPermission, completion: CompletionBinding,
     // Q61: conflict is orthogonal to the last supported lifecycle projection.
     knowledge: Knowledge, negativeSeen: bool, conflict: bool,
   }
 
-  type Origin = ByWorker(Token) | ByQuery
-
-  type Report = { id: int, exec: int, kind: ReportKind, origin: Origin }
+  type Origin = ByWorker(Token) | ByQuery | ByCallback(int)
+  // Integers are opaque logical contents: only equality matters, not serialization.
+  type Report = { id: int, exec: int, kind: ReportKind, value: int, origin: Origin }
 
   type Message = StartRequest(Token) | StartReply(Token)
                | ResultReport(Report) | StoredReceipt(Report)
                | ReconcileRequest(ReconciliationCommand) | ReconcileReply(CommandReply)
 
-  type Outcome = { kind: OutcomeKind, exec: CurrentExecution }
+  type Outcome = { kind: OutcomeKind, exec: CurrentExecution, value: int }
 
   type DecisionKind = AdoptSuccess | AdoptFailure | ExcludeFromJudgment | ExcludeAllEvidence | WithdrawDisposition
 
@@ -193,7 +192,7 @@ module coreBaseTypes {
   // 外部调用/结果与 Authority 知识分离;marks 和处理/退役见证仅用于验证与覆盖观察.
   type ExternalState = {
     invocations: List[Invocation], effects: Set[int], finished: int -> ResourceResult,
-    noFuture: Set[int], emitted: Set[Report], marks: Set[str],
+    values: int -> int, noFuture: Set[int], emitted: Set[Report], marks: Set[str],
     commandHandling: List[CommandHandlingWitness], ruleRetirements: List[RuleRetirementWitness],
   }
 }

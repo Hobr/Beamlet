@@ -22,7 +22,7 @@ module repeatingRetirementFixtures {
   }
 
   val retiredDispositionUsedWitness = external.ruleRetirements.length() > 0
-    and authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) })
+    and authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) })
   val retirementBindingPreservedWitness = external.ruleRetirements.foldl(false, (found, w) =>
     found or (w.previousBindings.size() > 0 and w.previousBindings == w.nextBindings))
 

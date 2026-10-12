@@ -84,4 +84,11 @@ module corePropertiesCore {
                          iff (authority.durable.outcomes.length() > 0)
 
   val outcomeImmutable = authority.durable.outcomes == authority.durable.firstOutcome
+
+  // Compare the actual business/error value with stored evidence, not only its result kind.
+  val outcomeValuesEvidenced = authority.durable.outcomes.foldl(true, (ok, o) => ok and (match o.exec {
+    | NoCurrent => o.kind == OutcomeCancelled and o.value == 0
+    | Current(e) => authority.durable.reports.exists(r => r.exec == e and r.value == o.value
+        and r.kind == (if (o.kind == OutcomeSucceeded) Success else Failure))
+  }))
 }

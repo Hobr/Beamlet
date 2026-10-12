@@ -10,14 +10,14 @@ module conflictCoverageTests {
     .expect(authority.durable.reports == Set(success1, failure2, disputedFailure))
     .expect(authority.durable.commands == List(exclusionRecord) and authority.durable.outcomes == List())
     .then(finishFailure(2)).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
 
   run completeAdoptionCommitsAtomicallyTest = queriedConflictInit
     .then(sendReconciliationCommand({ id: 1, decision: adoption })).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, { id: 1, decision: adoption })).expect(commandSafety)
     .expect(authority.durable.commands.length() == 1 and authority.durable.decisions.length() == 1)
     .expect(authority.durable.phase == Closed)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
     .expect(authority.durable.reports.size() == 4 and authority.durable.attempts.get(1).conflict)
     .expect(authority.durable.history.select(a => a.kind == EvidenceReconciled).length() == 1)
     .expect(authority.durable.history.select(a => a.kind == OutcomeStored).length() == 1)
@@ -26,7 +26,7 @@ module conflictCoverageTests {
     .then(sendReconciliationCommand({ id: 1, decision: failure })).expect(commandSafety)
     .then(receiveReconciliationCommand(policy, { id: 1, decision: failure })).expect(commandSafety)
     .expect(authority.durable.phase == Closed and authority.durable.commands.length() == 1)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
     .expect(authority.durable.attempts.get(1).knowledge == SuccessKnown)
     .expect(authority.durable.reports.contains(success1) and authority.durable.attempts.get(1).conflict)
 
@@ -67,7 +67,7 @@ module conflictCoverageTests {
   run bothConflictGroupsCanBeResolvedTogetherTest = bothConflictsInit
     .then(reconcileDecision(policy, conflictDecision(authority.durable,
       querySuccess2, AdoptSuccess, resolveBothConflicts, Operator(1)))).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(2) }))
     .expect(authority.durable.attempts.get(1).conflict and authority.durable.attempts.get(2).conflict)
     .expect(authority.durable.reports.size() == 4)
 
@@ -110,7 +110,7 @@ module conflictCoverageTests {
 
   run registeredAutomaticConflictRuleCanCommitTest = queriedConflictInit
     .then(reconcileDecision(policy, { ...adoption, actor: AutomaticRule({ id: 4, version: 1 }) })).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
     .expect(automaticDecisionReached)
 
   run automaticRuleStillNeedsCheckedBasisTest = queriedConflictInit
@@ -123,7 +123,7 @@ module conflictCoverageTests {
 
   run cancellationCanCloseWithUnresolvedConflictTest = conflictInit
     .then(cancelIntent).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, value: 0, exec: NoCurrent }))
     .expect(authority.durable.reports.size() == 3 and authority.durable.attempts.get(1).conflict)
 
   run currentFailureCannotIgnoreAnotherUnknownAttemptTest = grantedReplacementInit
@@ -149,5 +149,5 @@ module conflictCoverageTests {
       Set(keep(success1), discardEvidence(disputedFailure), keep({ ...querySuccess, id: 3 })), Operator(1))))
       .expect(commandSafety)
     .expect(authority.durable.reports.size() == 4 and authority.durable.attempts.get(1).conflict)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
 }

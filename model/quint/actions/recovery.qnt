@@ -19,7 +19,7 @@ module coreActionsRecovery {
 
   // 取消争夺唯一 Outcome,不保证外部效果停止;已发许可和迟到报告仍可继续处理.
   action cancelIntent = {
-    val outcome: Outcome = { kind: OutcomeCancelled, exec: NoCurrent }
+    val outcome: Outcome = { kind: OutcomeCancelled, value: 0, exec: NoCurrent }
     all {
       authority.online, canCommit(authority.durable, outcome),
       authority' = { ...authority, durable: applyCommit(authority.durable, outcome) },
@@ -29,7 +29,7 @@ module coreActionsRecovery {
 
   // 已知 Failure 只是事实;这个动作抽象策略决定不再尝试,仍须满足普通终结资格.
   action finishFailure(e: int): bool = {
-    val outcome: Outcome = { kind: OutcomeFailed, exec: Current(e) }
+    val outcome: Outcome = { kind: OutcomeFailed, value: knownResultValue(authority.durable, e, Failure), exec: Current(e) }
     all {
       authority.online, canCommit(authority.durable, outcome),
       authority' = { ...authority, durable: applyCommit(authority.durable, outcome) },

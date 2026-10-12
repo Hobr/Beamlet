@@ -8,11 +8,11 @@ module coreMutations {
 
   pure val t1: Token = { exec: 1, worker: 1, incarnation: 1, generation: 1 }
 
-  pure val success1: Report = { id: 2, exec: 1, kind: Success, origin: ByWorker(t1) }
+  pure val success1: Report = { id: 2, exec: 1, kind: Success, value: 0, origin: ByWorker(t1) }
 
-  pure val notFound1: Report = { id: 3, exec: 1, kind: NotFound, origin: ByQuery }
+  pure val notFound1: Report = { id: 3, exec: 1, kind: NotFound, value: 0, origin: ByQuery }
 
-  pure val cancelled: Outcome = { kind: OutcomeCancelled, exec: NoCurrent }
+  pure val cancelled: Outcome = { kind: OutcomeCancelled, value: 0, exec: NoCurrent }
 
   action preparedInit = init.expect(safety)
     .then(createExecution(1)).expect(safety)
@@ -133,7 +133,7 @@ module coreMutations {
     authority.online, authority.durable.attempts.get(1).phase == Unknown,
     // Expiry / a stop-retrying decision is incorrectly treated as failure evidence.
     authority' = { ...authority, durable: applyCommit(authority.durable,
-      { kind: OutcomeFailed, exec: Current(1) }) },
+      { kind: OutcomeFailed, value: 0, exec: Current(1) }) },
     workers' = workers, network' = network, external' = external, clock' = clock,
   }
 

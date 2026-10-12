@@ -90,6 +90,14 @@ module coreLogicDispositions {
     l.reports.exists(r => r.exec == e and r.kind == kind and reportSourceValid(l, r)
       and not(excludedForJudgment(l, r)))
 
+  pure def hasOutcomeEvidence(l: Ledger, e: int, kind: ReportKind, value: int): bool =
+    l.reports.exists(r => r.exec == e and r.kind == kind and r.value == value
+      and reportSourceValid(l, r) and not(excludedForJudgment(l, r)))
+
+  pure def knownResultValue(l: Ledger, e: int, kind: ReportKind): int =
+    l.reports.filter(r => r.exec == e and r.kind == kind and not(excludedForJudgment(l, r)))
+      .fold(0, (_, r) => r.value)
+
   // 新请求必须匹配审查 revision;已接受处置按 acceptedBase 判断范围,避免被自身增版失效.
   pure def decisionScopeCurrent(l: Ledger, d: Decision): bool =
     d.reviewedRevision == l.revision

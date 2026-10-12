@@ -11,7 +11,7 @@ module repeatingRecoveryTests {
 
   run oldSuccessDoesNotBlockCancellationTest = oldSuccessCurrentFailureInit
     .then(cancelIntent).expect(safety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, value: 0, exec: NoCurrent }))
     .expect(authority.durable.reports.contains(success1) and authority.durable.reports.contains(failure2))
 
   run failureThenOldSuccessStillBlocksTest = replacementInit
@@ -39,7 +39,7 @@ module repeatingRecoveryTests {
     .then(receiveReport(failure2)).expect(safety)
     .expect(not(oldSuccessNeedsReconciliation(authority.durable, 2)))
     .then(finishFailure(2)).expect(safety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
 
   run duplicateEffectsButOneOutcomeTest = replacementInit
     .then(callExternal(t2)).expect(safety)
@@ -54,7 +54,7 @@ module repeatingRecoveryTests {
     .then(completeAtResource(2, Success)).expect(safety)
     .then(publishCompletion(t2)).expect(safety)
     .then(receiveReport(success2)).expect(safety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(2) }))
     .expect(authority.durable.reports.contains(success1) and authority.durable.reports.contains(success2))
 
   run duplicateRiskAcceptanceDoesNotProveFailureTest = replacementInit

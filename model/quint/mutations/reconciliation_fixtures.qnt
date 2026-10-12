@@ -10,11 +10,11 @@ module reconciliationMutationFixtures {
 
   pure val t2: Token = { exec: 2, worker: 2, incarnation: 1, generation: 1 }
 
-  pure val success1: Report = { id: 2, exec: 1, kind: Success, origin: ByWorker(t1) }
+  pure val success1: Report = { id: 2, exec: 1, kind: Success, value: 0, origin: ByWorker(t1) }
 
-  pure val failure2: Report = { id: 2, exec: 2, kind: Failure, origin: ByWorker(t2) }
+  pure val failure2: Report = { id: 2, exec: 2, kind: Failure, value: 0, origin: ByWorker(t2) }
 
-  pure val querySuccess: Report = { id: 3, exec: 1, kind: Success, origin: ByQuery }
+  pure val querySuccess: Report = { id: 3, exec: 1, kind: Success, value: 0, origin: ByQuery }
 
   pure val policy: ReconciliationPolicy = {
     operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(success1), resolutions: Set(), withdrawals: Set(),

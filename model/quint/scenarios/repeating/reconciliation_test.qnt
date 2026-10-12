@@ -12,12 +12,12 @@ module repeatingReconciliationTests {
 
   run automaticAdoptionUsesVerifiedQueryTest = oldSuccessCurrentFailureInit
     .then(queryExternal(1, 3)).expect(safety)
-    .then(receiveReport({ id: 3, exec: 1, kind: Success, origin: ByQuery })).expect(safety)
+    .then(receiveReport({ id: 3, exec: 1, kind: Success, value: 0, origin: ByQuery })).expect(safety)
     .then(reconcileDecision(reconciliationPolicy,
-      proposeDecision(authority.durable, { id: 3, exec: 1, kind: Success, origin: ByQuery },
+      proposeDecision(authority.durable, { id: 3, exec: 1, kind: Success, value: 0, origin: ByQuery },
         AdoptSuccess, AutomaticRule({ id: 1, version: 1 })))).expect(safety)
     .expect(automaticDecisionReached and adoptionDecisionReached)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
 
   run unauthorizedManualDecisionIsDisabledTest = oldSuccessCurrentFailureInit
     .then(reconcileDecision(reconciliationPolicy,
@@ -48,14 +48,14 @@ module repeatingReconciliationTests {
     .then(reconcileDecision(reconciliationPolicy, manualExclusion)).expect(safety)
     .expect(not(oldSuccessNeedsReconciliation(authority.durable, 2)))
     .then(queryExternal(1, 3)).expect(safety)
-    .then(receiveReport({ id: 3, exec: 1, kind: Success, origin: ByQuery })).expect(safety)
+    .then(receiveReport({ id: 3, exec: 1, kind: Success, value: 0, origin: ByQuery })).expect(safety)
     .expect(oldSuccessNeedsReconciliation(authority.durable, 2))
     .expect(authority.durable.decisions.length() == 1 and authority.durable.reports.size() == 3)
     .then(finishFailure(2).fail())
 
   run staleDecisionIsDisabledTest = oldSuccessCurrentFailureInit
     .then(queryExternal(1, 3)).expect(safety)
-    .then(receiveReport({ id: 3, exec: 1, kind: Success, origin: ByQuery })).expect(safety)
+    .then(receiveReport({ id: 3, exec: 1, kind: Success, value: 0, origin: ByQuery })).expect(safety)
     // Proposal predates the new query report, so its reviewedRevision is stale.
     .then(reconcileDecision(reconciliationPolicy,
       { ...manualExclusion, reviewedRevision: 7 }).fail())
@@ -78,13 +78,13 @@ module repeatingReconciliationTests {
     .expect(authority.durable.attempts.get(1).knowledge == SuccessKnown)
     .expect(authority.durable.reports.contains(success1))
     .then(finishFailure(2)).expect(safety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
 
   run manualAdoptionClosesWithOldSuccessTest = oldSuccessCurrentFailureInit
     .then(reconcileDecision(reconciliationPolicy, manualAdoption)).expect(safety)
     .expect(adoptionDecisionReached and manualDecisionReached)
     .expect(authority.durable.current == Current(2))
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
     .expect(authority.durable.reports.contains(success1))
     .expect(authority.durable.history.select(a => a.kind == EvidenceReconciled).length() == 1)
     .expect(authority.durable.history.select(a => a.kind == OutcomeStored).length() == 1)

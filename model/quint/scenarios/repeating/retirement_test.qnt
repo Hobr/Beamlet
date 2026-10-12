@@ -15,7 +15,7 @@ module repeatingRetirementTests {
   run retiredDispositionStillAllowsEligibleFailureTest = ordinaryRetirementInit
     .then(finishFailure(2)).expect(commandSafety)
     .expect(retiredDispositionUsedWitness)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
     .expect(authority.durable.decisions.head().decision.actor == AutomaticRule(rule2v1.rule))
 
   run retirementDoesNotStaleReviewedManualCommandTest = automaticRuleCommittedInit
@@ -25,7 +25,7 @@ module repeatingRetirementTests {
       ...adoptionCommand.decision, reviewedRevision: 8,
       supersedes: Set({ decisionIndex: 0, reports: Set(success1) }),
     } })).expect(commandSafety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
     .expect(authority.durable.decisions.length() == 2 and authority.durable.commands.length() == 2)
     .expect(authority.durable.decisions.nth(1).decision.supersedes
       == Set({ decisionIndex: 0, reports: Set(success1) }))
@@ -54,7 +54,7 @@ module repeatingRetirementTests {
     .then(sendReconciliationCommand(automaticV1Command)).expect(commandSafety)
     .then(receiveReconciliationCommand(retiredV1Policy, automaticV1Command)).expect(commandSafety)
     .expect(network.contains(ReconcileReply(CommandCommitted(automaticV1Record))))
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
     .expect(authority.durable.commands.head().outcomes == List())
     .expect(external.ruleRetirements.head().durableUnchanged)
 

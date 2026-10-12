@@ -6,7 +6,7 @@ module beamletReconciliation {
     ALLOW_REPEAT = true, CAN_FENCE = false).* from "./beamletCore"
 
   pure val firstToken: Token = { exec: 1, worker: 1, incarnation: 1, generation: 1 }
-  pure val firstSuccess: Report = { id: 2, exec: 1, kind: Success, origin: ByWorker(firstToken) }
+  pure val firstSuccess: Report = { id: 2, exec: 1, kind: Success, value: 0, origin: ByWorker(firstToken) }
   // Checked-contract premise for this example, not proof of real irrelevance.
   pure val policy: ReconciliationPolicy = {
     operators: Set(1), registeredRules: Set(rule1v1, rule2v1), excludable: Set(firstSuccess), resolutions: Set(), withdrawals: Set(),

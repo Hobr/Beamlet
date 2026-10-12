@@ -38,7 +38,7 @@ module repeatingCommandsTests {
     .then(sendReconciliationCommand(exclusionCommand)).expect(commandSafety)
     .then(receiveReconciliationCommand(reconciliationPolicy, exclusionCommand)).expect(commandSafety)
     .expect(network.contains(ReconcileReply(CommandCommitted(excludedRecord))))
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(2) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(2) }))
     .expect(authority.durable.commands.head().outcomes == List())
     .expect(authority.durable.decisions.length() == 1)
 

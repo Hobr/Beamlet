@@ -18,7 +18,7 @@ module strictLifecycleTests {
     .then(publishCompletion(t1)).expect(safety)
     .then(cancelIntent).expect(safety)
     .then(receiveReport(success1)).expect(safety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, value: 0, exec: NoCurrent }))
     .expect(authority.durable.attempts.get(1).phase == Resolved)
     .expect(authority.durable.reports.contains(success1))
     .expect(not(canCreate(authority.durable, 2)))
@@ -27,8 +27,8 @@ module strictLifecycleTests {
     .then(completeAtResource(1, Success)).expect(safety)
     .then(publishCompletion(t1)).expect(safety)
     .then(receiveReport(success1)).expect(safety)
-    .expect(not(canCommit(authority.durable, { kind: OutcomeCancelled, exec: NoCurrent })))
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(not(canCommit(authority.durable, { kind: OutcomeCancelled, value: 0, exec: NoCurrent })))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
 
   run knownFailureCanCloseTest = runningInit
     .then(completeAtResource(1, Failure)).expect(safety)
@@ -36,5 +36,5 @@ module strictLifecycleTests {
     .then(receiveReport(failure1)).expect(safety)
     .expect(authority.durable.phase == Open and authority.durable.outcomes.length() == 0)
     .then(finishFailure(1)).expect(safety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeFailed, value: 0, exec: Current(1) }))
 }

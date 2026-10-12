@@ -24,12 +24,16 @@ module coreLogicWorkers {
     { ...x, invocations: x.invocations.append({ token: t, incarnationAtCall: inc }),
       effects: x.effects.union(Set(t.exec)) }
 
+  pure def applyExternalCompletionValue(x: ExternalState, e: int, kind: ReportKind, value: int): ExternalState =
+    { ...x, finished: x.finished.set(e, if (kind == Success) ResourceSucceeded else ResourceFailed),
+      values: x.values.set(e, value) }
+
   pure def applyExternalCompletion(x: ExternalState, e: int, kind: ReportKind): ExternalState =
-    { ...x, finished: x.finished.set(e, if (kind == Success) ResourceSucceeded else ResourceFailed) }
+    applyExternalCompletionValue(x, e, kind, 0)
 
   // 固定 1/2 仅是同一 Worker token 来源内 Pending/完成报告的有界身份,不是产品 ID 方案.
   pure def pendingReport(t: Token): Report =
-    { id: 1, exec: t.exec, kind: Pending, origin: ByWorker(t) }
+    { id: 1, exec: t.exec, kind: Pending, value: 0, origin: ByWorker(t) }
 
   pure def canPublish(local: LocalState, t: Token, r: Report): bool =
     local.alive and local.incarnation == t.incarnation and local.started.contains(t.exec)
@@ -40,7 +44,7 @@ module coreLogicWorkers {
 
   pure def completionReport(x: ExternalState, t: Token): Report =
     { id: 2, exec: t.exec, kind: if (x.finished.get(t.exec) == ResourceSucceeded) Success else Failure,
-      origin: ByWorker(t) }
+      value: x.values.get(t.exec), origin: ByWorker(t) }
 
   // 崩溃清空所有局部许可,已调用集合和报告;重启递增 incarnation,不能继承旧代许可.
   pure def applyWorkerCrash(local: LocalState): LocalState =

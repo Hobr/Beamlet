@@ -48,11 +48,11 @@ module coreLogicRecovery {
     val result = x.finished.get(e)
     val kind = if (result == ResourceSucceeded) Success
       else if (result == ResourceFailed) Failure else NotFound
-    { id: id, exec: e, kind: kind, origin: ByQuery }
+    { id: id, exec: e, kind: kind, value: x.values.get(e), origin: ByQuery }
   }
 
   pure def reportTokens(r: Report): Set[Token] = match r.origin {
-    | ByWorker(t) => Set(t) | ByQuery => Set()
+    | ByWorker(t) => Set(t) | ByQuery => Set() | ByCallback(_) => Set()
   }
 
   pure def messageTokens(m: Message): Set[Token] = match m {

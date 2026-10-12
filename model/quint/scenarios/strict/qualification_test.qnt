@@ -19,7 +19,7 @@ module strictQualificationTests {
     .then(cancelIntent).expect(safety)
     .expect(authority.durable.current == NoCurrent)
     .expect(EXECUTIONS.forall(e => not(authority.durable.attempts.get(e).exists)))
-    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, exec: NoCurrent }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeCancelled, value: 0, exec: NoCurrent }))
 
   // 验证取消只终结 Intent:已经持久化但仍在途的许可之后仍可能引起外部效果.
   run cancellationBeforeGrantDeliveryTest = grantedInit
@@ -40,7 +40,7 @@ module strictQualificationTests {
   run completionBeforePendingIsProducedTest = runningInit
     .then(completeAtResource(1, Success)).expect(safety)
     .then(queryExternal(1, 3)).expect(safety)
-    .then(receiveReport({ id: 3, exec: 1, kind: Success, origin: ByQuery })).expect(safety)
+    .then(receiveReport({ id: 3, exec: 1, kind: Success, value: 0, origin: ByQuery })).expect(safety)
     .expect(succeededReached)
     // The worker may learn/return Pending after the authority accepts completion.
     .then(publishPending(t1)).expect(safety)
@@ -69,7 +69,7 @@ module strictQualificationTests {
     .then(completeAtResource(1, Success)).expect(safety)
     .then(publishCompletion(t1)).expect(safety)
     .then(receiveReport(success1)).expect(safety)
-    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, exec: Current(1) }))
+    .expect(authority.durable.outcomes == List({ kind: OutcomeSucceeded, value: 0, exec: Current(1) }))
     .expect(authority.durable.reports.contains(success1))
     .expect(authority.durable.history.select(a => a.kind == OutcomeStored).length() == 1)
 }

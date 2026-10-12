@@ -44,7 +44,7 @@ module coreActionsEvidence {
 
   // 资源原子地建立"未发生且未来不再发生"事实后发 NotExecuted;普通 NotFound 没有此能力.
   action fenceAtResource(e: int, id: int): bool = {
-    val r: Report = { id: id, exec: e, kind: NotExecuted, origin: ByQuery }
+    val r: Report = { id: id, exec: e, kind: NotExecuted, value: 0, origin: ByQuery }
     all {
       CAN_FENCE, authority.durable.attempts.get(e).grant != NoGrant,
       not(external.effects.contains(e)), not(external.noFuture.contains(e)),
@@ -68,6 +68,7 @@ module coreActionsEvidence {
         external' = { ...external, marks: external.marks.union(Set("receiptReceived")) }, clock' = clock,
       }
     | ByQuery => invalidMessageVariant
+    | ByCallback(_) => invalidMessageVariant
   }
 
   action receiveAnyReceipt = {
@@ -107,6 +108,7 @@ module coreActionsEvidence {
         external' = { ...external, marks: external.marks.union(Set("reportResent")) }, clock' = clock,
       }
     | ByQuery => invalidMessageVariant
+    | ByCallback(_) => invalidMessageVariant
   }
 
   action resendAnyReport = {

@@ -31,7 +31,7 @@ module withdrawalMutations {
           ...unchecked.decisions.nth(2), contractQualified: true }) }
       } else if (WITHDRAWAL_BUG == 5)
         recordCommittedCommand(before, applyCommit(applyReconcile(before, withdrawalPolicy, request.decision),
-          { kind: OutcomeSucceeded, exec: Current(1) }), request)
+          { kind: OutcomeSucceeded, value: 0, exec: Current(1) }), request)
       else { ...applied, reports: applied.reports.exclude(Set(success1)) }
     all {
       authority.online,

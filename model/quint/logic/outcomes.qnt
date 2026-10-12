@@ -6,12 +6,12 @@ module coreLogicOutcomes {
   // Success/Failure 要求当前且证据合格;Failed 还须排除授权未知风险和未协调的旧成功.
   // 显式取消使用 NoCurrent,不依赖创建 Execution 或解决结果冲突.
   pure def ordinarySourceEligible(l: Ledger, o: Outcome): bool = match o.exec {
-    | NoCurrent => o.kind == OutcomeCancelled
+    | NoCurrent => o.kind == OutcomeCancelled and o.value == 0
     | Current(e) => l.current == Current(e) and noConflicts(l) and {
         if (o.kind == OutcomeSucceeded)
-          judgmentKnowledge(l, e) == SuccessKnown and hasEvidence(l, e, Success)
+          judgmentKnowledge(l, e) == SuccessKnown and hasOutcomeEvidence(l, e, Success, o.value)
         else if (o.kind == OutcomeFailed)
-          judgmentKnowledge(l, e) == FailureKnown and hasEvidence(l, e, Failure)
+          judgmentKnowledge(l, e) == FailureKnown and hasOutcomeEvidence(l, e, Failure, o.value)
             and noUnresolvedRisk(l) and not(oldSuccessNeedsReconciliation(l, e))
         else false
       }
@@ -20,7 +20,7 @@ module coreLogicOutcomes {
   // 协调可以采用旧成功;采用失败仍须来自 current,并遵守未知风险/旧成功阻塞条件.
   pure def adoptedResultEligible(l: Ledger, o: Outcome): bool =
     noConflicts(l) and l.decisions.select(w =>
-      o.exec == Current(w.decision.report.exec) and applicableBindings(l).exists(b =>
+      o.exec == Current(w.decision.report.exec) and o.value == w.decision.report.value and applicableBindings(l).exists(b =>
         b.item.report == w.decision.report and l.decisions.nth(b.decisionIndex) == w) and (
           (o.kind == OutcomeSucceeded and w.decision.kind == AdoptSuccess and w.decision.report.kind == Success)
           or (o.kind == OutcomeFailed and w.decision.kind == AdoptFailure and w.decision.report.kind == Failure
@@ -49,7 +49,7 @@ module coreLogicOutcomes {
   // 普通合格成功随证据接收一起终结;失败仅存事实,是否停止尝试由独立 finishFailure 决定.
   pure def recordAndMaybeCommit(l: Ledger, r: Report): Ledger = {
     val recorded = applyReport(l, r)
-    val outcome: Outcome = { kind: OutcomeSucceeded, exec: Current(r.exec) }
+    val outcome: Outcome = { kind: OutcomeSucceeded, value: r.value, exec: Current(r.exec) }
     if (r.kind == Success and canCommit(recorded, outcome)) applyCommit(recorded, outcome)
     else recorded
   }

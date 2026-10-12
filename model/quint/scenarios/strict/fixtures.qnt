@@ -8,11 +8,11 @@ module strictFixtures {
 
   pure val reclaimed: Token = { exec: 1, worker: 2, incarnation: 1, generation: 2 }
 
-  pure val success1: Report = { id: 2, exec: 1, kind: Success, origin: ByWorker(t1) }
+  pure val success1: Report = { id: 2, exec: 1, kind: Success, value: 0, origin: ByWorker(t1) }
 
   pure val failure1: Report = { ...success1, kind: Failure }
 
-  pure val notFound1: Report = { id: 3, exec: 1, kind: NotFound, origin: ByQuery }
+  pure val notFound1: Report = { id: 3, exec: 1, kind: NotFound, value: 0, origin: ByQuery }
 
   // 合法前缀逐步 expect(safety),避免直接捏造账本让测试从不可达状态开始.
   action preparedInit = init.expect(safety)

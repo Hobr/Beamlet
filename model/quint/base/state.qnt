@@ -46,7 +46,7 @@ module coreBaseState {
 
   // 预填充所有 Execution 键使 get/set 有定义;exists=false 的占位不是实际尝试.
   pure val emptyAttempt: Attempt = {
-    exists: false, phase: Prepared, lease: emptyLease, grant: NoGrant,
+    exists: false, phase: Prepared, lease: emptyLease, grant: NoGrant, completion: NoCompletion,
     knowledge: NoKnowledge, negativeSeen: false, conflict: false,
   }
 
@@ -71,7 +71,7 @@ module coreBaseState {
     network' = Set(),
     external' = {
       invocations: List(), effects: Set(), finished: EXECUTIONS.mapBy(_ => ResourceUnfinished),
-      noFuture: Set(), emitted: Set(), marks: Set(), commandHandling: List(), ruleRetirements: List(),
+      values: EXECUTIONS.mapBy(_ => 0), noFuture: Set(), emitted: Set(), marks: Set(), commandHandling: List(), ruleRetirements: List(),
     },
     clock' = 0,
   }
