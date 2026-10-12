@@ -21,6 +21,8 @@
           packages =
             (with pkgs; [
               quint
+              rumdl
+              pre-commit
             ])
             ++ (with beam; [
               erlang
