@@ -26,7 +26,7 @@
 
 根目录的 `_test.qnt` 聚合确定场景, `_mutations_test.qnt` 提供故意错误入口.
 `beamletConflicts_test.qnt` 同时提供正常和 mutation 实例.
-完整入口, mutation 名称, 检查目标和预算由 [检查器](../../tools/specs/lib/mix/quint_checks.ex) 管理.
+完整入口, mutation 名称, 检查目标和预算由 [检查器](../../apps/beamlet_specs/lib/mix/quint_checks.ex) 管理.
 
 ## 检查命令
 
@@ -160,4 +160,4 @@ Claim, 资源, History, 三依赖与共享条件写的 13 个组共采样 13,000
 阅读执行逻辑时从 [执行状态](base/execution_state.qnt) 和 [共同类型](base/execution_types.qnt) 进入
 logic/actions/properties. 依赖方向为入口 → 动作/性质 → 纯逻辑 → 公共状态/类型; 首版入口不依赖治理参考或测试/mutation.
 共同执行参数在 `base/execution_values.qnt` 声明, 执行与参考账本共享纯计算.
-[结构测试](../../tools/specs/test/quint_structure_test.exs) 检查导入无环, 单文件不超过 200 行与首版依赖隔离.
+[结构测试](../../apps/beamlet_specs/test/quint_structure_test.exs) 检查导入无环, 单文件不超过 200 行与首版依赖隔离.
