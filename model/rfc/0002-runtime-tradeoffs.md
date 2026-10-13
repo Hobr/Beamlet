@@ -1,8 +1,8 @@
 # RFC 0002: 方案对照与恢复边界
 
-状态: 对既有决策的研究依据与替代方案评估, 不选择新的项目依赖. 产品边界仍以 [RFC 0001](0001-core-boundaries.md) 和
-[首版范围](../spec/first-release-scope.md) 为准. 外部机制来自一手资料; 对 Beamlet 的取舍是本项目判断,
-不作为外部项目结论. 资料为滚动文档, 正式选型必须锁定项目/SDK/驱动版本并验证实际行为.
+本文比较相关理论与工程方案, 解释 Beamlet 的取舍. 产品边界见 [RFC 0001](0001-core-boundaries.md) 和
+[首版范围](../spec/first-release-scope.md). 所引机制来自一手资料, 对 Beamlet 的适用性是本文判断.
+正式选型须锁定项目/SDK/驱动版本并验证实际行为.
 
 ## 1. 恢复什么, 比采用什么框架更重要
 
@@ -29,13 +29,13 @@ Restate 的 [durable steps](https://docs.restate.dev/develop/ts/durable-steps) �
 Restate 的 [服务语义](https://docs.restate.dev/concepts/services) 中 Workflow invocation 的 exactly-once 范围,
 不能泛化为每个外部请求物理执行一次.
 
-`prompt.md` 未提供 Skuld 地址. 与 Elixir/effects 相符的候选是
+本文比较的 Elixir/effects 项目为
 [mccraigmccraig/skuld](https://github.com/mccraigmccraig/skuld). 其
 [durable package](https://raw.githubusercontent.com/mccraigmccraig/skuld/main/apps/skuld_durable/README.md) 和
 [durable computation recipe](https://raw.githubusercontent.com/mccraigmccraig/skuld/main/apps/skuld/docs/recipes/durable-computation.md)
 明确区分 cold replay 与内存 hot resume, 示例由调用方保存 log. 该机制说明计算恢复的便利性, 不证明外部调用与 log
-落盘原子化. 本次未审计其生产故障协议或成熟度. 另有 [Factual/skuld](https://github.com/Factual/skuld) 同名 Clojure task
-queue, 不能混用它与 Elixir 项目的证据. 正式引用 Skuld 作为依赖前须确认目标项目和版本.
+落盘原子化; 其生产故障协议与成熟度仍需独立评估. 另有 [Factual/skuld](https://github.com/Factual/skuld) 同名 Clojure task
+queue, 与这里比较的 Elixir 项目不同. 选作依赖前须锁定版本并评估故障行为.
 
 ## 2. 理论与工程机制的区别
 

@@ -1,4 +1,4 @@
-// Q76-Q77 scoped withdrawal and durable-command simulation. Normal entry imports only the unbound shared fixture.
+// Scoped withdrawal and durable-command simulation. Normal entry imports only the unbound shared fixture.
 module beamletWithdrawals {
   import conflictWithdrawalFixtures(WORKERS = Set(1, 2), EXECUTIONS = Set(1, 2),
     REPORT_IDS = Set(1, 2, 3, 4), CLOCK_VALUES = 0.to(6), MAX_INCARNATION = 2,

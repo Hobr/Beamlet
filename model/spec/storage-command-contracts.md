@@ -1,9 +1,8 @@
 # 首版原子存储命令契约
 
-状态: 首版实现契约草案. 将已确认的 IEO, lease, 报告与 History 规则细化为可测试的逻辑 Interface; 不新增 Runtime, Ecto
-schema 或通用 transition 引擎. 支持目标仍为 Ecto SQLite/PostgreSQL. 关联:
+本文定义领域原子命令, 一致读取与 Ecto SQLite/PostgreSQL 后端的符合性要求. 关联:
 [核心状态机](core-state-machines.md), [lease](leases-and-permissions.md), [值与消息](persistent-values-and-messages.md),
-[Handler 与恢复](handler-recovery-contracts.md), [多 Intent 与调用方组合](multi-intent-and-tool-calls.md).
+[Handler 与恢复](operation-handler-contracts.md), [多 Intent 与调用方组合](multi-intent-and-tool-calls.md).
 Coordinator/Domain/Storage 与 Ecto Schema/Repo 的职责见 [整体架构](runtime-architecture.md);
 完整审计材料与提交关联见 [核心状态机的 History 契约](core-state-machines.md).
 
@@ -22,7 +21,7 @@ SQL Adapter 在以下原子边界中读取并重验, 不接收客户端提供的
 存储重试重做事务内读取和守卫, 不自动重做外部调用. 唯一约束是最后防线, 约束异常本身不是已完成的领域处理.
 
 核心控制请求不套用协调命令的全量拒绝结果缓存. 下面逐项指定重投语义; 明确拒绝可返回最新事实,
-不得假装为 Q66/Q67 的原处理结果协议. 权限失败不占用领域身份.
+不得套用协调命令的原处理结果缓存协议. 权限失败不占用领域身份.
 
 ### 1.1 最小 Interface 的材料与错误草案
 
@@ -49,7 +48,7 @@ Report/事实返回按当前权限裁剪; 领域错误码与解释版本稳定, 
 `await_all`/部分推进所需的完整 manifest, 已消费结果和决定由调用方保存, Storage 不隐式新增依赖图.
 
 固定的 Interface 义务是稳定身份, 完整守卫, 持久确认, 独立 Outcome 以及上述错误区分;
-函数参数名, Behaviour 签名, 传输编码和分页格式仍是实现前选择. 不能让这些未定形式放宽已确认的语义.
+函数参数名, Behaviour 签名, 传输编码和分页格式仍是实现前选择. 这些实现选择仍须满足上述语义.
 
 ## 2. 最小命令集合
 
@@ -100,7 +99,7 @@ generation 使用非回绕的正 64-bit 计数, 耗尽时拒绝新领取并保�
 重启必须新建且不复用; 其实际编码属于消息 codec. Coordinator 普通重启不自动换掉远端有效 lease.
 
 幂等契约时间不是 lease 墙钟. 没有可信资源有效期或保守时钟误差依据时, Handler 的时限幂等不能授权危险重试;
-详见 [Handler 契约](handler-recovery-contracts.md). 不能仅靠对本地墙钟取历史最大值宣称知道真实资源时间.
+详见 [Handler 契约](operation-handler-contracts.md). 不能仅靠对本地墙钟取历史最大值宣称知道真实资源时间.
 
 ## 5. 两个 SQL Adapter 的符合性要求
 

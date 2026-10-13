@@ -1,4 +1,4 @@
-// Bounded Q63/Q64 extension. Policy inputs represent authoritative, checked
+// Bounded evidence reconciliation model. Policy inputs represent authoritative, checked
 // Operation facts; they are not parameters supplied by an untrusted command.
 module beamletReconciliation {
   import beamletCore(WORKERS = Set(1, 2), EXECUTIONS = Set(1, 2), REPORT_IDS = Set(1, 2, 3, 4),

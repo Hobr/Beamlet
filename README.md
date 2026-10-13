@@ -20,14 +20,14 @@ mix deps.get
 ## Update dependencies
 mix deps.update --all
 
-# Format
-mix format
-
 # Compile
 mix compile
 
 # Production build
 MIX_ENV=prod mix compile
+
+# Format
+pre-commit run --all-files
 
 # Test
 mix test

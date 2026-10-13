@@ -1,7 +1,7 @@
 # 首版持久值与消息契约
 
-状态: 首版实现契约草案, 补全已有 Q36-Q45 的受限值与身份语义. 本文给出可用于实现和后端符合性测试的最小选择; 不是 Runtime
-实现, 不规定物理表名, HTTP 路由或最终 Elixir 类型. 本文的 v1 表示本文契约版本, 不改变既有 Operation Identity. 上位约束见
+本文规定受限逻辑值, 相等性, 提交身份与报告消息. v1 表示本契约版本, 与 Operation Identity 的版本独立.
+物理存储和网络编码须保持这里定义的逻辑语义. 相关约束见
 [Operation / Handler](operation-handler-contracts.md), 原子处理见 [存储命令](storage-command-contracts.md).
 
 ## 1. 逻辑值 v1

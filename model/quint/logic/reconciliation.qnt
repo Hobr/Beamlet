@@ -54,7 +54,7 @@ module coreLogicReconciliation {
               or (i.report.kind == j.report.kind and (i.report.kind == Success or i.report.kind == Failure)
                 and i.report.value != j.report.value))))
 
-      // Q72 permits no retained decisive report; judgmentKnowledge then remains unknown.
+      // All decisive reports may be excluded; judgmentKnowledge then remains unknown.
 
   pure def decisionOutcome(d: Decision): Outcome = {
     kind: if (d.kind == AdoptFailure) OutcomeFailed else OutcomeSucceeded,

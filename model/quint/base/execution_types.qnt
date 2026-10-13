@@ -29,7 +29,7 @@ module executionTypes {
 
   type Attempt = {
     exists: bool, phase: ExecutionPhase, lease: Lease, grant: GrantPermission, completion: CompletionBinding,
-    // Q61: conflict is orthogonal to the last supported lifecycle projection.
+    // Conflict is orthogonal to the last supported lifecycle projection.
     knowledge: Knowledge, negativeSeen: bool, conflict: bool,
   }
 

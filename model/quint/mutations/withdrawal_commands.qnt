@@ -1,4 +1,4 @@
-// Deliberate Q77 command bugs: replay retargeting, split operation namespaces, early reply.
+// Deliberate withdrawal command bugs: replay retargeting, split operation namespaces, early reply.
 module withdrawalCommandMutations {
   import conflictWithdrawalFixtures.* from "../scenarios/conflicts/withdrawal_fixtures"
   export conflictWithdrawalFixtures.*

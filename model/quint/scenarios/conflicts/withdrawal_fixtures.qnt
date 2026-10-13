@@ -17,7 +17,7 @@ module conflictWithdrawalFixtures {
     ...policy, withdrawals: Set(withdrawD1, withdrawSuccess, withdrawKeep, withdrawD0, withdrawBothOwners),
   }
 
-  // Q77 shares command identity and replay semantics; API/encoding/withdrawal permissions remain undecided.
+  // Withdrawal shares durable-command identity and replay semantics; concrete API/encoding and dedicated authorization are not modeled.
   // 固定审查 revision=10 来自 partiallySupersededInit;重投必须保留原目标,不追随新绑定.
   pure val withdrawalCommand: ReconciliationCommand = {
     id: 3, decision: {

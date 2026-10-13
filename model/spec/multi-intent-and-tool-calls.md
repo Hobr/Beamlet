@@ -2,7 +2,7 @@
 
 本文规定多个 Agent 独立创建 Intent, 以及单轮 Tool Call 等待多个 Intent 的责任, 身份和恢复边界.
 调用方持久保存依赖清单与汇总, Beamlet 维护每个 Intent 的事实和 Outcome.抽象检查范围见
-[模型覆盖与边界](../quint/coverage.md).
+[模型边界](../quint/README.md#模型边界).
 
 ## 1. 责任边界
 
@@ -42,7 +42,7 @@ Envelope 的 Intent 来源由可信传输/Adapter 与持久绑定确定, 不是�
 不能按"当前 Waiting 的执行"猜测关联, 也不能把另一个 Intent 的同编号 Execution 视为匹配.
 
 Intent 幂等上下文跨该 Intent 的尝试保持不变, 不同独立 Intent 的上下文必须分离.
-真实 Handler 的外部 key 派生仍须满足 [Handler 契约](handler-recovery-contracts.md) 的账户, 协议, 输入和窗口条件;
+真实 Handler 的外部 key 派生仍须满足 [Handler 契约](operation-handler-contracts.md) 的账户, 协议, 输入和窗口条件;
 模型的不同整数上下文不证明真实编码没有碰撞.
 
 ## 4. 单轮 Tool Call 等待多个 Intent
@@ -99,14 +99,13 @@ version_mismatch 在该 Operation 中是正常 Success 数据. 该前提不是�
 共享 Worker 重启清空所有局部作用域, 两个回调绑定及签名/account 作用域, 真实 key 编码无碰撞,
 调用方在提交后/读到部分结果后/保存汇总前后的崩溃恢复, 以及 PostgreSQL/SQLite 的并发写入.
 
-[Quint 检查](../quint/coverage.md) 验证的是有界参与者, 原子存储和可信消息前提下的安全关系;
+[Quint 检查](../quint/README.md#模型边界) 验证的是有界参与者, 原子存储和可信消息前提下的安全关系;
 不证明真实 SQL, 认证, provider 幂等, 任意数量参与者, 最终完成, 公平调度或外部 exactly-once.
 
 ## 8. 部分结果驱动的可恢复决策
 
-状态: 三 Intent/两轮/一个持久决策槽的模型范围已确认. 精确产品类型及任意业务决策策略仍需实现设计;
-当前抽象结果以 [覆盖文档](../quint/coverage.md) 为准.
-不是 Beamlet 新增 Workflow 状态, 也不承诺调用方的任意代码或后续副作用只执行一次.
+部分结果可以驱动调用方的下一步决策, 但决定及后续身份须由调用方持久保存.
+这不新增 Beamlet 的 Workflow 状态, 也不保证调用方任意代码或后续副作用只执行一次.
 
 最小例子: 本轮依赖 A/B, 调用方从 A 的已提交 Succeeded 决定后续操作 C, B 尚未终结也能继续.
 该决定不等于 A/B 已全部汇总, 不自动取消 B. C 仍以独立 Intent 走正常提交/执行协议.
@@ -141,18 +140,17 @@ version_mismatch 在该 Operation 中是正常 Success 数据. 该前提不是�
 | C 已 Closed, 调用方未收结果 | ReadFacts 复用原 Outcome, 不重新调用 |
 | B 在恢复期间完成或多次通知 | 原决定不变; 是否启动新决策由另一稳定步骤解释 |
 
-### 8.3 已确认的最小模型
+### 8.3 模型检查范围
 
-保留现有等待全部终态的 ToolRound 和双 Intent 回归. 独立扩展例子使用 A/B/C 三个 Intent,
-两轮调用方清单和一个持久决策槽; 原 `agentLocals` 仍是会丢失的缓存.
+[部分推进入口](../quint/beamletContinuation.qnt) 使用 A/B/C 三个 Intent, 两轮清单和一个持久决策槽;
+`agentLocals` 是重启后丢失的缓存.
 持久决策是调用方存储前提, 不加入 Beamlet ledger, 不引入通用依赖图或无限循环.
-[部分推进入口](../quint/beamletContinuation.qnt) 复用既有完整执行账本, 不修改原双 Intent 实例.
 例子固定一个调用方步骤: 从原轮次某一已读 Succeeded 消费结果, 将其业务值作为 C 的输入,
 在调用方侧分别原子保存决定与后续清单, 再用相同定义/key 提交. 没有跨调用方/Authority 事务.
 `progress.commits` 与重启后动作记录只是独立检查见证, 不规定产品必须有这些字段.
 本例不检查任意 LLM 决策重算, 多个调用方实例并发决策, 无限步骤或真实调用方数据库.
 
-| 高优先级性质 | 检查内容 |
+| 性质 | 检查内容 |
 | --- | --- |
 | 消费来源正确 | 仅消费原依赖中对应 slot 的已提交 Outcome; 不按消息数量或另一 Intent 的值决策 |
 | 决策与后续身份稳定 | 已提交决定, 消费集合和 C 的原定义/key 不因重启, 新通知或 B 完成改变 |
@@ -160,8 +158,6 @@ version_mismatch 在该 Operation 中是正常 Success 数据. 该前提不是�
 | 后续结果复用 | C 提交回复丢失后仍定位同一 Intent; Closed 重投不新增尝试/许可 |
 | 原轮次语义保留 | 部分推进不将 A/B 误标全部完成, 不改变 B 的许可, 证据或 Outcome |
 
-可达见证要求: A 完成/B Open 时提交 C, 决策后崩溃恢复, C 提交丢回复后复用,
-C Closed 后重启复用, B 乱序完成不改变原决定. 负例至少覆盖无记录先发送, 重启换 key, 丢决定和错依赖消费.
-25 个确定场景覆盖上述步骤, 拒绝与崩溃窗口. 六条独立 mutation 检查提前发送, 重启换 key/定义,
-丢失决定, 错 Intent 消费和后来结果覆盖原决定. 类型/反例与采样的实际验收见覆盖文档,
-不把场景可达当作最终完成保证. `await_any`/`quorum` 的所有变体不在本例验证承诺内.
+抽象场景覆盖部分结果推进, 决定保存前后退出, C 提交丢回复, Closed 结果复用及 B 乱序完成.
+独立反例检查提前发送, 换 key/定义, 丢失决定, 错依赖消费和后来结果覆盖原决定.
+验证结果见 [模型边界](../quint/README.md#模型边界); 任意 `await_any`/`quorum` 变体不在本例范围内.

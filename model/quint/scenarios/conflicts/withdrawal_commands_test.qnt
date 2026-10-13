@@ -1,4 +1,4 @@
-// Q77: a replay is historical reading, not a second withdrawal or an operation-kind namespace.
+// A replay is historical reading, not a second withdrawal or an operation-kind namespace.
 module conflictWithdrawalCommandTests {
   import conflictWithdrawalFixtures.* from "./withdrawal_fixtures"
   export conflictWithdrawalFixtures.*

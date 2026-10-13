@@ -1,7 +1,7 @@
 # Runtime 整体架构
 
-状态: 既有核心决策的架构汇总, 加入待实现的组件契约. 图中是逻辑职责, 不规定一个职责对应一个进程或独立服务.
-HTTP/RPC 协议, 公开 Behaviour 签名, 进程树和驱动版本仍需在实现前选择, 不由本图隐含批准.
+本文定义逻辑组件, 替换边界与部署形态. 一个职责可以由多个进程承担, 多个职责也可以共用进程.
+具体 Transport, Behaviour 签名, 进程树和驱动版本见 [实现前选择](implementation-roadmap.md).
 范围见 [首版范围](first-release-scope.md), 理由见 [RFC 0001](../rfc/0001-core-boundaries.md).
 
 ## 1. 系统边界
@@ -118,7 +118,7 @@ Distributed Erlang, HTTP, 队列或某个传输库. 任一实现均允许应用�
 | 权威存储永久丢失 | 自动恢复没有保证; 运维须有另行验证的备份/权威交接协议 | Worker 可从内存重建全部权威事实 |
 | 已提交 Outcome, 通知丢失 | 调用方用原稳定身份读取并复用 | 再次执行来补发结果 |
 
-设备资源不能迁移时, 换 Worker 不意味着换资源; 见 [Handler 的执行环境契约](handler-recovery-contracts.md).
+设备资源不能迁移时, 换 Worker 不意味着换资源; 见 [Handler 的执行环境契约](operation-handler-contracts.md).
 这里不承诺离线自治, 也不把保守等待称为 Liveness 保证.
 
 ## 6. 演进与验收
@@ -133,7 +133,7 @@ Operation 契约版本, Handler 发布号, 消息/codec 版本, 数据库 schema
 
 ### 6.1 升级兼容的可测试行为
 
-以下细化既有不静默改义原则, 不批准新的迁移框架. 每次发布须说明能读取的旧格式, 可执行的旧契约与不支持项.
+每次发布须说明能读取的旧格式, 可执行的旧契约与不支持项.
 只增加 Handler 发布号不自动允许修改已授权 binding, 外部 key scope 或原窗口.
 
 | 变化/触发 | 要求的行为 | 验收断言 |
@@ -153,4 +153,4 @@ Operation 契约版本, Handler 发布号, 消息/codec 版本, 数据库 schema
 
 验收至少包括两种部署的完整调用链, 两个 Coordinator 同 Intent 竞争, 连接重建, 消息错路由/重投, 授权回复丢失,
 共享 Worker 重启, 通知全丢重扫, 无兼容资源时不越权调用. 这些尚为工程验收要求, 不是现有 Quint 已证明的部署行为.
-分阶段依赖与实现前决策见 [实现路线](implementation-roadmap.md), 当前抽象证据见 [覆盖文档](../quint/coverage.md).
+分阶段依赖与实现前决策见 [实现路线](implementation-roadmap.md), 当前抽象证据见 [模型边界](../quint/README.md#模型边界).

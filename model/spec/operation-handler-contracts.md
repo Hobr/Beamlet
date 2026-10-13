@@ -1,11 +1,8 @@
-# SPEC: Operation / Handler 契约
+# SPEC: Operation / Handler 与恢复契约
 
-本文规定 Operation 的兼容性, Handler 能力与报告/回调的语义边界. 首版的逻辑接口和具体选择见
-[值与消息](persistent-values-and-messages.md), [Handler 与恢复](handler-recovery-contracts.md) 和
-[原子存储命令](storage-command-contracts.md).物理字段, codec 和网络传输由实现满足这些契约.
-
-相关文档: [领域语言](../../GLOSSARY.md), [核心状态机](core-state-machines.md),
-[RFC 0001](../rfc/0001-core-boundaries.md).
+本文规定不可变操作定义, Handler 能力, 资源绑定, 幂等条件, 回调关联与停止/重试规则.
+状态与终结守卫见 [核心状态机](core-state-machines.md), 身份和值域见 [持久值与消息](persistent-values-and-messages.md),
+提交边界见 [原子存储命令](storage-command-contracts.md), 设计理由见 [RFC 0001](../rfc/0001-core-boundaries.md).
 
 ## 1. Operation Identity
 
@@ -16,97 +13,7 @@
 - 第一阶段不要求通用 Schema Registry 或以 Schema Hash 代替版本.
 - 数据库 schema 和 Runtime 协议的迁移不是 Operation Identity 自动提供的能力.
 
-## 2. 持久化值域
-
-- 输入, 结果, 策略与等待数据必须符合受限, 运行时无关的逻辑值域.
-- 基础值接近 JSON: 字符串, 布尔值, null, 明确范围的数字, 数组和字符串键对象.
-- PID / Reference / Function / Port 等对象不得进入持久化契约. Handler 的执行内部不受此条禁止,
-  但不能依赖这些对象重启后仍有意义.
-- 大整数, 字节, 时间使用 Operation 定义的版本化字符串/对象, 大型产物使用稳定引用; 不设全局隐式解码.
-  具体业务字段与产物保留条件由相应 Operation 确认, 基础值域由下述 v1 约束.
-- 逻辑合法性, 内容等价, 存储字节与 wire 字节分别定义, 不以任意 term 可编码作为合法性判断.
-- 本决策不选择具体 codec, 也不允许不受限的任意 JSON. 实际后端的数值, 文本和 round-trip 限制需要验证.
-
-首版选择见 [持久值 v1](persistent-values-and-messages.md): 受限整数, 精确文本/结构相等, 缺省与 null 区分,
-规范表示及大小/深度/节点预算; 特殊业务类型和产物生命周期由版本化 Operation 契约规定. 具体 codec 尚未实现.
-
-## 3. Report 身份与重投
-
-- 每个 Report 在约定作用域内有发送方提供的稳定身份.
-- 重投保持身份和逻辑内容不变. 传输接收时间等本地观测信息不是发送方重新提交一份报告的依据.
-- 同身份同内容: 重复接收, 不重复建立相同证据或 Outcome.
-- 同身份不同内容: 协议冲突, 保留证据而不覆盖原报告.
-- 不同身份同内容: 可为不同观察, 不按内容自动合并.
-- 内容 hash 可以辅助检查, 不替代报告身份; 不直接以未定义稳定性的 codec 字节建立长期内容身份.
-- 已持久化确认与 Outcome 接受的区别, 冲突处置和资格检查遵守核心状态机 SPEC.
-
-首版逻辑 envelope, 来源身份域, 内容等价, 冲突保留和 Stored/DuplicateStored/ConflictStored 见
-[消息契约](persistent-values-and-messages.md); 具体 wire codec/物理存储与真实认证仍待实现验证.
-
-## 4. Handler 能力
-
-Handler 不默认具备以下能力, 必须声明条件:
-
-| 能力 | 需要明确的语义 |
-|---|---|
-| Pending | 能否建立重启后可解释的等待及关联 |
-| 查询 | 可查什么, 什么证据可以确认结果或未执行 |
-| 取消 | 尽力请求停止, 还是能取得确认停止的证据 |
-| 幂等 | 外部去重作用域, 有效期, 输入一致性与其他前提 |
-| 安全重复 | 为什么重复可接受, 或由谁明确接受重复风险 |
-
-- 未声明的能力按不支持处理.
-- 能力名称和静态布尔值不是所有时间/输入/外部环境下的保证.
-- 策略根据具体条件判断是否授权重试或协调; 不能仅凭幂等声明忽略有效期.
-- 声明不等于证明, 外部协议和测试仍需验证.
-- 启动授权时保存实际 Handler 标识及影响恢复, 安全重试的能力条件快照. 旧尝试不只依赖当前部署的声明解释.
-- 快照不保证条件永远成立, 后续重试仍需验证有效期与当前环境. 兼容实现可以参与恢复, 但不无声改变原外部协议.
-- 稳定 Idempotency Context 属于 Intent, 不同 Execution 复用, 计划迁移保持不变. Handler 映射外部键和作用域,
-  多步骤可按契约派生稳定子键.
-- 上述上下文不等同于 Submission Key, 不给不支持幂等的目标自动增加去重保证.
-
-协调, 规则版本, 退役和处置撤销属于后置能力. 其证据, 权限, 命令身份和原结果重投约束统一见
-[核心状态机的证据协调章节](core-state-machines.md), 避免与 Handler 能力声明混合.
-首版 Handler 声明/快照材料, 兼容选择, 外部 key/scope/protocol 映射及条件核验见
-[Handler 契约](handler-recovery-contracts.md). 具体凭据/驱动映射待实现; 后置协调规则的登记/退役,
-决定身份/取代表示和真实条件核验仍未细化.
-
-## 5. 回调转换
-
-- Handler 或专用回调 Adapter 验证第三方来源并解析业务内容, 再形成核心 Report.
-- 核心验证 Intent / Execution 关联, Report 身份, 资格与 Operation 契约.
-- 第三方未经验证的正文不直接成为 Outcome.
-- 关联必须可以从持久数据恢复, 不只存在于邮箱或进程内存.
-- 合法完成回调不依赖原 Worker lease 仍有效, 但仍遵守 Execution 资格与 Intent 终态规则.
-- 不假定所有平台支持回调, 重投或外部状态查询.
-- 回调型 Handler 最迟在启动授权提交时建立持久完成关联, 先于外部操作, 不等 Pending 报告返回.
-- 合法完成报告可以先于 Pending 被处理; 迟到 Pending 不把已解决尝试退回 Waiting.
-- 关联身份不等于认证凭证, 不直接使用绑定 Worker incarnation 的启动许可作为第三方回调凭证.
-- 已撤权或 Closed 时仍可保存合法证据, 但不绕过资格或重新打开 Intent.
-
-首版持久关联, 可信来源映射, 早到回调准入, 重放/重投和保留责任见
-[回调契约](handler-recovery-contracts.md). 各 provider 的实际验签算法, 凭据配置和 inbox 实现须单独符合性验证.
-
-## 6. 验收场景
-
-1. 旧 Intent 遇到只有不兼容版本的 Handler: 不按新语义执行.
-2. 嵌套值包含运行时对象: 不接受为持久数据.
-3. 合法受限值在两个后端往返: 逻辑内容一致, 不要求存储字节相同.
-4. Report 重投: 保持报告身份, 不重复副作用或权威结果.
-5. 相同报告身份不同内容: 保存冲突证据, 不覆盖.
-6. 幂等有效期已过: 不仅凭能力名授权危险重试.
-7. Worker lease 已过期但外部回调合法: 验证关联与资格, 不仅因 lease 拒绝.
-8. 第三方回调验证失败: 不作为可信完成证据终结 Intent.
-
-这些是产品契约验证要求, 真实 Handler/Adapter, 受限值/codec 与 SQL 后端测试仍未实现.
-[正常闭环模型](../quint/beamletNormalUse.qnt) 已增加兼容身份, 能力/协议快照, 条件幂等重试, 独立回调关联,
-完成先于 Pending 与同 Intent 上下文复用的抽象场景; 真实认证, 外部窗口保证和升级协议仍须工程验证.
-
-执行约束必须定位稳定资源并限制可用环境, 不能把另一设备的同名文件/临时会话视为原目标.
-代表性 LLM, 审批, 文件和 Browser/Device 契约及新增验收要求见
-[Handler 的执行环境章节](handler-recovery-contracts.md). 当前不声称这些具体驱动已经被 Quint 验证.
-
-## 7. Intent 定义与提交身份
+## 2. Intent 定义与提交身份
 
 - 不可变定义包含 Operation Identity, 输入, 必要硬执行约束和初始策略快照.
 - 当前预算, 调度节奏等控制数据另行维护, 调整需要明确受控命令与历史, 不用相同 key 的重新提交覆盖定义.
@@ -120,10 +27,132 @@ Handler 不默认具备以下能力, 必须声明条件:
 查找/建立的并发处理见 [存储命令](storage-command-contracts.md). 首版不提供运行中控制修改命令;
 具体字段/wire codec, 部署路由及后置控制 revision 仍须实现或后续设计.
 
+输入, 结果, 策略与等待材料使用 [受限值 v1](persistent-values-and-messages.md), 不包含 PID/Reference/Function/Port.
+Handler 内部可以使用运行时对象, 但不能依赖它们重启后仍有意义.
+特殊数值, 时间和产物引用由版本化 Operation 定义, 不采用全局隐式解码; 产物须有明确保留条件.
+
+## 3. Handler 声明, 能力与启动快照
+
+Handler 声明至少包括实现身份/发布号, 兼容 Operation Identity 集合, 以及各能力的协议版本与条件.
+Authority 从已配置受信登记读取声明, 不采用提交者或 Worker 正文任意提供的 capability 布尔值.
+Handler 实现身份变化不等于 Operation 契约变化; 兼容新实现也不能静默换掉外部 account, key scope 或协议解释.
+
+启动授权事务保存本次选择的实际 Handler 身份/声明版本, Operation, 恢复协议, 稳定 Intent 幂等上下文,
+影响恢复的外部目标/账户作用域, 幂等键映射版本及有效期依据, 以及 Pending/query/callback 必需的恢复材料引用.
+凭据正文不进入 History; 保存能在受控凭据配置下找到正确账户和核验方式的稳定引用. 历史解释材料随 Intent 保留.
+该快照先于外部调用, 授权回复重投返回原快照. 具体 SQL 表示由 Storage 实现选择.
+
+Handler 接口需要区分以下操作:
+
+- `invoke(authorization, input, intent_context)` 返回同步完成或可恢复 Pending; 不自行授予第二个 Execution.
+- 声明支持时, `query(binding)` 形成带来源/协议依据的 Report; 网络错误不构成 NotExecuted.
+- 声明支持时, `verify_callback(raw, transport_context)` 核验并形成稳定 Report, 与原 Worker 生命周期独立.
+- `assess_retry(original_binding, current_contract_facts)` 给出可核验的安全依据或不可重试理由, 由 Authority 重验.
+
+没有兼容 Handler 时保持 Prepared/等待资源, 不用最新 Operation 替代, 不仅因配置缺失创建 Failed.
+配置选择的资源条件必须明确参与硬约束匹配; 资源暂不可用只影响派发节奏.
+
+能力未声明时按不支持处理; 名称或静态布尔值不能替代对条件的核验:
+
+| 能力 | 需要明确的语义 |
+| --- | --- |
+| Pending | 能否建立重启后可解释的等待及关联 |
+| 查询 | 可查什么, 什么证据可以确认结果或未执行 |
+| 取消 | 尽力请求停止, 还是能取得确认停止的证据 |
+| 幂等 | 外部去重作用域, 有效期, 输入一致性与其他前提 |
+| 安全重复 | 为什么重复可接受, 或由谁明确接受重复风险 |
+
+快照保留原解释, 不使能力条件永久成立. 协调, 规则退役与处置撤销属于后置能力,
+遵守 [证据协调规则](core-state-machines.md), 不混入 Handler 的能力声明.
+
+## 4. 幂等与独立安全依据
+
+安全重试依据分别为: 从未授权, 可靠排除旧尝试既往及未来执行, 仍有效的外部幂等协议, 或明确接受重复风险.
+已知 Failure 可能留有部分效果, 因而不是单独的安全重试依据. 超时, lease 到期, NotFound 亦不是.
+首版正常入口默认不接受重复风险; 不能把 `RetryOnce` 本身解释为接受重复效果.
+
+幂等声明必须说明: 外部服务/账户/资源 scope, 稳定 key 派生, 同输入要求, 返回旧结果规则, 重复并发请求处理,
+有效期起点/终点及最坏重传/延迟窗口. Intent context 持久且跨 Execution 不变, 不把 Execution ID 或 incarnation
+直接用作重试新 key. Handler 映射外部 key; 多步骤派生子键要由版本化协议保持稳定, 不能因发布升级换算法.
+
+后续尝试的替代, 授权和调用分别检查仍适用的依据. 保存首次快照不意味着窗口永不失效;
+换兼容 Handler 时仍须匹配原 scope/protocol/key 解释并保留能力. 不得使用新 Handler 的较长静态窗口凭空延长旧 key 保证.
+条件需要资源证明或可保守校验的时间依据; 无法重验时拒绝危险重试, 保留事实.
+
+时限保证必须覆盖请求到达并由资源原子去重的时刻. 本地调用前检查不足以覆盖无限网络延迟;
+可使用资源在过期后拒绝旧键请求的协议, 无期限幂等保证, 或明确有界误差/延迟且留足裕量的条件.
+这些保证未成立时, 首版宁可保持 Unknown/等待, 不把 model 的抽象 contractTime 当成现实的资源时钟.
+
+## 5. 回调关联与可信入口
+
+回调型调用的完成关联最迟在 Start Authorization 事务提交时建立, 可以在发起前分配 opaque correlation 并传给服务.
+若 provider 的 operation ID 只能在调用后取得, Handler 必须有预分配关联或受控持久 inbox/注册协议处理早到回调;
+做不到就不能声明本协议的可恢复 Pending. 不用进程邮箱临时等待代替持久关联.
+
+关联至少可恢复 collection/Intent/Execution/Operation, provider/account scope, 核验方式版本及稳定报告身份映射.
+correlation 不是凭据, 不复用 Worker lease token 作为第三方认证. 未知关联返回可诊断的入域拒绝,
+不能猜测最近一个 Waiting Execution; 若声明早到 inbox 协议, inbox 的保存/绑定和重放单独满足认证与原子一致性.
+
+可信 Adapter 按 provider 的版本化协议核验签名/MAC, 账户/受众/端点绑定, 事件身份, 正文完整性和重放限制;
+认证失败不得形成核心 Report. 重放窗口不能让合法晚到完成永久无法恢复: provider 必须能以可验证方式重投,
+或提供经认证查询/已核验持久 inbox. 不能为了接收晚到消息而跳过验签.
+
+Adapter 通过验证后转换为同一逻辑 Report Envelope, 重投保留 source_scope/report_id/kind/body.
+核心继续验证持久关联, Operation, 值域和来源资格. 网络中同事件的签名/重投时间可改变, 逻辑证据不改.
+同事件正文变化按冲突保存, 不能靠去重缓存直接覆盖/丢弃. 保留用于追溯的验证版本和依据引用, 但不在日志泄露凭据.
+
+持久回调发送方/inbox 只有取得 Durable Stored 确认后才能停止重投; 回执丢失用原 Report 重投.
+若外部平台不支持重投且无查询, Handler 须自行提供可靠 inbox, 否则应披露只能保守 Unknown 的可恢复性限制.
+Worker 已释放, lease 已到期, Coordinator 已重启不撤销关联; 完成可以先于 Pending. Closed/已替代时合法证据仍可保存,
+但不重开 Intent, 不越过当前结果资格. 关联与去重材料随 Intent 保留, 首版不做 TTL 清理.
+
+迟到 Pending 不将已解决尝试回退到 Waiting. 不假定所有外部平台都支持回调, 重投或查询.
+Report 的稳定身份, 内容相等, 冲突保留和 Stored 确认遵守 [消息契约](persistent-values-and-messages.md):
+发送方不因本地接收时间改变而生成新身份, 内容 hash 不替代报告身份, 持久化确认不等于 Outcome 接受.
+
+## 6. 资源身份与执行环境
+
+资源约束必须明确参与授权与调用. 不同外部系统的恢复, 取消和重试能力分别由 Operation 协议定义.
+
+不可变定义须能解释操作的逻辑目标和硬约束; 启动快照保存本次具体资源绑定及协议解释.
+逻辑目标不应仅是对执行设备有歧义的裸路径, 进程 PID 或易失浏览器 tab ID.
+Operation 定义如何解析稳定资源引用, 明确身份, 账户/设备/存储域, 必要版本, 凭据引用及重启可恢复性.
+资源绑定随尝试保存, 但不能借新尝试把同一逻辑目标换成另一个设备上的同名对象.
+
+调度可以使用偏好和能力提示筛选候选; 安全要求必须作为硬约束被权威启动路径重验.
+授权前由可信资源登记/Adapter 核验 Worker 的环境, 权限和目标匹配; 合规 Worker 调用前核验实际资源仍匹配快照.
+匹配失败不调用, 配置/资源暂缺保持 Prepared 或已有事实, 不仅凭调度超时制造 Failed.
+调用前核验无法锁定外部世界, 真正的资源版本检查, 条件写或幂等必须由资源协议提供.
+
+跨设备分配允许两类情况: 资源本来可由多个设备等价访问, 或操作显式绑定某设备并只在其合格 Worker 上执行.
+复制文件, 重建浏览器会话或切换账户不作为 Runtime 默认恢复步骤; 如 Operation 声明支持, 须有独立的版本化协议与验收.
+两个独立 Intent 修改同一外部资源时, 使用资源侧版本竞争/锁/业务协议解决冲突, 不以各自 Intent key 实现全局业务去重.
+
+## 7. 首版停止与重试策略
+
+首版使用两个最小停止/重试策略:
+
+| 策略 | 明确确定失败后的决定 |
+| --- | --- |
+| StopOnFailure | 不再建立后续尝试; 满足结果守卫时同事务接受 Failed |
+| RetryOnce | 最多两个已建立尝试; 首次失败且存在适用的独立安全依据时继续, 否则停止 |
+
+第二次尝试已建立即消耗额度, 不因启动失败或未调用回收计数. 已授权未知的第二次尝试不能仅因额度耗尽变成 Failed.
+第一尝试已知失败而幂等窗口后来失效时, 可以由 StopKnownFailure 在新事务内接受原错误;
+不是伪造第二次失败, 也不重新写已保存报告. 报告接收时已经满足停止条件则与完成/History 一起原子终结.
+
+Unknown, Pending, NotFound, 存储/传输错误不映射为确定 Failure. 即使策略已决定停止, 仍要求明确合格错误, 当前结果资格,
+无未解释旧成功/冲突以及无已授权未知风险. 不能以策略预算压过这些守卫. 安全依据失效后存在未知风险时保持 Open.
+
+首版 Failure 统一作为可评估一次重试的明确错误; 更细的业务错误可在 Operation 合法结果里表示,
+不从自由文本或 HTTP 状态码猜测安全性. 不提供运行中预算/策略修改命令, 初始策略快照不可变.
+退避仅安排候选的 not-before 时间, 不授予许可也不延长幂等窗口; 首版可以立即再次评估, 不承诺自动重试时限.
+部署的限流/唤醒配置不改 IEO 事实, 不把"调度没及时执行"转换为 Failed.
+
 ## 8. 代表性 Operation 协议样例
 
-状态: 用于审阅统一核心的协议草案, 不是已批准的内置操作目录或 provider 支持声明.
-以下 Identity 为示例; 字段均使用受限值, 资源/凭据为稳定引用, 不保存函数, PID 或凭据正文.
+以下 Identity 展示不同外部协议如何共用 IEO 核心, 不代表已有内置驱动.
+字段使用受限值, 资源/凭据为稳定引用, 不保存函数, PID 或凭据正文.
 每个样例仍遵守授权先于调用, 可信 Report, 独立结果资格与唯一 Outcome, 不引入额外 IEO 状态.
 
 ### 8.1 `api.request.v1`: LLM / API 请求
@@ -173,22 +202,29 @@ Handler 不默认具备以下能力, 必须声明条件:
 - 验收: 会话丢失, 错账户/设备拒绝, 相同页面不替代原证据, 已获许可旧会话可能仍运行,
   取消只终结 Intent, 不伪造资源已停止.
 
-### 8.5 最小代表组合的验收建议
+## 9. 验收场景
 
-建议首个同步验收使用受控的 `api.request.v1` 目标, Pending 验收使用 `human.approval.v1` 服务协议.
-这是研究/后续验收的代表选择, 不批准真实 provider, SDK, 内置 Operation 目录或新依赖.
-具体服务尚未选定时, 文档给出协议义务; 不能将模拟服务的能力当成目标平台的实际保证.
+| 触发                                    | 必需行为                                                           | 抽象/工程检查                                                                      |
+| --------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| 启动授权回复丢失                        | 原 token 取回同一 grant/Handler/关联; 不再次授权                   | lostAuthorizationReplyUsesOriginalBindingTest; 真实传输重投                        |
+| 回调丢失/回执丢失                       | 核验过的原 Report 重投, 最多保存一次同内容证据                     | lostCallbackRedeliveredAfterRestartTest; provider/inbox Adapter 测试               |
+| Worker 重启                             | 新 incarnation 不接续旧调用许可; 旧证据仍可认证                    | recoveryRestartRejectsOldGrantTest; Worker 协议测试                                |
+| 已知失败后安全窗口过期                  | 不能重调用; 具备终结资格时提前停止                                 | earlyStopWhenIdempotencyExpiresTest                                                |
+| 窗口过期但结果 Unknown                  | 保持 Open, 不伪造确定失败                                          | unknownCannotStopAfterWindowExpiresTest                                            |
+| 查询不支持/认证失败/关联不匹配          | 不形成可信完成事实                                                 | 原 Pending/query/callback 场景; 真实 Adapter 测试                                  |
+| 两个独立 Intent                         | 绑定, 幂等键, 报告与结果不串线                                     | [双 Intent 模型](../quint/beamletMultiIntent.qnt); 另需 SQL/Adapter 并发符合性测试 |
+| Tool Call 多依赖                        | 按稳定身份读取每项 Outcome; 重启从原清单重建                       | [调用方组合契约](multi-intent-and-tool-calls.md); 清单由调用方持久保存             |
+| 无兼容 Handler 或能力不支持             | 保持 Prepared/等待, 不套用新语义或因缺配置制造 Failed              | Handler 兼容/能力场景; 真实登记与配置测试                                          |
+| 同名路径不同对象, 或调度后资源/权限变化 | 授权及调用重验, 不静默换设备/账户/对象; 合格换 Worker 仍访问原目标 | 资源匹配场景; 真实 ACL/环境测试                                                    |
+| 旧 Handler 协议升级                     | 原账户, key 映射, 窗口与等待关联保持解释                           | 快照与原幂等窗口场景; 旧数据/Adapter 兼容测试                                      |
+| 审批或设备会话中断                      | 按原审批关联恢复; 丢失临时 tab 或当前 UI 相同不证明原操作完成      | Pending/回调抽象场景; 具体服务/设备协议测试                                        |
+| 输入含运行时对象或受限值边界越界        | 在持久化与调用前拒绝; 两后端往返保持逻辑值                         | codec/真实后端测试                                                                 |
 
-| 代表 | 必须先固定的契约 | 普通完成路径 | 恢复/拒绝路径 |
-| --- | --- | --- | --- |
-| 同步 API | 稳定 account/endpoint, 输入/结果版本, 原 key scope, 精确能力条件; 可以明确不支持幂等/查询 | 同步响应转为合法 Success/明确 Failure, 原结果与关联持久化, Outcome 再读取 | 响应丢失时有请求绑定证据才恢复; 无该证据与安全重试条件则 Unknown, 超时/HTTP code 不证明未执行 |
-| 人工审批 | 稳定审批材料, 响应权限, 预分配关联, 原审批创建去重或可靠 inbox, 服务侧决定保留/重投责任 | 持久 Pending 后释放 Worker, approved/denied 均为 Success 数据, 回调通过可信入口 | 所有进程退出后原审批仍完成; 完成先于 Pending 合法, 无权响应不入域, 矛盾决定保留, 等待超时不自动 denied |
+真实 Adapter 还须验证原 key 映射, 账户/协议切换, 边界时限与网络延迟, 签名轮换, 重复/矛盾内容和受限值解码.
+外部完成到 Report 提交之间中断时, 有可靠查询/重投则按原证据恢复, 否则保留 Unknown.
+[资源匹配模型](../quint/beamletResource.qnt) 检查有界环境/绑定关系,
+[共享资源模型](../quint/beamletSharedResource.qnt) 检查原子 CAS + receipt 条件下的版本竞争;
+这些前提不自动适用于普通文件系统或 Browser.
 
-同一套 IEO 核心分别运行这两条路径, 检查独立尝试, 持久授权, 证据确认与权威接受的共性.
-资源 receipt, 审批查询与人工响应是不同外部协议, 不用一个 `idempotent=true` 抹平它们.
-文件/Device 样例继续表达条件与弱能力边界; 后续共享资源条件写模型只验证声明的 CAS + receipt 例子.
-产品声称支持某目标前仍须取得它的认证, 保留期, 回调/查询与故障窗口证据.
-
-这些样例检验 IEO 的共性与外部协议的差异, 不构成具体资源实现的验证.
-上述强条件并非要求所有文件/API 都具有这些能力; 弱能力操作必须显式保留相应的不确定性.
-资源绑定与恢复时限的共同要求仍以 [Handler 契约](handler-recovery-contracts.md) 为准.
+抽象检查的范围与运行方式见 [Quint 检查指南](../quint/README.md).
+真实资源 ACL, 签名, 外部保留期, 持久性与 SQL 后端仍需独立工程验收.
