@@ -9,6 +9,7 @@ defmodule BeamletWeb.Application do
   def start(_type, _args) do
     children = [
       BeamletWeb.Telemetry,
+      {Phoenix.PubSub, name: BeamletWeb.PubSub},
       # Start a worker by calling: BeamletWeb.Worker.start_link(arg)
       # {BeamletWeb.Worker, arg},
       # Start to serve requests, typically the last entry
