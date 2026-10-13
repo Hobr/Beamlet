@@ -1,6 +1,6 @@
-defmodule Beamlet.Client do
+defmodule Beamlet.Agent do
   @moduledoc """
-  Documentation for `Beamlet.Client`.
+  Documentation for `Beamlet.Agent`.
   """
 
   @doc """
@@ -8,7 +8,7 @@ defmodule Beamlet.Client do
 
   ## Examples
 
-      iex> Beamlet.Client.hello()
+      iex> Beamlet.Agent.hello()
       :world
 
   """

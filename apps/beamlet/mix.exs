@@ -27,7 +27,7 @@ defmodule Beamlet.MixProject do
   defp deps do
     [
       {:beamlet_runtime, in_umbrella: true},
-      {:beamlet_client, in_umbrella: true}
+      {:beamlet_agent, in_umbrella: true}
     ]
   end
 end
