@@ -38,7 +38,6 @@ defmodule BeamletWeb.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:igniter, "~> 0.6", only: [:dev, :test]},
       {:phoenix, "~> 1.8.1"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
@@ -47,6 +46,8 @@ defmodule BeamletWeb.MixProject do
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
+      {:petal_components, "~> 3.2"},
+      {:mdex, "~> 0.12"},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.2.0",
