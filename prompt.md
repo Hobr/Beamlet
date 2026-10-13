@@ -1,8 +1,10 @@
 # Beamlet: Distributed Durable Effect Runtime - 架构研究与 SPEC 设计
 
-我正在准备使用 Elixir / OTP 开发一个通用的**Distributed Durable Effect Runtime**. 其初始应用场景是 AI Agent, 但 Runtime 本身不应与某种 Agent 框架/LLM SDK 或特定业务绑定.
+我正在准备使用 Elixir / OTP 开发一个通用的**Distributed Durable Effect Runtime**. 其初始应用场景是 AI Agent, 但 Runtime
+本身不应与某种 Agent 框架/LLM SDK 或特定业务绑定.
 
-目前希望通过架构研究/讨论和形式化建模, 确定一份**简洁/优雅/可靠且可扩展的项目架构**, 并生成 RFC / SPEC 文档供人类和 AI Agent 共同阅读/审阅和指导后续开发.
+目前希望通过架构研究/讨论和形式化建模, 确定一份**简洁/优雅/可靠且可扩展的项目架构**, 并生成 RFC / SPEC 文档供人类和 AI
+Agent 共同阅读/审阅和指导后续开发.
 
 **当前阶段不追求代码实现. 不要直接生成项目代码, 而应优先讨论核心语义/状态机/数据模型/分布式协议与架构边界.**
 
@@ -12,8 +14,9 @@
 
 系统有两个主要需求:
 
-1.**Distributed Execution**: 外部操作可以被调度到不同设备或节点执行, 支持异步/并发及跨设备执行.
-2.**Durable Execution**: 外部操作的 Intent(意图)/Execution(执行尝试)/Outcome(权威结果)及必要的状态变化事实能够持久化, 并在进程退出/设备离线或系统故障后恢复.
+1.**Distributed Execution**: 外部操作可以被调度到不同设备或节点执行, 支持异步/并发及跨设备执行. 2.**Durable Execution**:
+外部操作的 Intent(意图)/Execution(执行尝试)/Outcome(权威结果)及必要的状态变化事实能够持久化,
+并在进程退出/设备离线或系统故障后恢复.
 
 这里的 Durable 不意味着保存进程内存/调用栈或语言级 Continuation, 我们主要追求**Effect Boundary 级别的恢复**.
 
@@ -27,7 +30,8 @@
 
 每次外部操作都独立记录/调度和恢复.
 
-如果 Agent 崩溃, 我们不要求恢复原有函数调用栈, 而是允许根据已经持久化的操作事实/结果和必要上下文重新启动 Agent, 使其继续执行.
+如果 Agent 崩溃, 我们不要求恢复原有函数调用栈, 而是允许根据已经持久化的操作事实/结果和必要上下文重新启动 Agent,
+使其继续执行.
 
 这种恢复暂称为**Effect-level Recovery**.
 
@@ -511,4 +515,5 @@ SPEC 应明确可测试的行为与不变量, RFC 应记录设计动机/替代�
 
 之后与我逐项讨论. 每项关键设计决策确定后, 记录其理由/约束及被否决的替代方案, 再逐步生成 RFC / SPEC.
 
-**最终目标不是构建一个庞大而复杂的通用框架, 而是设计一个核心语义清晰/能够形式化验证/充分利用 Elixir 生态/可以在不同设备运行且具有可靠恢复能力的 Distributed Durable Effect Runtime.**
+**最终目标不是构建一个庞大而复杂的通用框架, 而是设计一个核心语义清晰/能够形式化验证/充分利用 Elixir
+生态/可以在不同设备运行且具有可靠恢复能力的 Distributed Durable Effect Runtime.**

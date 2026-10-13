@@ -82,3 +82,4 @@ rebar3.crashdump
 # Ignore package tarball (built via "mix hex.build").
 *.tar
 tmp
+.expert

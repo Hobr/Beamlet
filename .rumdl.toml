@@ -65,6 +65,10 @@ respect-gitignore = true
 [MD013]
 line-length = 120
 reflow = true
+
+[MD026]
+punctuation = ".,;:"
+
 # code-blocks = false  # Exclude code blocks from line length check
 # tables = false  # Exclude tables from line length check
 # headings = true  # Include headings in line length check

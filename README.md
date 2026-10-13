@@ -1,8 +1,23 @@
 # Beamlet
 
-> A Powerful Agent.
-
 **WIP**, with broken changes before the first release.
+
+## Packages
+
+The planned package boundaries are:
+
+### Engine
+
+- Beamlet: the core Effect system
+- Beamlet-Runtime: the runtime for running effects
+
+### Beamlet!!!!!
+
+- Beamlet-Agent: an AI agent loop built on the Effect system
+- Beamlet-CLI: a command-line interface
+- Beamlet-TUI: an interactive terminal interface
+- Beamlet-Web: a web workbench built with Phoenix LiveView
+- Beamlet-Mobile: a mobile interface
 
 ## Build
 
@@ -25,6 +40,9 @@ mix compile
 
 # Production build
 MIX_ENV=prod mix compile
+
+# Web server
+mix phx.server
 
 # Format
 pre-commit run --all-files
