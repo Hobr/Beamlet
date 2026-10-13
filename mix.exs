@@ -16,6 +16,6 @@ defmodule Beamlet.Umbrella.MixProject do
   #
   # Run "mix help deps" for examples and options.
   defp deps do
-    []
+    [{:beamlet_specs, path: "tools/specs"}]
   end
 end
