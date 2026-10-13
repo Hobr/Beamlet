@@ -20,6 +20,8 @@
         {
           packages =
             (with pkgs; [
+              inotify-tools
+              watchman
               quint
               rumdl
               pre-commit
