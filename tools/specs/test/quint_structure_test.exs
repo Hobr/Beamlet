@@ -1,7 +1,7 @@
 defmodule Beamlet.QuintStructureTest do
   use ExUnit.Case, async: true
 
-  @root Path.expand("../model/quint", __DIR__)
+  @root Path.expand("../../../model/quint", __DIR__)
   @entries ~w(beamletExecution.qnt beamletNormalUse.qnt beamletRecovery.qnt beamletMultiIntent.qnt beamletContinuation.qnt beamletClaim.qnt beamletResource.qnt beamletHistory.qnt beamletTriple.qnt beamletSharedResource.qnt)
   @extension_types ~r/\b(?:Decision|ReconciliationCommand|RuleRegistration|Supersession|DispositionBinding)\b/
 

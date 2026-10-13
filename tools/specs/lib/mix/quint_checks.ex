@@ -1,6 +1,6 @@
 defmodule Mix.QuintChecks do
   @moduledoc false
-  @root Path.expand("../..", __DIR__)
+  @root Path.expand("../../../..", __DIR__)
   @core "model/quint/beamletCore.qnt"
   @tests "model/quint/beamletCore_test.qnt"
   @conflicts "model/quint/beamletConflicts_test.qnt"
