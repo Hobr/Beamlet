@@ -35,6 +35,9 @@ mix deps.get
 ## Update dependencies
 mix deps.update --all
 
+## Compile dependencies
+mix deps.compile
+
 # Compile
 mix compile
 
@@ -52,6 +55,15 @@ pre-commit run --all-files
 
 # Test
 mix test
+
+# Dialyzer
+mix dialyzer
+
+# Static analysis
+mix credo
+
+# Phoenix security static analysis
+mix sobelow
 
 # Quint
 mix quint {all/typecheck/test/simulate/mutations}

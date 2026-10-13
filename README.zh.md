@@ -35,6 +35,9 @@ mix deps.get
 ## 更新依赖
 mix deps.update --all
 
+## 编译依赖
+mix deps.compile
+
 # 编译
 mix compile
 
@@ -52,6 +55,15 @@ pre-commit run --all-files
 
 # 测试
 mix test
+
+# Dialyzer
+mix dialyzer
+
+# 静态分析
+mix credo
+
+# Phoenix 安全静态分析
+mix sobelow
 
 # Quint
 mix quint {all/typecheck/test/simulate/mutations}
