@@ -4,6 +4,13 @@
 行为细节见 [SPEC](../README.md), 组件与部署见 [整体架构](../spec/runtime-architecture.md),
 成熟机制与替代方案见 [RFC 0002](0002-runtime-tradeoffs.md).
 
+## 产品命名与层次
+
+按 [README](../../README.md) 的命名约定, **Beamlet** 是 Effect Engine 的名称, 涵盖核心 Effect 系统及其运行时;
+**Beamlet!!!!!** 是基于 Beamlet 的 Agent 框架及其系列产品的名称, 五个感叹号是名称的一部分.
+Beamlet-Agent, Beamlet-CLI, Beamlet-TUI, Beamlet-Web 和 Beamlet-Mobile 是 Beamlet!!!!! 系列中规划的组件名称.
+本文中的 Beamlet 指引擎层; 上层 Agent 框架的命名不改变下述核心职责与恢复边界.
+
 ## 1. 独立 Effect 与调用方恢复
 
 Beamlet 负责独立 Effect 的持久提交, 执行尝试管理, 权威结果接受和查询. Agent

@@ -1,8 +1,18 @@
 # Beamlet 领域语言
 
-Beamlet 是一个 Distributed Durable Effect Runtime. 本词汇表定义外部操作, 执行尝试与权威结果, 不描述具体存储或通信实现.
+Beamlet 是 Effect Engine 的名称, 定位为 Distributed Durable Effect Runtime.
+Beamlet!!!!! 是基于 Beamlet 的 Agent 框架及其系列产品的名称.
+本词汇表主要定义引擎层的外部操作, 执行尝试与权威结果, 不描述具体存储或通信实现.
 
 ## Language
+
+**Beamlet**:
+Effect Engine 的名称, 涵盖核心 Effect 系统及其运行时, 不指代上层 Agent 框架或产品系列.
+_Avoid_: 用 Beamlet 指代 Beamlet!!!!!
+
+**Beamlet!!!!!**:
+基于 Beamlet 的 Agent 框架及其系列产品的名称, 五个感叹号是名称的一部分.
+_Avoid_: 省略或改变感叹号数量, 用 Beamlet!!!!! 指代引擎
 
 **Effect**:
 对需要外部环境完成的操作的可持久化描述, 其执行与结果不依赖发起计算继续存活.
