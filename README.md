@@ -42,6 +42,9 @@ mix compile
 MIX_ENV=prod mix compile
 
 # Web server
+## Init
+mix setup
+## Webserver
 mix phx.server
 
 # Format

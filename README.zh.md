@@ -41,7 +41,10 @@ mix compile
 # 生产环境编译
 MIX_ENV=prod mix compile
 
-# 网站服务器
+# 网站
+## 初始化
+mix setup
+## 服务器
 mix phx.server
 
 # 格式化
