@@ -25,7 +25,9 @@ defmodule Beamlet.CLI.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:beamlet_agent, in_umbrella: true}
+      {:beamlet_agent, in_umbrella: true},
+      {:owl, "~> 0.13"},
+      {:ucwidth, "~> 0.2"}
     ]
   end
 end

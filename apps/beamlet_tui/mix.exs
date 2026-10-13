@@ -26,7 +26,8 @@ defmodule Beamlet.TUI.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:beamlet_agent, in_umbrella: true}
+      {:beamlet_agent, in_umbrella: true},
+      {:term_ui, "~> 2.0.0-rc.2"}
     ]
   end
 end
