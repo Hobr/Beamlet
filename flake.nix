@@ -27,7 +27,7 @@
             ++ (with beam; [
               erlang
               elixir
-              hex
+              elixir-ls
               expert
             ]);
 

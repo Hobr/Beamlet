@@ -6,11 +6,11 @@
 .envrc
 
 ### Elixir ###
-/_build
-/cover
-/deps
-/doc
-/.fetch
+_build
+cover
+deps
+doc
+.fetch
 erl_crash.dump
 *.ez
 *.beam
@@ -78,3 +78,7 @@ rebar3.crashdump
 # Dev
 .nix-mix/
 .nix-hex/
+
+# Ignore package tarball (built via "mix hex.build").
+*.tar
+tmp
