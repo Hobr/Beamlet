@@ -29,6 +29,9 @@ nix develop
 ## Install Hex
 mix local.hex
 
+## Install igniter_new
+mix archive.install hex igniter_new
+
 ## Fetch dependencies
 mix deps.get
 

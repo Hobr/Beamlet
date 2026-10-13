@@ -29,6 +29,9 @@ nix develop
 ## 安装 Hex
 mix local.hex
 
+## 安装 igniter_new
+mix archive.install hex igniter_new
+
 ## 获取依赖
 mix deps.get
 
