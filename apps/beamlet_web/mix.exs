@@ -38,6 +38,7 @@ defmodule BeamletWeb.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:igniter, "~> 0.6", only: [:dev, :test]},
       {:phoenix, "~> 1.8.1"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
@@ -58,6 +59,9 @@ defmodule BeamletWeb.MixProject do
       {:gettext, "~> 0.26"},
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.5"},
+      {:phoenix_pubsub, "~> 2.0"},
+      {:live_debugger, "~> 1.0", only: [:dev]},
+      {:tidewave, "~> 0.9", only: [:dev]},
       {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false, warn_if_outdated: true}
     ]
   end
