@@ -1,6 +1,6 @@
 defmodule Beamlet.Domain do
   @moduledoc """
-  Pure first-execution rules over an Intent snapshot.
+  Pure execution and recovery rules over an Intent snapshot.
 
   `new_intent/4` and `transition/3` return a proposed snapshot and History delta.
   The caller supplies trusted actor identity and Authority time. Runtime must
@@ -8,26 +8,32 @@ defmodule Beamlet.Domain do
   resolve trusted Handler/resource bindings before entering this module. Storage
   must load, revalidate and commit under the same Intent's transaction protection.
 
-  Implemented commands are create, claim, renew, expire, authorize, Worker report
-  and cancel. RetryOnce failures remain Open: safe replacement, query/callback
-  sources and external retry proofs are not implemented yet. No command performs
-  an external call or acknowledges durable storage.
+  Recovery derives safety from original facts and Handler contracts. Finite
+  idempotency additionally requires trusted resource contract_time, independent
+  of lease time. Callback/query sources must be authenticated by their Adapters.
+  No command performs an external call or acknowledges durable storage.
   """
 
   alias Beamlet.{
+    Binding,
     Definition,
     Execution,
     Identity,
     Intent,
     Lease,
     Outcome,
+    Recovery,
     Report,
     Token,
     Transition,
     Value
   }
 
-  @type context :: %{now: integer(), actor: String.t()}
+  @type context :: %{
+          required(:now) => integer(),
+          required(:actor) => String.t(),
+          optional(:contract_time) => non_neg_integer()
+        }
   @type command ::
           {:create_execution, String.t()}
           | {:claim, String.t(), String.t(), String.t(), non_neg_integer(), pos_integer()}
@@ -35,6 +41,8 @@ defmodule Beamlet.Domain do
           | {:expire, String.t()}
           | {:authorize, Token.t(), map()}
           | {:record_report, Report.t()}
+          | {:replace_execution, String.t(), String.t(), String.t()}
+          | {:stop_known_failure, String.t()}
           | {:cancel, Value.t()}
   @type result :: {:ok, Transition.t()} | {:error, atom()}
 
@@ -74,6 +82,25 @@ defmodule Beamlet.Domain do
   @spec transition(Intent.t(), command(), context()) :: result()
   def transition(%Intent{} = intent, command, context) do
     with :ok <- validate_context(context), do: execute(intent, command, context)
+  end
+
+  @doc """
+  Checks the original grant and retry contract immediately before invocation.
+
+  Worker must separately enforce its current incarnation and single invocation
+  per grant. A saved grant can outlive lease expiry or logical cancellation;
+  this check intentionally does not reinterpret those facts as external stopping.
+  """
+  @spec check_invocation(Intent.t(), Token.t(), context()) :: :ok | {:error, atom()}
+  def check_invocation(%Intent{} = intent, %Token{} = token, context) do
+    with :ok <- validate_context(context),
+         {:ok, execution} <- token_execution(intent, token),
+         true <- execution.authorization === token do
+      Recovery.authorize_retry(intent, execution, execution.binding, context)
+    else
+      false -> {:error, :unauthorized_invocation}
+      error -> error
+    end
   end
 
   defp execute(intent, {:create_execution, id}, context) do
@@ -152,9 +179,29 @@ defmodule Beamlet.Domain do
 
   defp execute(intent, {:record_report, %Report{} = report}, context) do
     with :ok <- Report.validate(report),
-         {:ok, execution} <- token_execution(intent, report.token),
+         {:ok, execution} <- report_execution(intent, report),
          :ok <- report_qualified(intent, execution, report) do
       record_report(intent, execution, report, context)
+    end
+  end
+
+  defp execute(intent, {:replace_execution, old_id, new_id, reason}, context) do
+    with true <- Identity.valid_text?(new_id) and Identity.valid_text?(reason),
+         {:ok, execution} <- fetch_execution(intent, old_id) do
+      replace_execution(intent, execution, new_id, reason, context)
+    else
+      false -> {:error, :invalid_replacement}
+      error -> error
+    end
+  end
+
+  defp execute(%Intent{phase: :closed} = intent, {:stop_known_failure, _id}, _context),
+    do: change(intent, {:existing_outcome, intent.outcome})
+
+  defp execute(intent, {:stop_known_failure, id}, context) do
+    with :ok <- open_current(intent, id),
+         {:ok, execution} <- fetch_execution(intent, id) do
+      stop_known_failure(intent, execution, context)
     end
   end
 
@@ -176,6 +223,68 @@ defmodule Beamlet.Domain do
   end
 
   defp execute(_intent, _command, _context), do: {:error, :unsupported_command}
+
+  defp replace_execution(intent, old, new_id, reason, context) do
+    case Map.fetch(intent.executions, new_id) do
+      {:ok, %Execution{replacement: %{from_execution_id: from, reason: ^reason}}}
+      when from == old.id ->
+        change(intent, {:existing_execution, new_id})
+
+      {:ok, _execution} ->
+        {:error, :execution_id_reused}
+
+      :error ->
+        build_replacement(intent, old, new_id, reason, context)
+    end
+  end
+
+  defp build_replacement(intent, old, new_id, reason, context) do
+    with :ok <- open_current(intent, old.id),
+         {:ok, basis} <- Recovery.replacement_allowed(intent, old, new_id, context) do
+      replacement = %{from_execution_id: old.id, basis: basis, reason: reason}
+      fresh = %Execution{id: new_id, replacement: replacement}
+      invalidated = if old.lease, do: %{old | lease: %{old.lease | invalidated: true}}, else: old
+      updated = intent |> put_execution(invalidated) |> put_execution(fresh)
+      updated = %{updated | current_execution_id: new_id}
+      details = Map.put(replacement, :old_generation, Lease.generation(old.lease))
+
+      change(updated, {:replaced, new_id, basis}, [
+        event(:execution_replaced, new_id, context, details)
+      ])
+    end
+  end
+
+  defp stop_known_failure(intent, execution, context) do
+    report = Enum.find(execution.reports, &(&1.kind == :failure))
+
+    cond do
+      is_nil(report) ->
+        {:error, :known_failure_required}
+
+      not Recovery.stop_required?(intent, execution, context) ->
+        {:error, :retry_available}
+
+      not Recovery.failure_qualified?(intent, report) ->
+        {:error, :unresolved_risk}
+
+      true ->
+        outcome = Outcome.from_report(report)
+
+        details = %{
+          kind: :failed,
+          report_id: report.id,
+          source_kind: Report.source_kind(report),
+          reason: :stop_known_failure
+        }
+
+        close(
+          intent,
+          outcome,
+          [event(:outcome_accepted, execution.id, context, details)],
+          :failed
+        )
+    end
+  end
 
   defp claim(intent, execution, worker, incarnation, expected, expiry, context) do
     generation = Lease.generation(execution.lease)
@@ -228,7 +337,7 @@ defmodule Beamlet.Domain do
   defp authorize(intent, execution, token, binding, context) do
     with :ok <- open_current(intent, execution.id),
          :ok <- matching_lease(execution, token),
-         :ok <- validate_binding(binding, intent.definition.operation) do
+         :ok <- Binding.validate(binding, intent.definition.operation) do
       cond do
         execution.phase != :prepared ->
           {:error, :execution_not_prepared}
@@ -237,21 +346,27 @@ defmodule Beamlet.Domain do
           expired_rejection(intent, execution, context)
 
         true ->
-          updated = %{
-            execution
-            | phase: :start_authorized,
-              authorization: token,
-              binding: binding
-          }
-
-          change(put_execution(intent, updated), {:authorized, token, binding}, [
-            event(:start_authorized, execution.id, context, %{
-              handler: binding["handler"],
-              protocol: binding["protocol"],
-              generation: token.generation
-            })
-          ])
+          authorize_ready(intent, execution, token, binding, context)
       end
+    end
+  end
+
+  defp authorize_ready(intent, execution, token, binding, context) do
+    with :ok <- Recovery.authorize_retry(intent, execution, binding, context) do
+      updated = %{
+        execution
+        | phase: :start_authorized,
+          authorization: token,
+          binding: binding
+      }
+
+      change(put_execution(intent, updated), {:authorized, token, binding}, [
+        event(:start_authorized, execution.id, context, %{
+          handler: binding["handler"],
+          protocol: binding["protocol"],
+          generation: token.generation
+        })
+      ])
     end
   end
 
@@ -266,15 +381,26 @@ defmodule Beamlet.Domain do
     updated_intent = put_execution(intent, project_report(execution, report, conflict))
 
     events = [
-      event(:report_recorded, execution.id, context, %{report_id: report.id, kind: report.kind})
+      event(:report_recorded, execution.id, context, %{
+        report_id: report.id,
+        kind: report.kind,
+        source_kind: Report.source_kind(report)
+      })
     ]
 
     events =
       if conflict,
-        do: events ++ [event(:report_conflict, execution.id, context, %{report_id: report.id})],
+        do:
+          events ++
+            [
+              event(:report_conflict, execution.id, context, %{
+                report_id: report.id,
+                source_kind: Report.source_kind(report)
+              })
+            ],
         else: events
 
-    if terminal_report?(updated_intent, report) do
+    if terminal_report?(updated_intent, report, context) do
       outcome = Outcome.from_report(report)
 
       events =
@@ -282,7 +408,8 @@ defmodule Beamlet.Domain do
           [
             event(:outcome_accepted, execution.id, context, %{
               kind: outcome.kind,
-              report_id: report.id
+              report_id: report.id,
+              source_kind: Report.source_kind(report)
             })
           ]
 
@@ -303,63 +430,49 @@ defmodule Beamlet.Domain do
         conflict: execution.conflict or conflict
     }
 
-    cond do
-      updated.conflict -> updated
-      report.kind == :pending and execution.phase != :resolved -> %{updated | phase: :waiting}
-      report.kind in [:success, :failure] -> %{updated | phase: :resolved, result: report}
-      true -> updated
-    end
+    if updated.conflict, do: updated, else: project_evidence(updated, report)
   end
+
+  defp project_evidence(execution, %Report{kind: :pending}) when execution.phase != :resolved,
+    do: %{execution | phase: :waiting}
+
+  defp project_evidence(execution, %Report{kind: :not_executed} = report),
+    do: %{
+      execution
+      | phase: :resolved,
+        result: execution.result || report,
+        exclusion: report.exclusion
+    }
+
+  defp project_evidence(execution, %Report{kind: kind} = report)
+       when kind in [:success, :failure],
+       do: %{execution | phase: :resolved, result: execution.result || report}
+
+  defp project_evidence(execution, _report), do: execution
 
   defp conflicting?(left, right) do
     Report.identity(left) === Report.identity(right) or
       (left.kind in [:success, :failure] and right.kind in [:success, :failure] and
-         (left.kind != right.kind or left.body !== right.body))
+         (left.kind != right.kind or left.body !== right.body)) or
+      (left.kind == :success and right.kind == :not_executed) or
+      (left.kind == :not_executed and right.kind == :success)
   end
 
-  defp terminal_report?(intent, report) do
-    intent.phase == :open and intent.current_execution_id == report.token.execution_id and
-      Enum.all?(intent.executions, fn {_id, execution} -> not execution.conflict end) and
+  defp terminal_report?(intent, report, context) do
+    execution = intent.executions[Report.execution_id(report)]
+
+    intent.phase == :open and intent.current_execution_id == execution.id and
+      Recovery.no_conflicts?(intent) and
       (report.kind == :success or
-         (report.kind == :failure and intent.definition.policy == :stop_on_failure and
-            no_unresolved_risk?(intent, report)))
-  end
-
-  defp no_unresolved_risk?(intent, report) do
-    Enum.all?(intent.executions, fn {id, execution} ->
-      is_nil(execution.authorization) or
-        (not is_nil(execution.result) and
-           (id == report.token.execution_id or execution.result.kind != :success))
-    end)
+         (report.kind == :failure and Recovery.stop_required?(intent, execution, context) and
+            Recovery.failure_qualified?(intent, report)))
   end
 
   defp report_qualified(intent, execution, report) do
-    cond do
-      report.operation != intent.definition.operation ->
-        {:error, :operation_mismatch}
-
-      execution.authorization !== report.token ->
-        {:error, :unauthorized_report}
-
-      report.kind == :pending and not is_map(execution.binding["completion"]) ->
-        {:error, :pending_not_supported}
-
-      true ->
-        :ok
-    end
+    if report.operation == intent.definition.operation,
+      do: Report.qualified(report, execution),
+      else: {:error, :operation_mismatch}
   end
-
-  defp validate_binding(binding, operation) when is_map(binding) and not is_struct(binding) do
-    with :ok <- Value.validate(binding) do
-      if binding["operation"] == operation and Identity.valid_text?(binding["handler"]) and
-           Identity.valid_text?(binding["protocol"]) and is_map(binding["resource"]) and
-           (is_nil(binding["completion"]) or is_map(binding["completion"])),
-         do: :ok,
-         else: {:error, :invalid_handler_binding}
-    end
-  end
-
-  defp validate_binding(_binding, _operation), do: {:error, :invalid_handler_binding}
 
   defp expired_rejection(intent, execution, context) do
     if execution.lease.invalidated,
@@ -404,6 +517,17 @@ defmodule Beamlet.Domain do
       else: {:error, :scope_mismatch}
   end
 
+  defp report_execution(intent, report) do
+    case Report.scope(report) do
+      {collection, id, execution_id}
+      when collection == intent.identity.collection and id == intent.id ->
+        fetch_execution(intent, execution_id)
+
+      _ ->
+        {:error, :scope_mismatch}
+    end
+  end
+
   defp fetch_execution(intent, id) do
     case Map.fetch(intent.executions, id) do
       {:ok, execution} -> {:ok, execution}
@@ -434,9 +558,11 @@ defmodule Beamlet.Domain do
       details: details
     }
 
-  defp validate_context(%{now: now, actor: actor}) when is_integer(now) do
+  defp validate_context(%{now: now, actor: actor} = context) when is_integer(now) do
+    contract_time = Map.get(context, :contract_time, 0)
+
     if now >= -9_223_372_036_854_775_808 and now <= 9_223_372_036_854_775_807 and
-         Identity.valid_text?(actor),
+         Identity.valid_text?(actor) and is_integer(contract_time) and contract_time >= 0,
        do: :ok,
        else: {:error, :invalid_context}
   end

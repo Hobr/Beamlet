@@ -46,7 +46,20 @@ defmodule BeamletTest do
 
   defp authorized(policy \\ :stop_on_failure, completion \\ nil) do
     {intent, token} = claimed(policy)
-    {step(intent, {:authorize, token, handler_binding(completion)}).intent, token}
+    binding = handler_binding(completion)
+
+    binding =
+      if policy == :retry_once,
+        do:
+          Map.put(binding, "idempotency", %{
+            "protocol" => "dedupe.v1",
+            "key" => "stable-key",
+            "scope" => %{"account" => "account-a"},
+            "valid_through" => nil
+          }),
+        else: binding
+
+    {step(intent, {:authorize, token, binding}).intent, token}
   end
 
   defp report(token, kind \\ :success, body \\ %{"answer" => "hello"}, id \\ "report-1"),

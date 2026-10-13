@@ -10,7 +10,7 @@ defmodule Beamlet.Outcome do
           kind: :succeeded | :failed | :cancelled,
           value: Value.t(),
           execution_id: String.t() | nil,
-          report_identity: {Beamlet.Token.t(), String.t()} | nil
+          report_identity: Report.identity() | nil
         }
 
   @spec from_report(Report.t()) :: t()
@@ -18,7 +18,7 @@ defmodule Beamlet.Outcome do
     %__MODULE__{
       kind: if(kind == :success, do: :succeeded, else: :failed),
       value: report.body,
-      execution_id: report.token.execution_id,
+      execution_id: Report.execution_id(report),
       report_identity: Report.identity(report)
     }
   end

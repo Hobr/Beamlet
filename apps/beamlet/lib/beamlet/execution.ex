@@ -4,7 +4,7 @@ defmodule Beamlet.Execution do
   current-result eligibility, lease validity and evidence conflicts.
   """
 
-  alias Beamlet.{Lease, Report, Token, Value}
+  alias Beamlet.{Exclusion, Lease, Report, Token, Value}
 
   @enforce_keys [:id]
   defstruct [
@@ -13,6 +13,8 @@ defmodule Beamlet.Execution do
     :authorization,
     :binding,
     :result,
+    :exclusion,
+    :replacement,
     phase: :prepared,
     conflict: false,
     reports: []
@@ -25,6 +27,10 @@ defmodule Beamlet.Execution do
           authorization: Token.t() | nil,
           binding: Value.t(),
           result: Report.t() | nil,
+          exclusion: Exclusion.t() | nil,
+          replacement:
+            %{from_execution_id: String.t(), basis: Beamlet.Recovery.basis(), reason: String.t()}
+            | nil,
           phase: phase(),
           conflict: boolean(),
           reports: [Report.t()]

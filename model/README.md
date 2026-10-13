@@ -4,8 +4,8 @@ Beamlet 是 Effect Engine 的名称, 以独立 Effect 的持久执行和恢复�
 Beamlet!!!!! 是基于它的 Agent 框架及其系列产品的名称, 五个感叹号是名称的一部分.
 本目录主要描述 Beamlet 引擎及其与上层调用方的边界, 不将 Beamlet!!!!! 的完整 Agent 恢复纳入引擎职责.
 命名与规划中的组件见 [README](../README.md). RFC 解释设计取舍, SPEC 规定行为与验收要求.
-本目录保留架构规格与可执行模型. [领域核心](../apps/beamlet/README.md) 已开始实现受限值与第一轮执行规则,
-尚无 Runtime/Ecto 执行闭环; 实现范围与代码测试见该应用说明.
+本目录保留架构规格与可执行模型. [领域核心](../apps/beamlet/README.md) 已实现受限值, 执行状态机,
+安全替代/RetryOnce 规则与独立报告来源; 尚无 Runtime/Ecto 执行闭环, 实现范围与代码测试见该应用说明.
 
 ## 从这里开始
 
