@@ -26,8 +26,14 @@ defmodule BeamletWeb.Endpoint do
     gzip: not code_reloading?,
     only: BeamletWeb.static_paths()
 
+  # Tidewave MCP
+  if Mix.env() == :dev do
+    plug Tidewave
+  end
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
+
   if code_reloading? do
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
     plug Phoenix.LiveReloader

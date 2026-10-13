@@ -55,3 +55,8 @@ config :beamlet_web, BeamletWeb.Endpoint,
 
 # Enable dev routes for dashboard and mailbox
 config :beamlet_web, dev_routes: true
+
+# Tidewave MCP
+config :phoenix_live_view,
+  debug_heex_annotations: true,
+  debug_attributes: true
