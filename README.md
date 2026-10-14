@@ -4,8 +4,6 @@
 
 ## Packages
 
-The planned package boundaries are:
-
 ### Engine
 
 - Beamlet: the core Effect system
