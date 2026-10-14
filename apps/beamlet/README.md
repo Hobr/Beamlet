@@ -23,7 +23,8 @@
 存在旧 Unknown, 未解释旧 Success 或冲突时保持 Open. 没有安全依据不建立后续尝试.
 Pending 的完成可来自原 Worker 或独立 callback/query; 完成可先于 Pending 到达.
 [SQLite Storage](../beamlet_runtime/README.md) 已开始实现真实事务、快照/History 保存及重启恢复.
-Operation 专用 schema 校验, Handler/Worker 执行循环, 验签 Adapter 与 Transport 尚未实现.
+本地 Coordinator/Scheduler/Worker 与静态 Handler 登记已接入, 示例 Echo 提供 Operation schema 校验.
+真实外部 Provider Adapter, 远端认证与 Transport 尚未实现; 见 [Runtime 说明](../beamlet_runtime/README.md).
 
 ## Interface
 
@@ -85,13 +86,12 @@ Adapter 先按版本化协议核验账户/签名/事件身份, 核心再精确�
 已替代/已 Closed/lease 失效不撤销合法来源, 但旧 Success 只保留为证据, 不直接成为当前 Outcome.
 报告身份使用来源作用域和稳定 report ID; 同内容重投不重复 History, 跨来源矛盾也保留冲突.
 
-query 可以给出 NotFound 或 NotExecuted. NotFound 仅保留证据, 不改变 Unknown/Waiting 或推导未执行.
-NotExecuted 另需 `%Beamlet.Exclusion{authorization: original_token, query_binding: original_query, evidence_ref: stable_ref}`;
-它只能由已核验外部排除保证的可信 Adapter 构造, 不能从不可信正文的布尔值复制. 本核心不验证真实外部 fencing.
-确定 Knowledge 保留首份确定报告: 后来的 NotExecuted 不自动替换 FailureKnown,
-NotExecutedKnown 也不能仅凭后来 Failure 报告接受 Failed. [Quint 对照记录](../../model/implementation-conformance.md) 说明检查范围.
-已存当前 Failure 在窗口后来失效, 或旧未知风险得到解释后, 可以重新发出 StopKnownFailure;
-重复原报告只补确认, 不隐式重新进行策略终结.
+query 可以给出 NotFound 或 NotExecuted. NotFound 仅保留证据, 不改变 Unknown/Waiting 或推导未执行. NotExecuted 另需
+`%Beamlet.Exclusion{authorization: original_token, query_binding: original_query, evidence_ref: stable_ref}`;
+它只能由已核验外部排除保证的可信 Adapter 构造, 不能从不可信正文的布尔值复制. 本核心不验证真实外部 fencing. 确定
+Knowledge 保留首份确定报告: 后来的 NotExecuted 不自动替换 FailureKnown, NotExecutedKnown 也不能仅凭后来 Failure 报告接受
+Failed. [Quint 对照记录](../../model/implementation-conformance.md) 说明检查范围. 已存当前 Failure 在窗口后来失效,
+或旧未知风险得到解释后, 可以重新发出 StopKnownFailure; 重复原报告只补确认, 不隐式重新进行策略终结.
 
 ## 可运行的领域路径
 

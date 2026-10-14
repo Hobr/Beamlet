@@ -53,6 +53,7 @@ defmodule BeamletRuntime.Storage.SQLite do
     :ok
   end
 
+  @doc "Trusted optional definition_validator runs only for new identities under protection; replays compare the original definition. It must be a bounded local schema check."
   def submit(repo, %Identity{} = identity, %Definition{} = definition, actor, opts \\ []) do
     opts = Keyword.delete(opts, :mode)
 
@@ -77,6 +78,32 @@ defmodule BeamletRuntime.Storage.SQLite do
     else
       false -> {:error, :invalid_actor}
       error -> error
+    end
+  end
+
+  @doc "Trusted Runtime hook: bounded local validation and command selection under the write lock. Never perform external effects here."
+  def checked_command(repo, collection, id, actor, prepare, opts \\ [])
+      when is_function(prepare, 2) do
+    opts = Keyword.delete(opts, :mode)
+
+    with :ok <- validate_scope(collection, id), true <- Identity.valid_text?(actor) do
+      transaction(
+        repo,
+        fn ->
+          prepare_command(fetch_facts(collection, id), context(actor, opts), prepare)
+        end,
+        opts
+      )
+    else
+      false -> {:error, :invalid_actor}
+      error -> error
+    end
+  end
+
+  defp prepare_command(facts, context, prepare) do
+    case prepare.(facts.intent, context) do
+      {:ok, command} -> decide(facts, command, context)
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 
@@ -112,10 +139,7 @@ defmodule BeamletRuntime.Storage.SQLite do
   defp submit_intent(id, identity, definition, actor, opts) do
     case keyed_facts(identity) do
       nil ->
-        case Domain.new_intent(id, identity, definition, context(actor, opts)) do
-          {:ok, transition} -> persist(nil, transition)
-          {:error, reason} -> Repo.rollback(reason)
-        end
+        create_intent(id, identity, definition, actor, opts)
 
       facts ->
         case Domain.resubmit(facts.intent, identity, definition) do
@@ -125,8 +149,37 @@ defmodule BeamletRuntime.Storage.SQLite do
     end
   end
 
-  defp apply_command(facts, command, actor, opts) do
-    case Domain.transition(facts.intent, command, context(actor, opts)) do
+  defp create_intent(id, identity, definition, actor, opts) do
+    with :ok <- validate_definition(definition, opts),
+         {:ok, transition} <- Domain.new_intent(id, identity, definition, context(actor, opts)) do
+      persist(nil, transition)
+    else
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp validate_definition(definition, opts) do
+    case Keyword.get(opts, :definition_validator) do
+      nil ->
+        :ok
+
+      validator when is_function(validator, 1) ->
+        validate_definition_reply(validator.(definition))
+
+      _invalid ->
+        {:error, :invalid_definition_validator}
+    end
+  end
+
+  defp validate_definition_reply(:ok), do: :ok
+  defp validate_definition_reply({:error, _reason} = error), do: error
+  defp validate_definition_reply(_invalid), do: {:error, :invalid_definition_validator_reply}
+
+  defp apply_command(facts, command, actor, opts),
+    do: decide(facts, command, context(actor, opts))
+
+  defp decide(facts, command, context) do
+    case Domain.transition(facts.intent, command, context) do
       {:ok, transition} -> persist(facts, transition)
       {:error, reason} -> Repo.rollback(reason)
     end
@@ -160,7 +213,7 @@ defmodule BeamletRuntime.Storage.SQLite do
         """
         SELECT id, current_id, current_phase FROM beamlet_intents
         WHERE collection=? AND id>? AND phase='open' AND
-          (current_phase IN ('prepared','waiting','unknown') OR (current_phase='start_authorized' AND lease_expires_at<=(#{@clock})))
+          (current_id IS NULL OR current_phase IN ('prepared','start_authorized','waiting','unknown','resolved'))
         ORDER BY id LIMIT ?
         """,
         [collection, after_id, limit]
@@ -311,6 +364,11 @@ defmodule BeamletRuntime.Storage.SQLite do
       rescue
         error in [Exqlite.Error, DBConnection.ConnectionError] ->
           storage_failure(repo, fun, opts, attempt, Process.get(marker), error)
+
+        error in [RuntimeError, ArgumentError] ->
+          if repo_lookup_failure?(__STACKTRACE__),
+            do: storage_failure(repo, fun, opts, attempt, Process.get(marker), error),
+            else: reraise(error, __STACKTRACE__)
       catch
         :exit, reason ->
           {:error,
@@ -321,6 +379,13 @@ defmodule BeamletRuntime.Storage.SQLite do
       after
         Process.delete(marker)
       end
+    end)
+  end
+
+  defp repo_lookup_failure?(trace) do
+    Enum.any?(trace, fn
+      {Ecto.Repo.Registry, :lookup, _arity, _location} -> true
+      _frame -> false
     end)
   end
 

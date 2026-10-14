@@ -8,8 +8,7 @@ defmodule BeamletRuntime.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: BeamletRuntime.Worker.start_link(arg)
-      # {BeamletRuntime.Worker, arg}
+      {Task.Supervisor, name: BeamletRuntime.Tasks}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
