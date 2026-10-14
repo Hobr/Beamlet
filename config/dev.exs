@@ -56,6 +56,10 @@ config :beamlet_web, BeamletWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :beamlet_web, dev_routes: true
 
+# Only development pages may load/connect to the LiveDebugger browser service.
+# Update this origin if LiveDebugger's port or external_url changes.
+config :beamlet_web, :csp_development_origins, ["http://127.0.0.1:4007"]
+
 # Tidewave MCP
 config :phoenix_live_view,
   debug_heex_annotations: true,

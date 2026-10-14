@@ -9,16 +9,52 @@ const baseURL = process.env.BEAMLET_URL || "http://localhost:4000"
 const browser = await firefox.launch({headless: true})
 const context = await browser.newContext({colorScheme: "dark", viewport: {width: 1280, height: 900}})
 const errors = []
+const violations = []
+await context.exposeBinding("recordCSPViolation", (_source, violation) => violations.push(violation))
+await context.addInitScript(() => {
+  window.cspViolationCount = 0
+  document.addEventListener("securitypolicyviolation", event => {
+    window.cspViolationCount++
+    window.recordCSPViolation({directive: event.effectiveDirective, blockedURI: event.blockedURI})
+  })
+})
 context.on("page", page => page.on("pageerror", error => errors.push(error.message)))
 const page = await context.newPage()
-const waitTheme = (target, theme, preference) => target.waitForFunction(
-  ({theme, preference}) => document.documentElement.dataset.theme === theme &&
-    document.documentElement.dataset.themePreference === preference,
-  {theme, preference}
+// Older Playwright Firefox waitForFunction uses page-side eval, which a strict
+// production CSP correctly rejects. Poll from Node instead of weakening CSP.
+const waitUntil = async predicate => {
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline) {
+    if (await predicate()) return
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  assert.fail("Timed out waiting for browser state")
+}
+const waitTheme = (target, theme, preference) => waitUntil(async () =>
+  await target.locator("html").getAttribute("data-theme") === theme &&
+  await target.locator("html").getAttribute("data-theme-preference") === preference
 )
 
 try {
-  assert.equal((await page.goto(baseURL)).status(), 200)
+  const response = await page.goto(baseURL)
+  assert.equal(response.status(), 200)
+  const policy = response.headers()["content-security-policy"]
+  const scriptPolicy = policy.split(";").map(value => value.trim())
+    .find(value => value.startsWith("script-src "))
+  assert.ok(scriptPolicy.includes("'self'"))
+  assert.ok(!scriptPolicy.includes("'unsafe-inline'"))
+  assert.ok(policy.includes("script-src-attr 'none'"))
+  if (process.env.BEAMLET_DEV_TOOLS) {
+    // Tidewave deliberately enables eval and embedding for contextual testing.
+    assert.ok(scriptPolicy.includes("'unsafe-eval'"))
+    assert.ok(scriptPolicy.includes("https://tidewave.ai"))
+    assert.ok(scriptPolicy.includes("http://127.0.0.1:4007"))
+  } else {
+    assert.ok(!policy.includes("unsafe-eval"))
+    assert.ok(!policy.includes("127.0.0.1:4007"))
+    assert.ok(!policy.includes("tidewave.ai"))
+    assert.ok(policy.includes("frame-ancestors 'none'"))
+  }
   await waitTheme(page, "dark", "system")
   assert.equal(await page.locator("[data-phx-theme=system]").getAttribute("aria-pressed"), "true")
   const darkBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
@@ -46,7 +82,7 @@ try {
   // Navigate from a controller page to LiveView, then exercise real DOM hooks.
   await page.getByRole("link", {name: "Explore components"}).click()
   await page.waitForURL(`${baseURL}/components`)
-  await page.waitForFunction(() => window.liveSocket?.isConnected())
+  await waitUntil(() => page.evaluate(() => window.liveSocket?.isConnected()))
   await page.getByRole("button", {name: "Preview greeting"}).click()
   await page.locator("#flash-error").waitFor({state: "visible"})
   await page.getByLabel("Name", {exact: true}).fill("<script>")
@@ -77,8 +113,37 @@ try {
   await waitTheme(page, "dark", "dark")
   assert.equal(await page.locator("#client-error").isVisible(), false)
   assert.equal(await page.locator("#server-error").isVisible(), false)
+  if (process.env.BEAMLET_DEV_TOOLS) {
+    await waitUntil(() => page.evaluate(() => window.liveReloader?.socket.isConnected()))
+    assert.equal(await page.locator('script[src$="/assets/live_debugger/client.js"]').count(), 1)
+    await page.setViewportSize({width: 1280, height: 900})
+    assert.equal((await page.goto(`${baseURL}/dev/dashboard`)).status(), 200)
+    await page.locator("[data-phx-main].phx-connected").waitFor()
+  }
+
+  // Normal application and development tools must work without CSP violations.
   assert.deepEqual(errors, [])
-  console.log("Browser smoke passed: themes, persistence, cross-tab sync, system changes, LiveView form/menu/dialog, mobile layout, no JS errors.")
+  assert.deepEqual(violations, [])
+
+  // Check enforcement, not merely the presence of a response header.
+  await page.evaluate(() => {
+    const script = document.createElement("script")
+    script.textContent = "window.untrustedInlineExecuted = true"
+    document.head.append(script)
+    script.remove()
+
+    const button = document.createElement("button")
+    button.setAttribute("onclick", "window.untrustedHandlerExecuted = true")
+    document.body.append(button)
+    button.click()
+    button.remove()
+  })
+  await waitUntil(() => page.evaluate(() => window.cspViolationCount >= 2))
+  assert.equal(await page.evaluate(() => window.untrustedInlineExecuted === true), false)
+  assert.equal(await page.evaluate(() => window.untrustedHandlerExecuted === true), false)
+  assert.ok(violations.some(event => event.directive === "script-src-elem" && event.blockedURI === "inline"))
+  assert.ok(violations.some(event => event.directive === "script-src-attr" && event.blockedURI === "inline"))
+  console.log("Browser smoke passed: themes, LiveView form/menu/dialog, mobile layout, development tools when enabled, CSP enforcement, no unexpected JS/CSP errors.")
 } finally {
   await context.close()
   await browser.close()
