@@ -1,90 +1,56 @@
 defmodule BeamletWeb.Layouts do
-  @moduledoc """
-  This module holds layouts and related functionality
-  used by your application.
-  """
+  @moduledoc "Shared application layouts, flash messages, and theme controls."
   use BeamletWeb, :html
 
-  # Embed all files in layouts/* within this module.
-  # The default root.html.heex file contains the HTML
-  # skeleton of your application, namely HTML headers
-  # and other static content.
   embed_templates "layouts/*"
 
-  @doc """
-  Renders your app layout.
-
-  This function is typically invoked from every template,
-  and it often contains your application menu, sidebar,
-  or similar.
-
-  ## Examples
-
-      <Layouts.app flash={@flash}>
-        <h1>Content</h1>
-      </Layouts.app>
-
-  """
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-
-  attr :current_scope, :map,
-    default: nil,
-    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
-
+  attr :flash, :map, required: true
+  attr :current_scope, :map, default: nil
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
-      </div>
+    <header class="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <.container class="flex flex-wrap items-center justify-between gap-4 py-4">
+        <.link href={~p"/"} class="flex items-center gap-2 text-lg font-semibold">
+          <.icon name="hero-bolt-solid" class="size-6 text-primary-600 dark:text-primary-400" />
+          Beamlet
+        </.link>
+        <nav aria-label={gettext("Main navigation")} class="flex flex-wrap items-center gap-3">
+          <.button href={~p"/components"} color="gray" variant="ghost" size="sm">
+            {gettext("Components")}
+          </.button>
+          <.button
+            href="https://github.com/phoenixframework/phoenix"
+            color="gray"
+            variant="ghost"
+            size="sm"
+          >
+            GitHub
+          </.button>
+          <.theme_toggle />
+        </nav>
+      </.container>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
-        {render_slot(@inner_block)}
-      </div>
+    <main id="main-content" class="py-12 sm:py-20">
+      <.container>{render_slot(@inner_block)}</.container>
     </main>
 
     <.flash_group flash={@flash} />
     """
   end
 
-  @doc """
-  Shows the flash group with standard titles and content.
-
-  ## Examples
-
-      <.flash_group flash={@flash} />
-  """
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-  attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
+  attr :flash, :map, required: true
+  attr :id, :string, default: "flash-group"
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite">
+    <div
+      id={@id}
+      aria-live="polite"
+      class="pointer-events-none fixed right-4 top-4 z-50 w-80 max-w-[calc(100vw-2rem)] space-y-3 sm:w-96"
+    >
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 
@@ -115,39 +81,43 @@ defmodule BeamletWeb.Layouts do
     """
   end
 
-  @doc """
-  Provides dark vs light theme toggle based on themes defined in app.css.
-
-  See <head> in root.html.heex which applies the theme before page load.
-  """
+  @doc "Three-way theme preference; the root script resolves system mode before first paint."
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
+    <div
+      role="group"
+      aria-label={gettext("Color theme")}
+      class="flex gap-1 rounded-lg border border-gray-200 p-1 dark:border-gray-700"
+      phx-mounted={JS.dispatch("phx:sync-theme")}
+    >
+      <.button
+        :for={
+          {theme, icon, label} <- [
+            {"system", "hero-computer-desktop-micro", gettext("Use system theme")},
+            {"light", "hero-sun-micro", gettext("Use light theme")},
+            {"dark", "hero-moon-micro", gettext("Use dark theme")}
+          ]
+        }
+        type="button"
+        color="gray"
+        variant="ghost"
+        size="sm"
         phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="system"
+        data-phx-theme={theme}
+        aria-label={label}
+        aria-pressed="false"
+        class={[
+          "px-2!",
+          theme == "system" &&
+            "[[data-theme-preference=system]_&]:bg-gray-200 [[data-theme-preference=system]_&]:dark:bg-gray-700",
+          theme == "light" &&
+            "[[data-theme-preference=light]_&]:bg-gray-200 [[data-theme-preference=light]_&]:dark:bg-gray-700",
+          theme == "dark" &&
+            "[[data-theme-preference=dark]_&]:bg-gray-200 [[data-theme-preference=dark]_&]:dark:bg-gray-700"
+        ]}
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="light"
-      >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="dark"
-      >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
+        <.icon name={icon} class="size-4" />
+      </.button>
     </div>
     """
   end

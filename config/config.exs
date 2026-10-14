@@ -12,6 +12,10 @@ import Config
 config :beamlet_web,
   generators: [context_app: false]
 
+config :petal_components,
+       :error_translator_function,
+       {BeamletWeb.CoreComponents, :translate_error}
+
 # Configures the endpoint
 config :beamlet_web, BeamletWeb.Endpoint,
   url: [host: "localhost"],

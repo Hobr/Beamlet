@@ -25,7 +25,7 @@ defmodule BeamletWeb.MixProject do
   def application do
     [
       mod: {BeamletWeb.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :os_mon]
     ]
   end
 
@@ -46,7 +46,7 @@ defmodule BeamletWeb.MixProject do
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
-      {:petal_components, "~> 3.2"},
+      {:petal_components, "~> 4.17.1"},
       {:mdex, "~> 0.12"},
       {:heroicons,
        github: "tailwindlabs/heroicons",
@@ -76,6 +76,7 @@ defmodule BeamletWeb.MixProject do
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind beamlet_web", "esbuild beamlet_web"],
       "assets.deploy": [
+        "compile",
         "tailwind beamlet_web --minify",
         "esbuild beamlet_web --minify",
         "phx.digest"

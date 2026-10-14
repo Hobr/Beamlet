@@ -67,7 +67,6 @@ defmodule BeamletWeb do
   def html do
     quote do
       use Phoenix.Component
-      use PetalComponents
 
       # Import convenience functions from controllers
       import Phoenix.Controller,
@@ -85,7 +84,13 @@ defmodule BeamletWeb do
 
       # HTML escaping functionality
       import Phoenix.HTML
-      # Core UI components
+      use PetalComponents
+
+      # Keep Phoenix generator APIs for labelled inputs, navigation buttons,
+      # and tables with action slots; their implementations use Petal.
+      import PetalComponents.Button, except: [button: 1]
+      import PetalComponents.Input, except: [input: 1]
+      import PetalComponents.Table, except: [table: 1]
       import BeamletWeb.CoreComponents
 
       # Common modules used in templates

@@ -50,6 +50,7 @@ MIX_ENV=prod mix compile
 # Web server
 ## Init
 mix setup
+mix assets.build
 ## Webserver
 mix phx.server
 

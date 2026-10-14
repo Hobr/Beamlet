@@ -28,8 +28,10 @@ beamlet_web-*.tar
 # Ignore assets that are produced by build tools.
 /priv/static/assets/
 
-# Ignore digested assets cache.
+# Ignore digested assets cache and generated copies of source static files.
 /priv/static/cache_manifest.json
+/priv/static/**/*-????????????????????????????????.*
+/priv/static/**/*.gz
 
 # In case you use Node.js/npm, you want to ignore these.
 npm-debug.log

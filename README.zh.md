@@ -50,6 +50,7 @@ MIX_ENV=prod mix compile
 # 网站
 ## 初始化
 mix setup
+mix assets.build
 ## 服务器
 mix phx.server
 
