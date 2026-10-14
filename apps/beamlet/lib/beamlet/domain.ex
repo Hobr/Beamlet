@@ -377,7 +377,7 @@ defmodule Beamlet.Domain do
   end
 
   defp record_new_report(intent, execution, report, context) do
-    conflict = Enum.any?(execution.reports, &conflicting?(&1, report))
+    conflict = execution.conflict or Enum.any?(execution.reports, &conflicting?(&1, report))
     updated_intent = put_execution(intent, project_report(execution, report, conflict))
 
     events = [

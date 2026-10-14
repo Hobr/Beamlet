@@ -5,7 +5,8 @@ Beamlet!!!!! 是基于它的 Agent 框架及其系列产品的名称, 五个感�
 本目录主要描述 Beamlet 引擎及其与上层调用方的边界, 不将 Beamlet!!!!! 的完整 Agent 恢复纳入引擎职责.
 命名与规划中的组件见 [README](../README.md). RFC 解释设计取舍, SPEC 规定行为与验收要求.
 本目录保留架构规格与可执行模型. [领域核心](../apps/beamlet/README.md) 已实现受限值, 执行状态机,
-安全替代/RetryOnce 规则与独立报告来源; 尚无 Runtime/Ecto 执行闭环, 实现范围与代码测试见该应用说明.
+安全替代/RetryOnce 规则与独立报告来源. [SQLite Storage](../apps/beamlet_runtime/README.md) 已接入真实事务与重启恢复,
+尚无 Worker/Handler 外部执行闭环. [模型与实现对照](implementation-conformance.md) 记录对应范围、修正与验证边界.
 
 ## 从这里开始
 

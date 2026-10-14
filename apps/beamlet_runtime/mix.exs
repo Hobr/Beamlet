@@ -26,7 +26,10 @@ defmodule BeamletRuntime.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:beamlet, in_umbrella: true}
+      {:beamlet, in_umbrella: true},
+      {:ecto_sql, "~> 3.13"},
+      {:ecto_sqlite3, "~> 0.22"},
+      {:jason, "~> 1.4"}
     ]
   end
 end

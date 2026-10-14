@@ -625,6 +625,34 @@ defmodule Beamlet.RecoveryTest do
              Domain.transition(intent, {:authorize, token, malformed}, context())
   end
 
+  test "NotExecuted knowledge cannot be changed into Failure by a later error" do
+    {intent, token} = authorized(:none, :stop_on_failure)
+    excluded = step(intent, {:record_report, exclusion_report(token, binding(:none))}).intent
+    failed = step(excluded, {:record_report, worker_report(token, :failure)}).intent
+    assert failed.executions["execution-1"].result.kind == :not_executed
+    assert failed.phase == :open
+
+    assert {:error, :unresolved_risk} =
+             Domain.transition(failed, {:stop_known_failure, "execution-1"}, context())
+  end
+
+  test "late NotExecuted does not replace first Failure knowledge or revive an expired retry basis" do
+    {intent, token} = authorized(100)
+    failed = step(intent, {:record_report, worker_report(token, :failure)}).intent
+    excluded = step(failed, {:record_report, exclusion_report(token, binding(100))}).intent
+    assert excluded.executions["execution-1"].result.kind == :failure
+
+    assert {:error, :unsafe_retry} =
+             Domain.transition(
+               excluded,
+               {:replace_execution, "execution-1", "execution-2", "recover"},
+               context(11, 101)
+             )
+
+    assert step(excluded, {:stop_known_failure, "execution-1"}, context(11, 101)).intent.outcome.kind ==
+             :failed
+  end
+
   test "query and callback reports share conflict rules without sharing report identities" do
     {intent, token} = authorized()
     query = external_report(token, :query, :failure, binding(), "failed")

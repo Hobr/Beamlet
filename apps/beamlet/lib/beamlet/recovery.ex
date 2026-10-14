@@ -15,7 +15,7 @@ defmodule Beamlet.Recovery do
   def basis(execution, context) do
     cond do
       is_nil(execution.authorization) -> {:ok, :unstarted}
-      not is_nil(execution.exclusion) -> {:ok, :not_executed}
+      not_executed_known?(execution) -> {:ok, :not_executed}
       Binding.idempotency_valid?(execution.binding, context) -> {:ok, :idempotency}
       true -> {:error, :unsafe_retry}
     end
@@ -57,7 +57,9 @@ defmodule Beamlet.Recovery do
   def failure_qualified?(intent, report) do
     current_id = Report.execution_id(report)
 
-    intent.current_execution_id == current_id and no_conflicts?(intent) and
+    intent.current_execution_id == current_id and
+      match?(%Report{kind: :failure}, intent.executions[current_id].result) and
+      no_conflicts?(intent) and
       no_unresolved_risk?(intent) and not old_success?(intent, current_id)
   end
 
@@ -79,18 +81,21 @@ defmodule Beamlet.Recovery do
 
   defp recovery_reason?(execution) do
     is_nil(execution.authorization) or execution.phase == :unknown or
-      not is_nil(execution.exclusion) or match?(%Report{kind: :failure}, execution.result)
+      match?(%Report{kind: kind} when kind in [:failure, :not_executed], execution.result)
   end
 
   defp same_resource?(nil, _binding), do: true
   defp same_resource?(original, binding), do: original["resource"] === binding["resource"]
+
+  defp not_executed_known?(execution),
+    do: match?(%Report{kind: :not_executed}, execution.result) and not is_nil(execution.exclusion)
 
   defp validate_basis(previous, :unstarted, _binding, _context) do
     if is_nil(previous.authorization), do: :ok, else: {:error, :unsafe_retry}
   end
 
   defp validate_basis(previous, :not_executed, _binding, _context) do
-    if previous.exclusion, do: :ok, else: {:error, :unsafe_retry}
+    if not_executed_known?(previous), do: :ok, else: {:error, :unsafe_retry}
   end
 
   defp validate_basis(previous, :idempotency, binding, context) do
