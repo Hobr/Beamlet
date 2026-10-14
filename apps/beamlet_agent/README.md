@@ -1,9 +1,9 @@
 # Beamlet-Agent：持久调用方组合
 
-当前增量是 `Beamlet.Agent.Caller`：基于 Beamlet 独立 Intent 的本地 await-all 便利层。
+`Beamlet.Agent.Caller` 提供基于独立 Intent 的持久 await-all，以及单个 Success 驱动后续 Effect 的可恢复决定。
 它不是完整 LLM Agent loop、通用 Workflow 或调用栈恢复。
-依据 [多 Intent / Tool Call 契约](../../model/spec/multi-intent-and-tool-calls.md) §1–7，
-对应 Quint 的 `openRound`、`multiResolve`、`readDependency`、`collectRound`。
+依据 [多 Intent / Tool Call 契约](../../model/spec/multi-intent-and-tool-calls.md) §1–8，
+对应 Quint 的 `openRound`、`multiResolve`、`readDependency`、`collectRound` 与单步 Continuation。
 
 ## 职责与持久边界
 
@@ -94,10 +94,78 @@ progress.aggregate
 - 保存清单后退出：从原清单继续。Authority 接受后回复/调用方写入丢失：
   重投原 Identity/Definition，找回原 Intent，而非创建语义相同的新操作。
 - Authority 已 Closed、调用方尚未保存结果：ReadFacts 取回原 Outcome，不再创建 Execution。
-- 不支持空清单、unkeyed、多个 collection 同轮、await-any/quorum、自动取消、持久决策/Continuation。
+- 不支持空清单、unkeyed、多个 collection 同轮、await-any/quorum、自动取消或自动运行任意决策循环。
 - 每轮 1–256 个 slot，分页最多 1,000；编码后 manifest/progress 各最多 16 MiB。
   后续结果导致容量不足也只返回存储错误，不改写引擎事实或伪造终态。
-- 保存 aggregate 不保证后续 LLM/业务代码或外部副作用只执行一次；稳定 decision/后续身份是下一增量。
+- 保存 aggregate/decision 不保证后续 LLM/业务代码或外部副作用只执行一次；后续 Effect 须继续使用原持久身份。
+
+## 单步持久决定与 Continuation
+
+原 round 有 A/B；通过 `advance` 收集 A 的 Succeeded 后，可保存一个决定并驱动 C，
+无需等待 B。Pending/Unknown/Failed/Cancelled 不能成为本单步规则的消费结果。
+decision 不让原 round 提前完成，也不改变 B 的生命周期或 Outcome。
+
+| 操作 | 行为 |
+| --- | --- |
+| `decide(caller, computation, step_key, opts, planner)` | 原子 create-or-get 单步决定；首次调用验证来源并计算候选，已有记录直接复用 |
+| `read_decision/3` | 读取原消费材料、规则版本、选择值与后续 Definition/Identity，不运行 planner |
+| `discover_decisions(caller, computation, cursor \\ "", limit \\ 100)` | 查找已有步骤，包括决定已存但后续清单尚未建立的窗口 |
+| `register_next/3` | 只根据已提交决定建立后续清单，不发送 C |
+| `advance_next/3` | 幂等恢复后续清单，随后以原身份 submit/read/汇总 |
+
+稳定身份为 `{owner, computation, step_key}`。决定保存原 round、slot、Intent、完整 Outcome、
+规则版本、受限值选择内容、后续 round 和一个完整 Dependency。
+后续输入必须严格等于消费的 Outcome.value，后续提交身份必须不同于原清单中的身份，
+对齐 `continuation/logic.qnt` 的单步输入传递。此处不提供任意变换输入、多消费集合或自动 LLM loop。
+
+`opts` 是且仅是 `source_round`、`source_slot`、`rule`；rule 是可信应用指定的语义版本，
+不是动态模块名，也不提供治理规则登记/ACL。
+`planner` 接收完整 Outcome，只计算并返回
+`{:ok, %{value: restricted_value, next_round: stable_key, dependency: dependency}}`。
+它在 SQL 事务外运行，不能承担发送 Effect 的职责；异常/exit/非法回复不产生决定。
+调用方收集的 Outcome 是此前 ReadFacts 已核验的不可变结果，新的决定在 SQL 保护内重新核对原 slot/结果关联。
+
+**冲突策略：先提交者生效。** 相同决定身份已有记录时，不运行 planner、不应用新 opts，
+直接返回原记录；并发候选可能都计算，但后提交者使用原决定。不能依赖 planner 只执行一次。
+需要另一个逻辑决定必须使用新 step_key；新通知或 B 完成不能改变原决定。
+
+提交顺序：
+
+1. 调用方已保存原清单并收集合格 Success。
+2. `decide` 只提交不可变决定；此时后续 round 仍不存在。
+3. `register_next` 从原记录建立清单。
+4. `advance_next` 或该 round 的 `advance` 提交 C；回复丢失仍复用原身份。
+
+决定原子保留后续 round 名称，同 owner 下只能由一份决定保留；
+`open` 也验证该 round 的完整清单，不能换 key/输入。
+如果 round 在决定之前已存在，首次决定返回 `:successor_round_exists`，即使清单相同也不追认。
+重启应先 `discover_decisions` / `read_decision` 再 `advance_next`，不重新生成决定或 C 身份。
+
+在上面的 Echo 示例中收集到 answer 后：
+
+```elixir
+{:ok, decision} = Caller.decide(caller, "computation-1", "step-1",
+  [source_round: "round-1", source_slot: "answer", rule: "copy-success.v1"],
+  fn outcome ->
+    {:ok, next_identity} = Identity.new("local", "agent-1", "echo-2")
+    {:ok, next_definition} = Definition.new(%{operation: "beamlet.echo.v1", input: outcome.value})
+    {:ok, next_dependency} = Dependency.new("follow-up", next_identity, next_definition)
+    {:ok, %{value: %{"choice" => "echo"}, next_round: "round-2", dependency: next_dependency}}
+  end)
+
+{:ok, _manifest} = Caller.register_next(caller, "computation-1", "step-1")
+{:ok, _progress} = Caller.advance_next(caller, "computation-1", "step-1")
+{:ok, _page} = Scheduler.scan_once(coordinator, [worker])
+decision.outcome
+```
+
+只读/不可用数据库导致决定或清单不能提交时，禁止该路径继续发送。
+`:caller_commit_indeterminate` 仍须按原身份 read/重试；决定尚未提交时可重新计算，
+一旦成功提交就必须复用原选择。C 已 Closed 后读取原 Outcome，不创建新 Execution。
+
+`migrate` 增加 schema v2 决定表，保留 v1 清单/进度编码；有真实 v1 数据升级测试。
+新程序使用前必须完成迁移。不承诺 v1/v2 程序混合写入：旧程序没有保留清单检查，
+也不提供备份回滚或克隆隔离保证。
 
 ## 验收
 
@@ -107,4 +175,5 @@ progress.aggregate
 Unknown、Failed/Cancelled 兄弟隔离、独立 Repo 并发、接受回复丢失、真实只读写故障、
 Authority 离线/调用方重启、Handler 暂缺、未知格式、容量限制及分页发现。
 
+另有 20 个 Continuation 集成测试覆盖原部分结果推进、决定/清单保存后的重启、调用方进程强杀、C 接受回复丢失、C 离线完成、B 迟到、独立 Repo 竞争、实际只读故障、作用域及 v1 数据升级。
 有限工程测试不等于 SQL/调用方到 Quint 的无界 refinement 证明。

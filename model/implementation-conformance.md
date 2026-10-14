@@ -160,7 +160,7 @@ Authority 和调用方分别提交，没有跨数据库原子性。详细接口�
 工程细化：关联和已核验结果缓存也持久保存，不直接映射为模型必须随 crash 清空的 `agentLocals`；
 它们是额外调用方材料，依赖原 Authority 的不可变 Outcome/历史连续性。最终 aggregate 才对应 round.completed/results。
 清单按 slot 规范排序；提前拒绝同 Identity 异 Definition 是保守收窄。
-当前只支持单 collection 的本地 await-all，不提供自动 Agent loop、持久 decision、Continuation、远端 ACL 或跨存储恢复证明。
+该阶段只实现单 collection 的本地 await-all；后续单步 decision/Continuation 增量见下文。自动 Agent loop、远端 ACL 和跨存储恢复证明未提供。
 
 19 个 Caller 测试包含独立 Repo 并发和真实只读 SQL 故障；
 验证 Authority 已接受、调用方未存关联时仍按原身份恢复，而不把 SQL 错误当 Failed。
@@ -168,9 +168,40 @@ Authority 和调用方分别提交，没有跨数据库原子性。详细接口�
 本增量完整 umbrella 重跑 225 个测试/文档测试通过；19 个 Caller 测试以 seed=1/42 重跑通过。
 Quint 多 Intent 42 个、三依赖 10 个确定场景重新执行通过；未在本增量全量重跑其他组、mutation 或历史采样预算。
 
+## 单步持久决定 / Continuation 增量
+
+`Caller.decide/read_decision/discover_decisions/register_next/advance_next` 实现 SPEC §8 的固定单成功来源推进。
+已收集 A 的 Succeeded 可以驱动 C，原 A/B round 未收齐时继续保持未完成。
+消费原完整 Outcome、规则版本、选择值、后续 key/定义一起保存在调用方 schema v2；
+Domain、Authority Storage 和 Quint 规则未修改。
+
+| Quint 条件 | 实现及工程验收 |
+| --- | --- |
+| `sourceQualified`, `decisionSourcesSound` | 只消费原 slot 的已收集 Succeeded，SQL 内复核 slot/Intent/完整 Outcome；C 输入等于原业务值，不使用通知/报告 |
+| `applyDecide`, `decisionStable` | owner/computation/step 唯一身份、不可变决定及 SQL update 拒绝；首次提交生效，重投不运行 planner |
+| `canRegister`, `manifestMatches`, `nextManifestSound` | 决定先提交，再从原记录建立 C 清单；保留后续 round，错误清单拒绝，已有 round 不追认为新决定 |
+| `requestReady`, `dispatchOrdering` | advance_next 成功建立清单后才 submit；决定/注册写故障不发送 C |
+| `recoveredManifestWitness`, `recoveredSuccessorWitness` | 决定/清单保存后重启、C 接受回复丢失、Closed 结果复用；不按 sent 内存标记跳过 |
+| 原 round 的 `toolRoundsSound` | 原 B 未终结不因 A 决定而完成；B 迟到不覆盖消费集合或重算 C |
+
+工程扩展与限制：模型固定一步及整数身份，当前实现支持显式文本 computation/step 及一次调用一个后续依赖。
+它并未验证任意多步循环。选择内容为额外受限值诊断/业务材料，不影响 C 输入的固定传递守卫。
+已有决定身份采用明确的“先提交者生效”策略；并发 planner 可能计算多次，后提交者返回原记录。
+独立 Repo 竞争测试是模型之外的工程验收，不宣称 Quint 检查了多个并发调用方实例决策。
+已持久保存的结果缓存仍依赖原 Authority 历史连续性，不解决回滚/克隆或外部业务代码 exactly-once。
+
+20 个新集成测试覆盖各提交/退出窗口、进程强杀、原身份恢复、B 乱序完成、真实只读 SQL 故障和 v1→v2 迁移。
+首条部分推进验收在实现前失败，接口完成后通过。新程序要求先执行迁移；
+v1/v2 混合写入不受支持，旧程序不能绕过新版后续保留检查而仍宣称 Continuation 保证。
+本轮完整 umbrella 245 个测试/文档测试通过；20 个 Continuation 测试以 seed=1/42 重跑通过。
+Quint `continuationTests` 25 个场景以 `--seed 42 --max-samples 1 --backend rust` 重新执行通过。
+未将无 seed 的默认每个随机测试 10,000 次预算算作完成；不声称本轮全量重跑其他模型组或 mutation。
+强制编译、严格 Credo、格式/diff、变更文件主动 LSP 及 README 两段示例实际运行通过。
+这是有限接口验收，不是 Caller/SQL 的自动 refinement 证明。
+
 ## 仍在模型而不在产品实现中的部分
 
 协调/治理, conflict disposition, rule retirement/withdrawal, 跨设备可靠传输与认证/权限流程,
-真实 Provider 的验签/查询/排除保证, 完整 Agent loop/持久 decision/多依赖 continuation,
+真实 Provider 的验签/查询/排除保证, 完整 Agent loop/任意多来源多步决策,
 外部 CAS/receipt, PostgreSQL 和真实掉电验收尚未实现.
 这些模型提供后续设计与验收依据; 现有模拟通过不能当作这些工程部分已经完成.

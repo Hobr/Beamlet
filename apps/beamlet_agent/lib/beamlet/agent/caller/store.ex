@@ -1,6 +1,6 @@
 defmodule Beamlet.Agent.Caller.Store do
   @moduledoc false
-  alias Beamlet.Agent.Caller.{Dependency, Repo, Round, Schema}
+  alias Beamlet.Agent.Caller.{Decision, DecisionSchema, Dependency, Repo, Round, Schema}
   alias BeamletRuntime.Storage.Codec
   alias Ecto.Adapters.SQL
 
@@ -35,7 +35,7 @@ defmodule Beamlet.Agent.Caller.Store do
 
   def migrate(repo) do
     with_repo(repo, fn ->
-      Ecto.Migrator.run(Repo, [{1, Schema}], :up, all: true, log: false)
+      Ecto.Migrator.run(Repo, [{1, Schema}, {2, DecisionSchema}], :up, all: true, log: false)
       :ok
     end)
   end
@@ -52,6 +52,8 @@ defmodule Beamlet.Agent.Caller.Store do
   end
 
   defp create_or_get(caller, round) do
+    validate_reserved_manifest(caller, round)
+
     case lookup(caller, round.key) do
       nil ->
         sql(
@@ -165,6 +167,120 @@ defmodule Beamlet.Agent.Caller.Store do
           {:ok, round} -> round
           {:error, reason} -> Repo.rollback(reason)
         end
+    end
+  end
+
+  def decision(caller, computation, key) do
+    transaction(
+      caller.repo,
+      fn -> lookup_decision(caller, computation, key) || Repo.rollback(:decision_not_found) end,
+      :deferred
+    )
+  end
+
+  def commit_decision(caller, decision) do
+    transaction(caller.repo, fn ->
+      case lookup_decision(caller, decision.computation, decision.key) do
+        nil -> insert_decision(caller, decision)
+        saved -> saved
+      end
+    end)
+  end
+
+  defp insert_decision(caller, decision) do
+    source = fetch(caller, decision.source_round)
+
+    unless Decision.source_matches?(decision, source),
+      do: Repo.rollback(:decision_source_mismatch)
+
+    if lookup(caller, decision.next_round), do: Repo.rollback(:successor_round_exists)
+    if reservation(caller, decision.next_round), do: Repo.rollback(:successor_round_reserved)
+
+    sql(
+      "INSERT INTO caller_decisions(owner,computation,step_key,collection,source_round,next_round,payload) VALUES(?,?,?,?,?,?,?)",
+      [
+        decision.owner,
+        decision.computation,
+        decision.key,
+        decision.collection,
+        decision.source_round,
+        decision.next_round,
+        encode(Decision.pack(decision))
+      ]
+    )
+
+    decision
+  end
+
+  def register_next(caller, computation, key) do
+    transaction(caller.repo, fn ->
+      decision = lookup_decision(caller, computation, key) || Repo.rollback(:decision_not_found)
+
+      round = %Round{
+        owner: caller.owner,
+        collection: decision.collection,
+        key: decision.next_round,
+        dependencies: [decision.dependency]
+      }
+
+      create_or_get(caller, round)
+    end)
+  end
+
+  def discover_decisions(caller, computation, cursor, limit) do
+    transaction(
+      caller.repo,
+      fn ->
+        sql(
+          "SELECT step_key FROM caller_decisions WHERE owner=? AND collection=? AND computation=? AND step_key>? ORDER BY step_key COLLATE BINARY LIMIT ?",
+          [caller.owner, caller.coordinator.collection, computation, cursor, limit]
+        ).rows
+        |> Enum.map(fn [key] -> key end)
+      end,
+      :deferred
+    )
+  end
+
+  defp lookup_decision(caller, computation, key) do
+    case sql(
+           "SELECT collection,source_round,next_round,payload FROM caller_decisions WHERE owner=? AND computation=? AND step_key=?",
+           [caller.owner, computation, key]
+         ).rows do
+      [] ->
+        nil
+
+      [[collection, source_key, next_key, payload]] ->
+        if collection !== caller.coordinator.collection,
+          do: Repo.rollback(:decision_collection_mismatch)
+
+        with {:ok, decision} <- Decision.restore(caller, computation, key, decode(payload)),
+             true <- decision.source_round == source_key and decision.next_round == next_key,
+             true <- Decision.source_matches?(decision, fetch(caller, source_key)) do
+          decision
+        else
+          _corrupt -> Repo.rollback(:corrupt_caller_decision)
+        end
+    end
+  end
+
+  defp reservation(caller, next_key) do
+    case sql("SELECT computation,step_key FROM caller_decisions WHERE owner=? AND next_round=?", [
+           caller.owner,
+           next_key
+         ]).rows do
+      [] -> nil
+      [[computation, key]] -> lookup_decision(caller, computation, key)
+    end
+  end
+
+  defp validate_reserved_manifest(caller, round) do
+    case reservation(caller, round.key) do
+      nil ->
+        :ok
+
+      decision ->
+        if round.dependencies !== [decision.dependency],
+          do: Repo.rollback(:round_definition_conflict)
     end
   end
 
