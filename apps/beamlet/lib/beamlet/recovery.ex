@@ -7,15 +7,16 @@ defmodule Beamlet.Recovery do
   The two-attempt budget counts creation, including attempts never invoked.
   """
 
-  alias Beamlet.{Binding, Execution, Intent, Report}
+  alias Beamlet.{Binding, Execution, Intent, Judgment, Report}
 
   @type basis :: :unstarted | :not_executed | :idempotency
 
-  @spec basis(Execution.t(), map()) :: {:ok, basis()} | {:error, :unsafe_retry}
-  def basis(execution, context) do
+  @doc "Recovery basis requires the Intent's current evidence interpretation."
+  @spec basis(Intent.t(), Execution.t(), map()) :: {:ok, basis()} | {:error, :unsafe_retry}
+  def basis(intent, execution, context) do
     cond do
       is_nil(execution.authorization) -> {:ok, :unstarted}
-      not_executed_known?(execution) -> {:ok, :not_executed}
+      Judgment.knowledge(intent, execution.id) == :not_executed -> {:ok, :not_executed}
       Binding.idempotency_valid?(execution.binding, context) -> {:ok, :idempotency}
       true -> {:error, :unsafe_retry}
     end
@@ -29,8 +30,8 @@ defmodule Beamlet.Recovery do
       map_size(intent.executions) >= 2 -> {:error, :retry_budget_exhausted}
       Map.has_key?(intent.executions, new_id) -> {:error, :execution_id_reused}
       not no_conflicts?(intent) -> {:error, :unreconciled_conflict}
-      not recovery_reason?(execution) -> {:error, :no_recovery_reason}
-      true -> basis(execution, context)
+      not recovery_reason?(intent, execution) -> {:error, :no_recovery_reason}
+      true -> basis(intent, execution, context)
     end
   end
 
@@ -43,62 +44,48 @@ defmodule Beamlet.Recovery do
     cond do
       not no_conflicts?(intent) -> {:error, :unreconciled_conflict}
       not same_resource?(previous.binding, binding) -> {:error, :retry_resource_mismatch}
-      true -> validate_basis(previous, execution.replacement.basis, binding, context)
+      true -> validate_basis(intent, previous, execution.replacement.basis, binding, context)
     end
   end
 
   @spec stop_required?(Intent.t(), Execution.t(), map()) :: boolean()
   def stop_required?(intent, execution, context) do
     intent.definition.policy == :stop_on_failure or map_size(intent.executions) >= 2 or
-      match?({:error, _}, basis(execution, context))
+      match?({:error, _}, basis(intent, execution, context))
   end
 
   @spec failure_qualified?(Intent.t(), Report.t()) :: boolean()
   def failure_qualified?(intent, report) do
     current_id = Report.execution_id(report)
 
-    intent.current_execution_id == current_id and
-      match?(%Report{kind: :failure}, intent.executions[current_id].result) and
+    report.kind == :failure and intent.current_execution_id == current_id and
+      Judgment.knowledge(intent, current_id) == :failure and Judgment.evidence?(intent, report) and
       no_conflicts?(intent) and
-      no_unresolved_risk?(intent) and not old_success?(intent, current_id)
+      Judgment.no_unresolved_risk?(intent) and not Judgment.old_success?(intent, current_id)
   end
 
   @spec no_conflicts?(Intent.t()) :: boolean()
-  def no_conflicts?(intent),
-    do: Enum.all?(intent.executions, fn {_id, execution} -> not execution.conflict end)
+  def no_conflicts?(intent), do: Judgment.no_conflicts?(intent)
 
-  defp no_unresolved_risk?(intent) do
-    Enum.all?(intent.executions, fn {_id, execution} ->
-      is_nil(execution.authorization) or not is_nil(execution.result)
-    end)
-  end
-
-  defp old_success?(intent, current_id) do
-    Enum.any?(intent.executions, fn {id, execution} ->
-      id != current_id and Enum.any?(execution.reports, &(&1.kind == :success))
-    end)
-  end
-
-  defp recovery_reason?(execution) do
+  defp recovery_reason?(intent, execution) do
     is_nil(execution.authorization) or execution.phase == :unknown or
-      match?(%Report{kind: kind} when kind in [:failure, :not_executed], execution.result)
+      Judgment.knowledge(intent, execution.id) in [:failure, :not_executed]
   end
 
   defp same_resource?(nil, _binding), do: true
   defp same_resource?(original, binding), do: original["resource"] === binding["resource"]
 
-  defp not_executed_known?(execution),
-    do: match?(%Report{kind: :not_executed}, execution.result) and not is_nil(execution.exclusion)
-
-  defp validate_basis(previous, :unstarted, _binding, _context) do
+  defp validate_basis(_intent, previous, :unstarted, _binding, _context) do
     if is_nil(previous.authorization), do: :ok, else: {:error, :unsafe_retry}
   end
 
-  defp validate_basis(previous, :not_executed, _binding, _context) do
-    if not_executed_known?(previous), do: :ok, else: {:error, :unsafe_retry}
+  defp validate_basis(intent, previous, :not_executed, _binding, _context) do
+    if Judgment.knowledge(intent, previous.id) == :not_executed,
+      do: :ok,
+      else: {:error, :unsafe_retry}
   end
 
-  defp validate_basis(previous, :idempotency, binding, context) do
+  defp validate_basis(_intent, previous, :idempotency, binding, context) do
     valid =
       Binding.same_retry_protocol?(previous.binding, binding) and
         Binding.idempotency_valid?(previous.binding, context) and

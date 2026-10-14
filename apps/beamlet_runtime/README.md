@@ -194,6 +194,21 @@ Prepared/StartAuthorized/Waiting/Unknown/Resolved 当前尝试的候选, 默认�
 未提供时按没有可重验的有限保证处理. 本实现不声称 SQLite 墙钟等于资源时间;
 外部协议仍须保证延迟到达的过期 key 不重新产生效果.
 
+## 证据协调与命令恢复
+
+`Coordinator.reconcile/3` 已接入可信本地 verifier、独立 judgment revision 和持久命令身份。
+支持旧成功采用、合格当前失败采用、逐报告冲突处置、证据排除、部分取代及范围撤销；
+接受或明确拒绝连同原处理结果/History 原子保存，重投不重判。
+规则精确语义版本核验及普通退役语义已接入受信 Policy 输入，尚无独立治理控制面。
+入口默认关闭；配置方法、权限边界和 Codec v1→v2 兼容见 [协调说明](RECONCILIATION.md)。
+
+## 共享对象 CAS 与 receipt
+
+`Object.Store` 与 `Handlers.SharedObject` 已实现独立数据库的 `object.replace_if_version.v1`。
+资源版本检查、条件修改及请求绑定 receipt 同事务提交；两个 Intent 竞争同一版本只写入一次，
+applied/version_mismatch 都是正常 Success。原响应丢失可按原 receipt 查询恢复，不从当前内容猜测完成。
+这是数据库逻辑对象协议，不是普通文件系统 CAS；完整契约、运行示例及限制见 [共享对象说明](OBJECTS.md)。
+
 ## 验证边界
 
 运行 `mix test --warnings-as-errors` 或在根目录运行完整 umbrella 测试.
@@ -208,6 +223,12 @@ Worker 新 incarnation, Prepared 重领, 在途 Worker 崩溃/原查询恢复, P
 另有 17 个审批测试使用 Authority/资源两个真实数据库, 覆盖 approve/deny 正常完成、未授权响应、不可变 receipt,
 创建响应丢失、早到完成、Worker/资源重启、独立 Repo 并发建立/决定、安全替代重用原审批、原 scope 与实例绑定.
 共享 Worker 的不同 Intent 故意复用局部 Execution ID, 验证许可/标记/报告隔离及原 key 的独立结果重建.
+
+另有 18 个共享资源测试覆盖 CAS 竞争、receipt 原子回滚、独立 Repo 并发、原请求重投、资源/Authority 重启、
+安全替代、取消后迟到证据、实例/scope 拒绝、只读故障、受限值与版本耗尽。
+
+另有 13 个协调 SQL/Runtime 测试，覆盖命令原结果/拒绝重放、决定/Outcome/History 原子回滚、
+独立 Repo 并发、读写权限分离、规则退役、处置/部分撤销重启和 Codec v1 读取升级。
 
 Repo 停止/重启与丢弃已提交回复不等于真实掉电或 commit 网络断连测试.
 文件系统/磁盘掉电保证, 更细故障分类, PostgreSQL 符合性, 远端权限/认证与真实 provider 条件仍需后续验收.

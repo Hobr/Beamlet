@@ -20,8 +20,10 @@ defmodule Beamlet.Domain do
     Execution,
     Identity,
     Intent,
+    Judgment,
     Lease,
     Outcome,
+    Reconciliation,
     Recovery,
     Report,
     Token,
@@ -44,6 +46,8 @@ defmodule Beamlet.Domain do
           | {:replace_execution, String.t(), String.t(), String.t()}
           | {:stop_known_failure, String.t()}
           | {:cancel, Value.t()}
+          | {:reconcile, Beamlet.Reconciliation.Command.t(), Beamlet.Reconciliation.Policy.t(),
+             %{may_submit: boolean(), may_read: boolean()}}
   @type result :: {:ok, Transition.t()} | {:error, atom()}
 
   @spec new_intent(String.t(), Identity.t(), Definition.t(), context()) :: result()
@@ -81,7 +85,17 @@ defmodule Beamlet.Domain do
 
   @spec transition(Intent.t(), command(), context()) :: result()
   def transition(%Intent{} = intent, command, context) do
-    with :ok <- validate_context(context), do: execute(intent, command, context)
+    with :ok <- validate_context(context),
+         {:ok, transition} <- execute(intent, command, context) do
+      updated =
+        if transition.intent.judgment_revision == intent.judgment_revision,
+          do: Judgment.advance(intent, transition.intent),
+          else: transition.intent
+
+      if updated.judgment_revision > 9_223_372_036_854_775_807,
+        do: {:error, :judgment_revision_exhausted},
+        else: {:ok, %{transition | intent: updated}}
+    end
   end
 
   @doc """
@@ -222,6 +236,9 @@ defmodule Beamlet.Domain do
     end
   end
 
+  defp execute(intent, {:reconcile, command, policy, access}, context),
+    do: Reconciliation.process(intent, command, policy, access, context)
+
   defp execute(_intent, _command, _context), do: {:error, :unsupported_command}
 
   defp replace_execution(intent, old, new_id, reason, context) do
@@ -255,7 +272,8 @@ defmodule Beamlet.Domain do
   end
 
   defp stop_known_failure(intent, execution, context) do
-    report = Enum.find(execution.reports, &(&1.kind == :failure))
+    report =
+      Enum.find(execution.reports, &(&1.kind == :failure and Judgment.evidence?(intent, &1)))
 
     cond do
       is_nil(report) ->
@@ -378,7 +396,9 @@ defmodule Beamlet.Domain do
 
   defp record_new_report(intent, execution, report, context) do
     conflict = execution.conflict or Enum.any?(execution.reports, &conflicting?(&1, report))
-    updated_intent = put_execution(intent, project_report(execution, report, conflict))
+
+    updated_intent =
+      Judgment.advance(intent, put_execution(intent, project_report(execution, report, conflict)))
 
     events = [
       event(:report_recorded, execution.id, context, %{
@@ -463,7 +483,8 @@ defmodule Beamlet.Domain do
 
     intent.phase == :open and intent.current_execution_id == execution.id and
       Recovery.no_conflicts?(intent) and
-      (report.kind == :success or
+      Judgment.evidence?(intent, report) and
+      ((report.kind == :success and Judgment.knowledge(intent, execution.id) == :success) or
          (report.kind == :failure and Recovery.stop_required?(intent, execution, context) and
             Recovery.failure_qualified?(intent, report)))
   end
@@ -543,7 +564,12 @@ defmodule Beamlet.Domain do
     do: %{intent | executions: Map.put(intent.executions, execution.id, execution)}
 
   defp close(intent, outcome, events, reply),
-    do: change(%{intent | phase: :closed, outcome: outcome}, reply, events)
+    do:
+      change(
+        Judgment.advance(intent, %{intent | phase: :closed, outcome: outcome}),
+        reply,
+        events
+      )
 
   defp change(intent, reply, events \\ []),
     do: {:ok, %Transition{intent: intent, reply: reply, events: events}}

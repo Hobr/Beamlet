@@ -9,12 +9,20 @@ defmodule BeamletRuntime.Coordinator do
   Handler registration and resource validation are rechecked inside SQL for new
   authorizations; external invoke/query/verification never run inside SQL.
   """
-  alias Beamlet.{Domain, Identity, Recovery, Report, Token}
+  alias Beamlet.{Domain, Identity, Judgment, Recovery, Report, Token}
   alias BeamletRuntime.{Grant, Registry}
   alias BeamletRuntime.Storage.{Commit, SQLite}
 
   @enforce_keys [:repo, :collection, :actor, :handlers]
-  defstruct [:repo, :collection, :actor, :handlers, ttl: 30_000, storage_options: []]
+  defstruct [
+    :repo,
+    :collection,
+    :actor,
+    :handlers,
+    ttl: 30_000,
+    storage_options: [],
+    reconciliation: nil
+  ]
 
   def new(opts) do
     coordinator = struct!(__MODULE__, Map.new(opts))
@@ -46,6 +54,34 @@ defmodule BeamletRuntime.Coordinator do
     do: SQLite.discover(c.repo, c.collection, cursor, limit)
 
   def cancel(c, id, reason), do: command(c, id, {:cancel, reason})
+
+  @doc "Trusted bounded local verifier supplies current policy/access under SQL protection. No external IO."
+  def reconcile(c, id, proposal) do
+    result =
+      checked(c, id, fn intent, context ->
+        reconciliation_command(c.reconciliation, intent, proposal, context)
+      end)
+
+    case result do
+      {:ok, %Commit{reply: :command_forbidden}} -> {:error, :command_forbidden}
+      other -> other
+    end
+  end
+
+  defp reconciliation_command(verifier, intent, proposal, context)
+       when is_function(verifier, 3) do
+    case verifier.(intent, proposal, context) do
+      {:ok, policy, access} -> {:ok, {:reconcile, proposal, policy, access}}
+      {:error, _reason} = error -> error
+      _invalid -> {:error, :invalid_reconciliation_verifier_reply}
+    end
+  end
+
+  defp reconciliation_command(nil, _intent, _proposal, _context),
+    do: {:error, :reconciliation_disabled}
+
+  defp reconciliation_command(_invalid, _intent, _proposal, _context),
+    do: {:error, :invalid_reconciliation_verifier}
 
   def prepare(c, id) do
     checked(c, id, fn intent, _context ->
@@ -130,7 +166,7 @@ defmodule BeamletRuntime.Coordinator do
           context.now >= execution.lease.expires_at ->
         {:ok, {:expire, execution.id}}
 
-      match?(%Report{kind: :failure}, execution.result) and
+      Judgment.knowledge(intent, execution.id) == :failure and
           Recovery.stop_required?(intent, execution, context) ->
         {:ok, {:stop_known_failure, execution.id}}
 

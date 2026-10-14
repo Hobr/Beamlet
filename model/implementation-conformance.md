@@ -9,7 +9,7 @@
 | Quint 定义 | 当前代码 / 行为 |
 | --- | --- |
 | `Ledger.phase/current/attempts/outcomes` | `Intent.phase/current_execution_id/executions/outcome` |
-| `Attempt.knowledge` / `judgmentKnowledge` | `Execution.result` 的首份确定报告; Pending/NotFound 不提供确定 Knowledge |
+| `Attempt.knowledge` / `judgmentKnowledge` | 原始 `Execution.result` 保留首份确定报告；`Judgment.knowledge/2` 解释当前适用处置；Pending/NotFound 不提供确定 Knowledge |
 | `Attempt.negativeSeen` | 由保留的 NotFound 报告集合导出, 不另存布尔字段 |
 | `canCreate/applyCreate`, `canClaim/applyClaim` | Domain create/claim; storage expected generation 重投协议额外对应 `contracts/claim.qnt` |
 | `canAuthorize/applyAuthorize`, `canRenew`, `canExpire/applyExpire` | Domain authorize/renew/expire; 到期拒绝作为可提交的屏障返回 |
@@ -199,9 +199,88 @@ Quint `continuationTests` 25 个场景以 `--seed 42 --max-samples 1 --backend r
 强制编译、严格 Credo、格式/diff、变更文件主动 LSP 及 README 两段示例实际运行通过。
 这是有限接口验收，不是 Caller/SQL 的自动 refinement 证明。
 
+## 共享资源 CAS / receipt 增量
+
+`Object.Store` / `Handlers.SharedObject` 实现独立 SQLite 逻辑对象资源，
+Operation 为 `object.replace_if_version.v1`；不是普通文件系统或 SPEC 示例 file Operation 的内置驱动。
+输入直接保存受限 content，详见 [共享对象协议](../apps/beamlet_runtime/OBJECTS.md)。
+Domain、Authority Storage 和 Quint 模型未修改。
+
+| shared 模型条件 | 资源实现和验收 |
+| --- | --- |
+| `sameObjectKey`, `objectReceipt` | service instance/account/object/operation/collection/Intent 作用域；原完整请求比较；重复返回原 receipt，异请求拒绝 |
+| `applyObject`, `objectWritesSound` | immediate 事务内 CAS + 内容/版本 + receipt；两个初始版本请求只写一次；receipt 插入故障使写入回滚 |
+| `versionMismatchIsSuccessfulBusinessResultTest` | applied 与 version_mismatch 都返回 Success，版本不匹配不重写对象 |
+| `objectEvidenceSound`, `queryObject` | query 只接受原请求 receipt，receipt_ref 稳定；没有 receipt 则 NotFound，无 NotExecuted/Failure 推断 |
+| `externalCommitDoesNotImplyOutcomeTest` | 资源提交与 Authority 独立，丢弃 invoke 回复时 Intent 仍 Open，通过原查询接受 Outcome |
+| `workerLossRecoversOriginalReceiptTest`, `authorityRestartAfterResourceWriteTest` | Worker/Authority/资源完全重启，保留原 instance/binding/receipt，新会话不调用旧 grant |
+| `newExecutionReusesOriginalResourceReceiptTest` | 安全替代沿用 Intent key/原 scope，读取原 receipt，不重新进行 CAS 或覆盖后续写入 |
+
+工程细化：请求身份和内容为文本/受限值，资源可包含多个显式 account/object 和多个版本更新；
+模型固定两个 Intent 竞争初始版本，不能外推其已穷尽任意更新历史。
+Scope 中明确包含 collection，避免不同 Authority 域的相同局部 Intent ID 串键。
+每个数据库有持久 instance，防止同名新库继承原保证；仍不解决克隆/备份回滚。
+无 callback/Pending/NotExecuted/外部停止声明；有限幂等窗口、第三方认证/文件协议仍未实现。
+
+18 个真实资源/Authority SQLite 测试及 seed=1/42 重跑通过，
+含实际只读故障、receipt INSERT 回滚、不可变历史、版本上限和原请求精确重投。
+完整 umbrella 本轮 263 个测试/文档测试通过；共享资源 Quint 10 个场景以 seed=42/max-samples=1/Rust 重跑通过。
+严格 Credo（64 个源码文件）、格式/diff、五个变更 Elixir 文件的主动 LSP 检查通过；
+共享资源 README 示例实际执行，验证两个竞争 Outcome 和原身份重提交结果复用。
+既有直接 oracle 不因此自动覆盖本资源 SQL；本次是具体协议的有限工程验收，不是全量 refinement 证明。
+
+## 证据协调、规则资格与持久命令增量
+
+`Beamlet.Judgment` / `Reconciliation` 实现完整决定种类及当前解释，
+`Coordinator.reconcile/3` 在 SQL 保护内接收可信 verifier 的 Policy/access。
+原始报告/Knowledge、历史冲突及已接受 Outcome 不可覆盖。
+详细接口与部署前提见 [协调说明](../apps/beamlet_runtime/RECONCILIATION.md)。
+
+| Quint 函数 / 协议 | 实现与验收 |
+| --- | --- |
+| `judgmentBase/View`, `advanceJudgment` | 独立判断版本；续租/命令缓存/拒绝审计不增版；报告及终结可分别增版 |
+| `canReconcile`, `applyReconcileAndMaybeCommit` | 核验原完整报告、主体/精确规则版本、契约、全覆盖及取代引用；决定/Outcome/History 同 SQL 提交 |
+| `judgmentKnowledge`, `noConflicts`, `noUnresolvedRisk` | 当前解释与历史事实分开；全部排除恢复未知，不能消除授权未知风险；恢复/停止使用当前判断 |
+| `requiredSupersessions`, `advanceBindings` | 显式原所有者、部分取代/范围撤销，不恢复更早处置；新证据使适用性失效但保留所有权 |
+| `processCommand`, `commandReplyWithAccess` | 接受/明确拒绝共用稳定 ID；原请求/原结果不可变；提交/读取权限分开；Runtime 隐藏不可读 Commit |
+| `registeredRuleQualified`, 普通 retirement | 按受信 Policy 的精确语义版本/条件核验；退役不改旧记录、绑定、判断版本或重放结果 |
+
+模型注册/核验事实由可信 Policy 输入提供，本轮没有实现独立持久治理登记/退役服务或远端认证。
+SQL 快照保存接受时 Policy，供解释历史；不从请求方断言制造真实契约排除依据。
+Policy/evidence/reference 集合限制 256 项，总快照仍限制 16 MiB，容量故障保守返回错误。
+Codec 新写 v2，精确兼容原 v1 Intent 字段并补入空决定/命令及判断版本 0；
+旧报告/grant/Outcome/History 不变，v2 缺字段拒绝，旧/新程序混写不受支持。
+`Recovery.basis/3` 现在必须带 Intent，避免在协调后依赖已排除的原始 Knowledge。
+
+直接对照脚本（在 apps/beamlet 运行）：
+
+```sh
+mix run ../../scripts/check_reconciliation_conformance.exs
+```
+
+原样导入既有 Quint `beamletCore` 函数，不改模型规则：
+2,048 组＝4 种决定 × 2 种冲突前缀 × 4 种证据集合 × 4 种主体/规则版本
+× 2 种核验依据 × 2 种审查版本 × 4 种权限。
+比较资格、处理/只读重投结果、决定/命令数量、判断 revision、History 数、Outcome、
+当前 Knowledge 与冲突解除资格。
+另有 144 组＝3 种撤销范围 × 3 种引用模式 × 2 种核验依据 × 2 种审查版本 × 4 种权限，
+比较范围撤销资格、原结果重放、剩余绑定、判断版本/Knowledge/冲突和审计。
+共同前缀在模型使用 ALLOW_REPEAT=true，在代码用原无期限幂等契约安全替代；
+本对照不表示产品已实现接受重复风险的策略入口。
+
+本轮新增 18 个领域、13 个真实 SQL/Runtime 验收，seed=1/42 重跑通过。
+完整 umbrella 294 个测试/文档测试通过；原 2,000＋896 组对照继续通过。
+Quint repeatingTests 79、conflictTests 81 场景以 seed=42/max-samples=1/Rust 重跑通过。
+这些组含规则/退役/取代/撤销场景；未重跑全部模型组、mutation 或历史随机预算。
+强制编译、严格 Credo（72 个源码文件）、格式/diff 和 16 个变更 Elixir 文件的主动 LSP 检查通过；
+协调 README 的可信 verifier、旧成功采用与命令重投示例实际运行通过。
+不将有限矩阵与进程/数据库故障测试声称为完整 Runtime/SQL refinement 或无界证明。
+
 ## 仍在模型而不在产品实现中的部分
 
-协调/治理, conflict disposition, rule retirement/withdrawal, 跨设备可靠传输与认证/权限流程,
-真实 Provider 的验签/查询/排除保证, 完整 Agent loop/任意多来源多步决策,
-外部 CAS/receipt, PostgreSQL 和真实掉电验收尚未实现.
+模型可选 ALLOW_REPEAT 风险接受策略入口及内置资源的 CAN_FENCE 排除协议尚未实现。
+协调/处置/规则版本核验/退役语义/范围撤销已有本地实现，独立治理登记/发布/退役控制面仍缺。
+跨设备传输与认证/权限、真实 Provider 的验签/查询/排除保证、普通文件/API 的 CAS/receipt、
+PostgreSQL 和真实掉电验收，以及完整 Agent loop/任意多来源多步决策仍需工程实现与验收。
+本地数据库对象 CAS/receipt 已实现，不代表其他资源具有相同保证。
 这些模型提供后续设计与验收依据; 现有模拟通过不能当作这些工程部分已经完成.

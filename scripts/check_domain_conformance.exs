@@ -126,7 +126,7 @@ defmodule BeamletConformance do
       "reports" => length(execution.reports),
       "events" => events,
       "succeeded" => final.outcome != nil,
-      "safe" => match?({:ok, :not_executed}, Recovery.basis(execution, @context)),
+      "safe" => match?({:ok, :not_executed}, Recovery.basis(final, execution, @context)),
       "failureEligible" => failure != nil and Recovery.failure_qualified?(final, failure)
     }
 

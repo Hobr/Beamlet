@@ -31,7 +31,7 @@ defmodule BeamletRuntime.Storage.CodecTest do
   end
 
   test "unknown versions, arbitrary modules and unknown atoms cannot be loaded" do
-    assert {:error, :unsupported_storage_format} = Codec.decode(~s({"version":2,"value":null}))
+    assert {:error, :unsupported_storage_format} = Codec.decode(~s({"version":99,"value":null}))
 
     assert {:error, :corrupt_storage_value} =
              Codec.decode(~s({"version":1,"value":{"$atom":"unregistered_storage_atom"}}))

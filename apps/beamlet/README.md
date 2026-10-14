@@ -12,13 +12,14 @@
 - `Beamlet.Report.Source` / `Exclusion`: 独立 callback/query 作用域与可信的既往及未来执行排除证据.
 - `Intent` / `Execution` / `Outcome` / `Report`: 当前领域快照与不可覆盖证据.
 - `Beamlet.Transition`: 新快照, History 增量和处理结果, 供 Storage 同事务保存.
+- `Beamlet.Judgment` / `Reconciliation`: 当前证据判断、独立审查版本、冲突处置、采用/排除/撤销与持久命令结果.
 
 已授权后到期保留 grant 并进入 Unknown; Waiting 不因 lease 到期退回 Unknown.
 同 token 的授权重投返回原 Handler/资源/完成关联, 即使 lease 已到期或 Intent 已 Closed.
 相同报告重投不重复审计; 矛盾报告保留全部内容及冲突, 不覆盖已有 Outcome.
 `StopOnFailure` 的合格失败与终结增量一起返回. 取消只终结 Intent, 不表示外部停止.
 
-当前实现 [实现路线](../../model/spec/implementation-roadmap.md) 阶段 1 的纯领域规则.
+当前实现 [实现路线](../../model/spec/implementation-roadmap.md) 阶段 1 的纯领域规则，并接入后置证据协调增量。
 `RetryOnce` 最多建立两个尝试, 已建立但未调用也消耗预算. 合格 Failure 在不能安全重试或预算耗尽时终结;
 存在旧 Unknown, 未解释旧 Success 或冲突时保持 Open. 没有安全依据不建立后续尝试.
 Pending 的完成可来自原 Worker 或独立 callback/query; 完成可先于 Pending 到达.
@@ -46,6 +47,7 @@ Pending 的完成可来自原 Worker 或独立 callback/query; 完成可先于 P
 | `{:replace_execution, old_id, new_id, reason}` | 重验安全依据, 失效旧 lease, 建立新 Prepared/current, 保存原依据; 同身份/理由重投返回已建立尝试 |
 | `{:stop_known_failure, execution_id}` | 策略停止时接受合格的已存当前错误; 已 Closed 返回原 Outcome |
 | `{:cancel, reason}` | 保存逻辑取消; 已 Closed 返回原 Outcome |
+| `{:reconcile, command, policy, access}` | 按原审查版本、可信 Policy/权限核验采用/排除/撤销，保存原命令或明确拒绝 |
 
 所有 ID 在当前 Interface 中为非空 UTF-8 字符串, 上限 256 bytes. Lease generation 为非回绕正 64-bit 计数,
 时间使用有符号 64-bit epoch 毫秒, 相等即到期. 身份不自动归一化, 也不充当凭据.
@@ -53,7 +55,12 @@ Pending 的完成可来自原 Worker 或独立 callback/query; 完成可先于 P
 返回 `{:ok, %Transition{intent: snapshot, events: history_delta, reply: result}}` 或 `{:error, reason}`.
 前者是待提交决定, 不代表 Durable Stored. 到期拒绝可以在 Transition 中携带
 `reply: {:rejected, :lease_expired}` 和失效事件, Storage 须提交屏障后再回复拒绝.
-普通错误不返回待保存变化. History 的物理身份/提交组次序由 Storage 在原子保护内分配.
+普通错误不返回待保存变化；协调的明确领域拒绝返回待提交 Transition，以保留原命令身份与拒绝结果。
+History 的物理身份/提交组次序由 Storage 在原子保护内分配。
+
+协调保留原始 Knowledge/报告及历史冲突，通过 `Judgment` 解释当前证据。
+`Recovery.basis/3` 必须同时接收 Intent，以免把已排除的原始 Knowledge 当作当前安全依据。
+完整提案、可信核验、规则版本、部分取代/撤销及存储升级见 [协调说明](../beamlet_runtime/RECONCILIATION.md)。
 
 Runtime 必须先核验 principal/操作权限, Worker 来源, Handler 登记, 资源/硬约束及 Operation 的输入/结果 schema.
 binding 是可信配置/Adapter 提供的受限值快照, 至少含 operation, handler, protocol, resource;
