@@ -113,12 +113,11 @@ Resolved 失败在窗口失效后停止, 先完成后 Pending, 原 Worker 丢失
 3. query/callback 原先可能先运行 Adapter 再由核心拒绝未声明能力.
    现在按原授权 binding 检查 query/completion 能力后才运行 Adapter, 对应 `supportsQuery` / `supportsPending`.
 
-三项主回归均先复现失败再通过; 另验实际资源在派发/调用之间改变,
-及候选筛选不丢弃必须持久化的 expiry 拒绝屏障. 新能力不通过部署列表绕过原协议, 不修改 Quint/SPEC 来适配实现.
-本次重新执行: 77 个领域测试、86 个 Runtime 测试/文档测试、61 个本地执行/审批测试以 seed=42 重跑,
-49 个 Quint 正常使用场景、42 个多 Intent 场景, 以及 2,000 + 896 组直接对照, 均通过.
-该阶段根目录完整测试尝试曾受并行 Web 的 eqrcode 依赖覆盖配置阻塞; 独立核心/Runtime、严格 Credo、格式与主动 LSP 检查已通过。
-该阻塞在后续 Caller 增量的完整 umbrella 重跑时已不存在，不能视为当前仍阻塞。
+三项主回归均先复现失败再通过; 另验实际资源在派发/调用之间改变, 及候选筛选不丢弃必须持久化的 expiry 拒绝屏障.
+新能力不通过部署列表绕过原协议, 不修改 Quint/SPEC 来适配实现. 本次重新执行: 77 个领域测试、86 个 Runtime
+测试/文档测试、61 个本地执行/审批测试以 seed=42 重跑, 49 个 Quint 正常使用场景、42 个多 Intent 场景, 以及 2,000 + 896
+组直接对照, 均通过. 该阶段根目录完整测试尝试曾受并行 Web 的 eqrcode 依赖覆盖配置阻塞; 独立核心/Runtime、严格
+Credo、格式与主动 LSP 检查已通过。 该阻塞在后续 Caller 增量的完整 umbrella 重跑时已不存在，不能视为当前仍阻塞。
 未在本次重跑其他 Quint 组、全部 mutation 或历史模拟预算.
 
 ## 持久审批资源增量
@@ -160,8 +159,8 @@ Authority 和调用方分别提交，没有跨数据库原子性。详细接口�
 
 工程细化：关联和已核验结果缓存也持久保存，不直接映射为模型必须随 crash 清空的 `agentLocals`；
 它们是额外调用方材料，依赖原 Authority 的不可变 Outcome/历史连续性。最终 aggregate 才对应 round.completed/results。
-清单按 slot 规范排序；提前拒绝同 Identity 异 Definition 是保守收窄。
-该阶段只实现单 collection 的本地 await-all；后续单步 decision/Continuation 增量见下文。自动 Agent loop、远端 ACL 和跨存储恢复证明未提供。
+清单按 slot 规范排序；提前拒绝同 Identity 异 Definition 是保守收窄。 该阶段只实现单 collection 的本地
+await-all；后续单步 decision/Continuation 增量见下文。自动 Agent loop、远端 ACL 和跨存储恢复证明未提供。
 
 19 个 Caller 测试包含独立 Repo 并发和真实只读 SQL 故障；
 验证 Authority 已接受、调用方未存关联时仍按原身份恢复，而不把 SQL 错误当 Failed。
@@ -294,6 +293,7 @@ Codec 新写 v3，读取 v1/v2/v3，旧 Definition 仅导入默认拒绝风险�
 原 v1 Intent 的零版本基线兼容保留。不是旧/新程序混写或降级保证。
 
 本轮直接对照：
+
 - 2,000 组报告；原 896 组严格重试扩到 1,568 组，新增 672 组带冲突；
   另以 ALLOW_REPEAT=true 运行相同 1,568 组风险接受组合。
 - 原协调 oracle 的 2,048 组命令＋144 组撤销重新通过。

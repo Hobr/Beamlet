@@ -175,5 +175,6 @@ decision.outcome
 Unknown、Failed/Cancelled 兄弟隔离、独立 Repo 并发、接受回复丢失、真实只读写故障、
 Authority 离线/调用方重启、Handler 暂缺、未知格式、容量限制及分页发现。
 
-另有 20 个 Continuation 集成测试覆盖原部分结果推进、决定/清单保存后的重启、调用方进程强杀、C 接受回复丢失、C 离线完成、B 迟到、独立 Repo 竞争、实际只读故障、作用域及 v1 数据升级。
-有限工程测试不等于 SQL/调用方到 Quint 的无界 refinement 证明。
+另有 20 个 Continuation 集成测试覆盖原部分结果推进、决定/清单保存后的重启、调用方进程强杀、C 接受回复丢失、C 离线完成、B
+迟到、独立 Repo 竞争、实际只读故障、作用域及 v1 数据升级。 有限工程测试不等于 SQL/调用方到 Quint 的无界 refinement
+证明。

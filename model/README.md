@@ -1,20 +1,19 @@
 # 架构与规格
 
-Beamlet 是 Effect Engine 的名称, 以独立 Effect 的持久执行和恢复为核心.
-Beamlet!!!!! 是基于它的 Agent 框架及其系列产品的名称, 五个感叹号是名称的一部分.
-本目录主要描述 Beamlet 引擎及其与上层调用方的边界, 不将 Beamlet!!!!! 的完整 Agent 恢复纳入引擎职责.
-命名与规划中的组件见 [README](../README.md). RFC 解释设计取舍, SPEC 规定行为与验收要求.
-本目录保留架构规格与可执行模型. [领域核心](../apps/beamlet/README.md) 已实现受限值, 执行状态机,
-安全替代/RetryOnce 规则与独立报告来源. [SQLite Storage](../apps/beamlet_runtime/README.md) 已接入真实事务与重启恢复,
-本地 Coordinator/Scheduler/Worker、同步 Echo、独立资源库的持久审批与[共享对象 CAS/receipt](../apps/beamlet_runtime/OBJECTS.md) 已贯通;
-[调用方 Caller](../apps/beamlet_agent/README.md) 已接入独立持久清单、slot 关联、await-all 结果汇总与单步持久决定/Continuation。
-[证据协调](../apps/beamlet_runtime/RECONCILIATION.md) 已实现当前判断、冲突处置、采用/排除/部分取代与撤销、
-持久命令结果及规则语义版本/退役的受信 Policy 核验。
-[重复风险与资源 fencing](../apps/beamlet_runtime/FENCING.md) 已接入可选 ALLOW_REPEAT 策略、
-指定 Execution 的永久资源排除，以及真实 SQLite／资源的选定轨迹对照。
-独立治理控制面、远端 Transport、第三方 Provider Adapter、PostgreSQL 与完整 Agent loop 尚待验收.
-[模型与实现对照](implementation-conformance.md) 记录对应范围、修正与验证边界。
-[统一轨迹重放](trace-conformance.md) 接入真实 Worker、协调命令与 Caller/Continuation，
+Beamlet 是 Effect Engine 的名称, 以独立 Effect 的持久执行和恢复为核心. Beamlet!!!!! 是基于它的 Agent
+框架及其系列产品的名称, 五个感叹号是名称的一部分. 本目录主要描述 Beamlet 引擎及其与上层调用方的边界, 不将 Beamlet!!!!!
+的完整 Agent 恢复纳入引擎职责. 命名与规划中的组件见 [README](../README.md). RFC 解释设计取舍, SPEC 规定行为与验收要求.
+本目录保留架构规格与可执行模型. [领域核心](../apps/beamlet/README.md) 已实现受限值, 执行状态机, 安全替代/RetryOnce
+规则与独立报告来源. [SQLite Storage](../apps/beamlet_runtime/README.md) 已接入真实事务与重启恢复, 本地
+Coordinator/Scheduler/Worker、同步
+Echo、独立资源库的持久审批与[共享对象 CAS/receipt](../apps/beamlet_runtime/OBJECTS.md) 已贯通;
+[调用方 Caller](../apps/beamlet_agent/README.md) 已接入独立持久清单、slot 关联、await-all
+结果汇总与单步持久决定/Continuation。 [证据协调](../apps/beamlet_runtime/RECONCILIATION.md)
+已实现当前判断、冲突处置、采用/排除/部分取代与撤销、 持久命令结果及规则语义版本/退役的受信 Policy 核验。
+[重复风险与资源 fencing](../apps/beamlet_runtime/FENCING.md) 已接入可选 ALLOW_REPEAT 策略、 指定 Execution
+的永久资源排除，以及真实 SQLite／资源的选定轨迹对照。 独立治理控制面、远端 Transport、第三方 Provider
+Adapter、PostgreSQL 与完整 Agent loop 尚待验收. [模型与实现对照](implementation-conformance.md)
+记录对应范围、修正与验证边界。 [统一轨迹重放](trace-conformance.md) 接入真实 Worker、协调命令与 Caller/Continuation，
 逐检查点比较 Quint 预期与独立 SQL 持久事实，并汇集已有报告/重试、证据协调和资源 fencing oracle。
 
 ## 从这里开始
