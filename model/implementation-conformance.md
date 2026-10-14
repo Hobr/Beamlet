@@ -116,7 +116,8 @@ Resolved 失败在窗口失效后停止, 先完成后 Pending, 原 Worker 丢失
 及候选筛选不丢弃必须持久化的 expiry 拒绝屏障. 新能力不通过部署列表绕过原协议, 不修改 Quint/SPEC 来适配实现.
 本次重新执行: 77 个领域测试、86 个 Runtime 测试/文档测试、61 个本地执行/审批测试以 seed=42 重跑,
 49 个 Quint 正常使用场景、42 个多 Intent 场景, 以及 2,000 + 896 组直接对照, 均通过.
-最新根目录完整测试尝试受并行 Web 的 eqrcode 依赖覆盖配置阻塞; 独立核心/Runtime、严格 Credo、格式与主动 LSP 检查已通过.
+该阶段根目录完整测试尝试曾受并行 Web 的 eqrcode 依赖覆盖配置阻塞; 独立核心/Runtime、严格 Credo、格式与主动 LSP 检查已通过。
+该阻塞在后续 Caller 增量的完整 umbrella 重跑时已不存在，不能视为当前仍阻塞。
 未在本次重跑其他 Quint 组、全部 mutation 或历史模拟预算.
 
 ## 持久审批资源增量
@@ -141,9 +142,35 @@ Resolved 失败在窗口失效后停止, 先完成后 Pending, 原 Worker 丢失
 “永久幂等”依赖资源库不丢失/回滚且历史键持续保留. instance 不隔离克隆/旧备份, 数据保留与掉电保证仍是部署前提.
 已有模型将外部资源协议作为可信条件; 本地 SQL 测试提供这个具体协议的有限工程证据, 不构成无界 refinement 证明.
 
+## 持久调用方组合增量
+
+`apps/beamlet_agent` 新增 `Beamlet.Agent.Caller`，对应 SPEC multi-intent-and-tool-calls §1–7，
+不向核心 Domain 添加依赖图。调用方独立数据库保存稳定 round/完整清单、slot 关联与不可变结果汇总；
+Authority 和调用方分别提交，没有跨数据库原子性。详细接口与示例见 [Caller 说明](../apps/beamlet_agent/README.md)。
+
+| 模型条件 | 实现与验收 |
+| --- | --- |
+| `openRound`, `validDependencies` | 首次发送前持久保存完整清单；同 round 异定义拒绝；显式 slot + 非空 stable key |
+| `resolvedFor`, `referenceSound`, `multiResolve` | 以原 Identity/Definition 提交并核对回复事实，按 slot 保存 Intent；owner 不隐含进入引擎身份 |
+| `readDependency`, `resultSound`, `slotsUnique` | 只从 ReadFacts 保存完整 Outcome，验证 collection/Intent/定义及结果来源作用域；重复观察不填其他 slot |
+| `allCollected`, `collectRound`, `toolRoundsSound` | 每项都有结果才持久保存完整 aggregate；同 Intent 占多个 slot 须明确声明 |
+| `crashAgent/restartAgent`, 三依赖恢复 | 独立调用方库重启后读原清单；两项已完成不冒充第三项；Closed 重读不新建 Execution |
+| `unknownIsolationWitness` | Unknown/错误/离线不制造 Failed；一个 Failed/Cancelled 不隐式取消兄弟 |
+
+工程细化：关联和已核验结果缓存也持久保存，不直接映射为模型必须随 crash 清空的 `agentLocals`；
+它们是额外调用方材料，依赖原 Authority 的不可变 Outcome/历史连续性。最终 aggregate 才对应 round.completed/results。
+清单按 slot 规范排序；提前拒绝同 Identity 异 Definition 是保守收窄。
+当前只支持单 collection 的本地 await-all，不提供自动 Agent loop、持久 decision、Continuation、远端 ACL 或跨存储恢复证明。
+
+19 个 Caller 测试包含独立 Repo 并发和真实只读 SQL 故障；
+验证 Authority 已接受、调用方未存关联时仍按原身份恢复，而不把 SQL 错误当 Failed。
+该套是公开接口工程验收，不是 Caller 动作的自动轨迹 oracle；现有 2,000 + 896 组 oracle 仍只覆盖前述领域子集。
+本增量完整 umbrella 重跑 225 个测试/文档测试通过；19 个 Caller 测试以 seed=1/42 重跑通过。
+Quint 多 Intent 42 个、三依赖 10 个确定场景重新执行通过；未在本增量全量重跑其他组、mutation 或历史采样预算。
+
 ## 仍在模型而不在产品实现中的部分
 
 协调/治理, conflict disposition, rule retirement/withdrawal, 跨设备可靠传输与认证/权限流程,
-真实 Provider 的验签/查询/排除保证, Agent manifest/多依赖 continuation,
+真实 Provider 的验签/查询/排除保证, 完整 Agent loop/持久 decision/多依赖 continuation,
 外部 CAS/receipt, PostgreSQL 和真实掉电验收尚未实现.
 这些模型提供后续设计与验收依据; 现有模拟通过不能当作这些工程部分已经完成.

@@ -7,7 +7,8 @@ Beamlet!!!!! 是基于它的 Agent 框架及其系列产品的名称, 五个感�
 本目录保留架构规格与可执行模型. [领域核心](../apps/beamlet/README.md) 已实现受限值, 执行状态机,
 安全替代/RetryOnce 规则与独立报告来源. [SQLite Storage](../apps/beamlet_runtime/README.md) 已接入真实事务与重启恢复,
 本地 Coordinator/Scheduler/Worker、同步 Echo 与独立资源库的持久审批示例已贯通;
-远端 Transport、第三方 Provider Adapter 和 PostgreSQL 尚待验收.
+[调用方 Caller](../apps/beamlet_agent/README.md) 已接入独立持久清单、slot 关联及 await-all 结果汇总。
+远端 Transport、第三方 Provider Adapter、PostgreSQL 与持久决策/Continuation 尚待验收.
 [模型与实现对照](implementation-conformance.md) 记录对应范围、修正与验证边界.
 
 ## 从这里开始
