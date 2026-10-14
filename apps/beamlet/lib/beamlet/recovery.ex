@@ -2,14 +2,16 @@ defmodule Beamlet.Recovery do
   @moduledoc """
   Pure safety and stopping rules shared by replacement, authorization and invocation.
 
-  Safety is derived from saved authorization, verified exclusion or the original
-  idempotency contract. Neither a known error nor NotFound proves no side effects.
+  Recovery uses saved authorization, verified exclusion, the original idempotency
+  contract, or an explicit immutable acceptance of repeat risk. The latter allows
+  repeated effects and does not establish non-execution. Neither an error nor
+  NotFound proves no side effects.
   The two-attempt budget counts creation, including attempts never invoked.
   """
 
   alias Beamlet.{Binding, Execution, Intent, Judgment, Report}
 
-  @type basis :: :unstarted | :not_executed | :idempotency
+  @type basis :: :unstarted | :not_executed | :idempotency | :repeat_accepted
 
   @doc "Recovery basis requires the Intent's current evidence interpretation."
   @spec basis(Intent.t(), Execution.t(), map()) :: {:ok, basis()} | {:error, :unsafe_retry}
@@ -17,6 +19,7 @@ defmodule Beamlet.Recovery do
     cond do
       is_nil(execution.authorization) -> {:ok, :unstarted}
       Judgment.knowledge(intent, execution.id) == :not_executed -> {:ok, :not_executed}
+      intent.definition.repeat_accepted -> {:ok, :repeat_accepted}
       Binding.idempotency_valid?(execution.binding, context) -> {:ok, :idempotency}
       true -> {:error, :unsafe_retry}
     end
@@ -29,7 +32,6 @@ defmodule Beamlet.Recovery do
       intent.definition.policy != :retry_once -> {:error, :retry_disabled}
       map_size(intent.executions) >= 2 -> {:error, :retry_budget_exhausted}
       Map.has_key?(intent.executions, new_id) -> {:error, :execution_id_reused}
-      not no_conflicts?(intent) -> {:error, :unreconciled_conflict}
       not recovery_reason?(intent, execution) -> {:error, :no_recovery_reason}
       true -> basis(intent, execution, context)
     end
@@ -41,11 +43,9 @@ defmodule Beamlet.Recovery do
   def authorize_retry(intent, execution, binding, context) do
     previous = intent.executions[execution.replacement.from_execution_id]
 
-    cond do
-      not no_conflicts?(intent) -> {:error, :unreconciled_conflict}
-      not same_resource?(previous.binding, binding) -> {:error, :retry_resource_mismatch}
-      true -> validate_basis(intent, previous, execution.replacement.basis, binding, context)
-    end
+    if same_resource?(previous.binding, binding),
+      do: validate_basis(intent, previous, execution.replacement.basis, binding, context),
+      else: {:error, :retry_resource_mismatch}
   end
 
   @spec stop_required?(Intent.t(), Execution.t(), map()) :: boolean()
@@ -74,6 +74,10 @@ defmodule Beamlet.Recovery do
 
   defp same_resource?(nil, _binding), do: true
   defp same_resource?(original, binding), do: original["resource"] === binding["resource"]
+
+  defp validate_basis(intent, _previous, :repeat_accepted, _binding, _context) do
+    if intent.definition.repeat_accepted, do: :ok, else: {:error, :unsafe_retry}
+  end
 
   defp validate_basis(_intent, previous, :unstarted, _binding, _context) do
     if is_nil(previous.authorization), do: :ok, else: {:error, :unsafe_retry}

@@ -314,7 +314,7 @@ defmodule Beamlet.RecoveryTest do
              Domain.transition(intent, {:record_report, wrong}, context())
   end
 
-  test "late Success conflicts with NotExecuted and blocks replacement" do
+  test "late Success preserves the conflict while a NotExecuted basis permits replacement" do
     {intent, token} = unknown(:none)
     excluded = step(intent, {:record_report, exclusion_report(token, binding(:none))}).intent
     transition = step(excluded, {:record_report, worker_report(token, :success)})
@@ -324,12 +324,12 @@ defmodule Beamlet.RecoveryTest do
     assert length(execution.reports) == 2
     assert transition.intent.outcome == nil
 
-    assert {:error, :unreconciled_conflict} =
-             Domain.transition(
-               transition.intent,
-               {:replace_execution, "execution-1", "execution-2", "recover"},
-               context()
-             )
+    replaced =
+      step(transition.intent, {:replace_execution, "execution-1", "execution-2", "recover"})
+
+    assert replaced.intent.executions["execution-2"].replacement.basis == :not_executed
+    assert replaced.intent.executions["execution-1"].conflict
+    assert replaced.intent.outcome == nil
   end
 
   test "NotExecuted after accepted Success preserves Outcome while recording the contradiction" do
@@ -496,19 +496,20 @@ defmodule Beamlet.RecoveryTest do
     assert replay.intent === stopped.intent
   end
 
-  test "a conflict cannot be overridden by retry safety or policy stopping" do
+  test "a valid retry contract permits replacement while conflict still blocks policy stopping" do
     {intent, token} = authorized(100)
     failure = step(intent, {:record_report, worker_report(token, :failure)}).intent
 
     conflict =
       step(failure, {:record_report, worker_report(token, :success, nil, "other")}).intent
 
-    assert {:error, :unreconciled_conflict} =
-             Domain.transition(
-               conflict,
-               {:replace_execution, "execution-1", "execution-2", "recover"},
-               context()
-             )
+    replaced = step(conflict, {:replace_execution, "execution-1", "execution-2", "recover"})
+    assert replaced.intent.executions["execution-2"].replacement.basis == :idempotency
+    assert replaced.intent.executions["execution-1"].conflict
+    {next_intent, next_token} = claim(replaced.intent, "execution-2")
+    next_intent = step(next_intent, {:authorize, next_token, binding(100)}).intent
+    assert Domain.check_invocation(next_intent, next_token, context()) == :ok
+    assert next_intent.outcome == nil
 
     assert {:error, :unresolved_risk} =
              Domain.transition(conflict, {:stop_known_failure, "execution-1"}, context(11, 101))

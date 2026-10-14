@@ -9,19 +9,26 @@ defmodule Beamlet.Definition do
   alias Beamlet.{Identity, Value}
 
   @enforce_keys [:operation, :input]
-  defstruct [:operation, :input, constraints: %{}, policy: :stop_on_failure]
+  defstruct [
+    :operation,
+    :input,
+    constraints: %{},
+    policy: :stop_on_failure,
+    repeat_accepted: false
+  ]
 
   @type t :: %__MODULE__{
           operation: String.t(),
           input: Value.t(),
           constraints: %{String.t() => Value.t()},
-          policy: :stop_on_failure | :retry_once
+          policy: :stop_on_failure | :retry_once,
+          repeat_accepted: boolean()
         }
 
   @spec new(map()) :: {:ok, t()} | {:error, atom()}
   def new(attrs) when is_map(attrs) and not is_struct(attrs) do
     cond do
-      Map.keys(attrs) -- [:operation, :input, :constraints, :policy] != [] ->
+      Map.keys(attrs) -- [:operation, :input, :constraints, :policy, :repeat_accepted] != [] ->
         {:error, :unknown_definition_field}
 
       not Map.has_key?(attrs, :input) ->
@@ -32,6 +39,9 @@ defmodule Beamlet.Definition do
 
       Map.get(attrs, :policy, :stop_on_failure) not in [:stop_on_failure, :retry_once] ->
         {:error, :invalid_policy}
+
+      not is_boolean(Map.get(attrs, :repeat_accepted, false)) ->
+        {:error, :invalid_repeat_acceptance}
 
       not is_map(Map.get(attrs, :constraints, %{})) ->
         {:error, :invalid_constraints}

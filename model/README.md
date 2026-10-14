@@ -10,6 +10,8 @@ Beamlet!!!!! 是基于它的 Agent 框架及其系列产品的名称, 五个感�
 [调用方 Caller](../apps/beamlet_agent/README.md) 已接入独立持久清单、slot 关联、await-all 结果汇总与单步持久决定/Continuation。
 [证据协调](../apps/beamlet_runtime/RECONCILIATION.md) 已实现当前判断、冲突处置、采用/排除/部分取代与撤销、
 持久命令结果及规则语义版本/退役的受信 Policy 核验。
+[重复风险与资源 fencing](../apps/beamlet_runtime/FENCING.md) 已接入可选 ALLOW_REPEAT 策略、
+指定 Execution 的永久资源排除，以及真实 SQLite／资源的选定轨迹对照。
 独立治理控制面、远端 Transport、第三方 Provider Adapter、PostgreSQL 与完整 Agent loop 尚待验收.
 [模型与实现对照](implementation-conformance.md) 记录对应范围、修正与验证边界.
 

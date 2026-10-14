@@ -69,18 +69,24 @@ binding 是可信配置/Adapter 提供的受限值快照, 至少含 operation, h
 
 ## 恢复依据与报告来源
 
-`ReplaceExecution` 根据保存事实导出依据, 不接受调用方的“可以安全重试”标志:
+`ReplaceExecution` 根据保存事实导出依据。`repeat_accepted` 默认为 false；只能在原 Definition 中显式指定布尔值，
+不能在重试时临时开启或改变原已接受定义：
 
 | 依据 | 必要条件 |
 | --- | --- |
 | `:unstarted` | 原尝试从未取得启动授权 |
 | `:not_executed` | 可信 query Adapter 已验证原尝试既往及未来执行均被外部协议排除 |
 | `:idempotency` | 原外部 resource/scope/protocol/key 保持一致, 原保证与新尝试保证仍适用 |
+| `:repeat_accepted` | 原不可变 Definition 明确接受重复效果风险；不表示旧执行已停止 |
+
+有合格依据时，冲突不再一律阻止替代/后续授权/调用；终结仍须满足当前冲突、旧成功及未知风险守卫。
+[资源 fencing 与风险策略](../beamlet_runtime/FENCING.md) 给出新本地资源的永久排除协议、使用示例及兼容边界。
 
 绑定的 `"idempotency"` 包含 `"protocol"`, 非空 `"scope"`, 稳定 `"key"`, 以及明确的 `"valid_through"`.
 `"valid_through" => nil` 表示无期限保证, 缺少字段会拒绝. 有限保证还须声明资源协议真实执行
 `"expiry_enforced" => true`, 确保过期后到达资源的旧 key 请求不会重新产生效果;
-仅本地调用前看时钟或服务缓存存在一段时间不足以满足条件.
+仅本地调用前看时钟或服务缓存存在一段时间不足以满足条件。显式接受重复风险的尝试保存独立依据，
+不依赖旧幂等保证仍然有效；资源/账户匹配和尝试预算继续执行。
 
 有限幂等的恢复命令需要上下文中的 `contract_time`: 它和 valid_through 使用同一可信资源协议时间域,
 独立于 lease 的 `now`; 边界 `contract_time <= valid_through` 有效. 缺少可信时间或无法重验时拒绝危险重试.

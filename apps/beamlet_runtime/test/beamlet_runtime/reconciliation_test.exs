@@ -295,7 +295,7 @@ defmodule BeamletRuntime.ReconciliationTest do
     assert {:ok, %{reply: {:committed, _}}} = Coordinator.reconcile(coordinator(repo), id, cmd)
   end
 
-  test "v1 snapshot imports a fresh judgment baseline; subsequent commit is v2 and incomplete v2 fails closed",
+  test "v1 snapshot imports a fresh judgment baseline; subsequent commit uses the current codec and incomplete v2 fails closed",
        %{repo: repo} do
     {id, success} = fixture(repo)
     current = facts(repo, id).intent
@@ -323,7 +323,7 @@ defmodule BeamletRuntime.ReconciliationTest do
     cmd = proposal(repo, id, success)
     assert {:ok, %{reply: {:committed, _}}} = Coordinator.reconcile(coordinator(repo), id, cmd)
     [[stored]] = SQL.query!(repo, "SELECT snapshot FROM beamlet_intents WHERE id=?", [id]).rows
-    assert Jason.decode!(stored)["version"] == 2
+    assert Jason.decode!(stored)["version"] == 3
   end
 
   test "conflict dispositions and partial withdrawal survive resource-independent Authority restart",

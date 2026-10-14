@@ -28,5 +28,6 @@ defmodule BeamletRuntime.Handler do
   @callback query(Intent.t(), Execution.t(), term()) :: {:ok, Report.t()} | {:error, term()}
   @callback verify_callback(Intent.t(), Execution.t(), term(), term()) ::
               {:ok, Report.t()} | {:error, term()}
-  @optional_callbacks query: 3, verify_callback: 4
+  @callback fence(Intent.t(), Execution.t(), term()) :: {:ok, Report.t()} | {:error, term()}
+  @optional_callbacks query: 3, verify_callback: 4, fence: 3
 end

@@ -215,7 +215,7 @@ defmodule BeamletRuntime.ExecutionTest do
 
   setup do
     directory =
-      Path.join(System.tmp_dir!(), "beamlet-execution-#{System.unique_integer([:positive])}")
+      Path.join(System.tmp_dir!(), "beamlet-execution-#{Ecto.UUID.generate()}")
 
     {:ok, repo} = SQLite.start_link(database: Path.join(directory, "ledger.db"), pool_size: 4)
     Process.unlink(repo)

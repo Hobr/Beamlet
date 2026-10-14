@@ -3,6 +3,8 @@
 `BeamletRuntime.Object.Store` 是独立外部资源数据库，
 `BeamletRuntime.Handlers.SharedObject` 将它接入 `object.replace_if_version.v1`。
 对应 [Quint 共享资源模型](../../model/quint/contracts/shared.qnt) 的版本竞争和原请求 receipt 恢复。
+另有独立的 `Handlers.FencedObject` / `object.fenced_replace_if_version.v1`，见 [资源侧 fencing](FENCING.md)；
+本文的原 Operation 不声明排除能力。
 
 这是数据库中的逻辑对象，不操作普通文件路径，也不声明真实文件系统具有原子 CAS + receipt。
 SPEC 的 `file.replace_if_version.v1` 是资源契约参考；这里使用独立 Operation Identity，
@@ -85,7 +87,7 @@ receipt 缺失只返回稳定 `missing` NotFound，不能排除已授权旧 Work
 
 | 操作 | 行为 |
 | --- | --- |
-| `start_link(database: path, ...)` / `migrate(repo, identity)` | 显式启动独立持久资源库与 schema v1；拒绝空路径和 :memory: |
+| `start_link(database: path, ...)` / `migrate(repo, identity)` | 显式启动独立持久资源库并迁移至 schema v2；拒绝空路径和 :memory: |
 | `new(repo, identity, account)` | 校验已初始化服务，读持久 instance，形成可信本地资源能力 |
 | `create_object(service, object, initial_content)` | 原子建立或读取；相同初始化重投不复位版本 |
 | `read_object(service, object)` | 读取当前内容/版本，用于业务观察，不充当某次请求的完成证据 |

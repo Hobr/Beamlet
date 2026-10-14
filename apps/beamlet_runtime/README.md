@@ -179,7 +179,7 @@ facts.intent == prepared.facts.intent
 ## 读取, 扫描与格式
 
 `read/3` 在只读事务内返回一个一致快照, 包含原定义, 全部执行/报告/绑定与 Outcome.
-当前内部 JSON codec v1 限制每份快照最多 16 MiB, 超出返回容量拒绝, 不制造业务失败.
+当前内部 JSON Codec 新写 v3、兼容读取 v1/v2/v3，限制每份快照最多 16 MiB, 超出返回容量拒绝, 不制造业务失败.
 codec 用明确标签和固定模块/atom 白名单保存领域结构, 不使用 Erlang term 反序列化或动态 atom 创建.
 逻辑正文中的同名标签仍是普通用户数据; wire JSON 的重复 key/数值词法校验另由 Transport 实现.
 
@@ -200,7 +200,15 @@ Prepared/StartAuthorized/Waiting/Unknown/Resolved 当前尝试的候选, 默认�
 支持旧成功采用、合格当前失败采用、逐报告冲突处置、证据排除、部分取代及范围撤销；
 接受或明确拒绝连同原处理结果/History 原子保存，重投不重判。
 规则精确语义版本核验及普通退役语义已接入受信 Policy 输入，尚无独立治理控制面。
-入口默认关闭；配置方法、权限边界和 Codec v1→v2 兼容见 [协调说明](RECONCILIATION.md)。
+入口默认关闭；配置方法、权限边界和 Codec 兼容见 [协调说明](RECONCILIATION.md)。
+
+## 重复风险策略与资源排除
+
+不可变 Definition 的 `repeat_accepted: true` 对应可选 ALLOW_REPEAT；默认拒绝重复风险，仍保留两次建立预算和终结守卫。
+`Coordinator.fence/3` 接入新 `Handlers.FencedObject`，在独立对象库永久排除指定 Execution 的原授权，
+由 query 重读稳定 NotExecuted 证明；原 CAS Operation 不自动获得能力。
+资源提交与报告 Stored 分离，支持排除回复丢失、Authority 报告提交失败和重启恢复。
+协议、Codec v3／对象 schema v2、可信能力边界与示例见 [fencing 说明](FENCING.md)。
 
 ## 共享对象 CAS 与 receipt
 
@@ -229,6 +237,9 @@ Worker 新 incarnation, Prepared 重领, 在途 Worker 崩溃/原查询恢复, P
 
 另有 13 个协调 SQL/Runtime 测试，覆盖命令原结果/拒绝重放、决定/Outcome/History 原子回滚、
 独立 Repo 并发、读写权限分离、规则退役、处置/部分撤销重启和 Codec v1 读取升级。
+
+新增 11 项资源 fencing、1 项风险接受恢复、1 项 Codec 兼容验收；另有真实 SQL／资源轨迹直接对照 30 个检查点。
+完整范围及有限验证预算见 [fencing 说明](FENCING.md)。
 
 Repo 停止/重启与丢弃已提交回复不等于真实掉电或 commit 网络断连测试.
 文件系统/磁盘掉电保证, 更细故障分类, PostgreSQL 符合性, 远端权限/认证与真实 provider 条件仍需后续验收.

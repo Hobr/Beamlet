@@ -25,7 +25,8 @@
 SQL/Runtime 额外保存可信 binding, 排除证明引用, 完整 Intent 来源域和版本化存储格式.
 首版只有两个 Execution 的模型域, 实现显式执行“最多两个已建立尝试”预算.
 
-有意收窄: 普通替代及后续授权遇到任意未协调冲突时拒绝; query 须具有原授权保存的可信 query binding.
+query 须具有原授权保存的可信 query binding。早期实现曾额外要求重试前解除全部冲突；
+本轮已移除该收窄，安全替代与终结资格分别核验，详见下方重复风险／fencing 增量。
 有限幂等只接入具有资源侧过期拒绝保证的协议, 不实现其他时钟误差/网络延迟界方案.
 这些收窄不授予模型以外的危险执行权限, 但不能据此宣称所有模型允许的动作都已实现.
 
@@ -248,7 +249,7 @@ Scope 中明确包含 collection，避免不同 Authority 域的相同局部 Int
 模型注册/核验事实由可信 Policy 输入提供，本轮没有实现独立持久治理登记/退役服务或远端认证。
 SQL 快照保存接受时 Policy，供解释历史；不从请求方断言制造真实契约排除依据。
 Policy/evidence/reference 集合限制 256 项，总快照仍限制 16 MiB，容量故障保守返回错误。
-Codec 新写 v2，精确兼容原 v1 Intent 字段并补入空决定/命令及判断版本 0；
+该协调阶段 Codec 新写 v2（当前 v3 见下文），精确兼容原 v1 Intent 字段并补入空决定/命令及判断版本 0；
 旧报告/grant/Outcome/History 不变，v2 缺字段拒绝，旧/新程序混写不受支持。
 `Recovery.basis/3` 现在必须带 Intent，避免在协调后依赖已排除的原始 Knowledge。
 
@@ -266,7 +267,7 @@ mix run ../../scripts/check_reconciliation_conformance.exs
 另有 144 组＝3 种撤销范围 × 3 种引用模式 × 2 种核验依据 × 2 种审查版本 × 4 种权限，
 比较范围撤销资格、原结果重放、剩余绑定、判断版本/Knowledge/冲突和审计。
 共同前缀在模型使用 ALLOW_REPEAT=true，在代码用原无期限幂等契约安全替代；
-本对照不表示产品已实现接受重复风险的策略入口。
+该阶段对照尚未覆盖风险接受入口；后续增量已实现并另做直接矩阵对照。
 
 本轮新增 18 个领域、13 个真实 SQL/Runtime 验收，seed=1/42 重跑通过。
 完整 umbrella 294 个测试/文档测试通过；原 2,000＋896 组对照继续通过。
@@ -276,9 +277,43 @@ Quint repeatingTests 79、conflictTests 81 场景以 seed=42/max-samples=1/Rust 
 协调 README 的可信 verifier、旧成功采用与命令重投示例实际运行通过。
 不将有限矩阵与进程/数据库故障测试声称为完整 Runtime/SQL refinement 或无界证明。
 
-## 仍在模型而不在产品实现中的部分
+## 重复风险、fencing 与 SQL 轨迹增量
 
-模型可选 ALLOW_REPEAT 风险接受策略入口及内置资源的 CAN_FENCE 排除协议尚未实现。
+原 Definition 新增严格布尔 `repeat_accepted`，默认 false；同 Identity 异接受值为定义冲突。
+对应模型固定 ALLOW_REPEAT 在单 Intent 上的显式细化，保存 `:repeat_accepted` 替代依据，
+授权/调用重验原定义；不依赖原幂等窗口，不增加两次预算，不改变终结证据守卫。
+去除 Recovery 上额外的“所有冲突先解除”限制，按模型分别检查替代安全、启动资格及终结资格；
+旧报告/Knowledge/conflict/Outcome 不覆盖。
+
+`Handlers.FencedObject` 的独立 Operation `object.fenced_replace_if_version.v1`，
+在对象 schema v2 将原 Execution/full token/request 的排除记录与资源调用按 immediate 事务串行化。
+先执行则恢复 Success；先排除则旧授权永远不能执行，新授权可凭 query 的原 NotExecuted 安全替代。
+资源排除提交与 Authority Report Stored 独立；原 CAS Operation/协议不冒充新增能力。
+它不声明 idempotency；正常逻辑请求 receipt 仍保留。详见 [协议与示例](../apps/beamlet_runtime/FENCING.md)。
+Codec 新写 v3，读取 v1/v2/v3，旧 Definition 仅导入默认拒绝风险；v3 缺字段/非布尔值拒绝，
+原 v1 Intent 的零版本基线兼容保留。不是旧/新程序混写或降级保证。
+
+本轮直接对照：
+- 2,000 组报告；原 896 组严格重试扩到 1,568 组，新增 672 组带冲突；
+  另以 ALLOW_REPEAT=true 运行相同 1,568 组风险接受组合。
+- 原协调 oracle 的 2,048 组命令＋144 组撤销重新通过。
+- `mix run scripts/check_resource_conformance.exs` 原样导入 Quint 纯状态函数，
+  在真实双库执行 2 条轨迹／30 个检查点：授权、排除、丢回复、双库重启、query、
+  替代、第二次授权／资源提交、取消竞争、迟到报告、重复确认。
+  比较 phase/current、原 Knowledge、判断 revision、报告数、冲突、Outcome、资源版本与原排除记录。
+  同步资源 IO 以已提交业务结果投影；不验证资源内部全部交错、完整 Worker 消息网络或 Caller 图。
+
+新增 3 项领域、11 项 fencing、1 项 Runtime 风险恢复及 1 项 Codec 兼容验收；
+定向 seed=1/42 及完整 umbrella 310 个测试/文档测试通过。
+Quint fencedTests 2、strictTests 23、repeatingTests 79 个场景以 seed=42/max-samples=1/Rust 重跑通过；
+不将曾超时的组合运行算作成功，repeatingTests 已单独重跑完成。
+强制编译、严格 Credo（77 个源码文件）、格式/diff、18 个变更 Elixir 文件的主动 LSP 检查通过；
+fencing README 示例实际执行通过。完整回归曾出现旧执行测试临时目录清理失败，目录改为 UUID 后完整 seed=42 重跑通过。
+有限轨迹不构成无界 refinement 证明。
+
+## 剩余工程与验证缺口
+
+ALLOW_REPEAT 和本地 CAN_FENCE 协议已有具体实现；第三方资源仍须提供自己的真实排除协议。
 协调/处置/规则版本核验/退役语义/范围撤销已有本地实现，独立治理登记/发布/退役控制面仍缺。
 跨设备传输与认证/权限、真实 Provider 的验签/查询/排除保证、普通文件/API 的 CAS/receipt、
 PostgreSQL 和真实掉电验收，以及完整 Agent loop/任意多来源多步决策仍需工程实现与验收。

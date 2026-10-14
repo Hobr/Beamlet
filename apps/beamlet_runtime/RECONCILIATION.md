@@ -140,11 +140,12 @@ Policy 的语义正确性与版本连续性由部署提供，不能把测试 fix
 
 ## 存储升级与验收
 
-内部 Codec 新写 version 2，继续读取原 version 1。
+内部 Codec 当前新写 version 3，继续读取原 version 1/2；协调字段从 version 2 引入。
+旧 Definition 缺少 repeat_accepted 时导入 false，version 3 必须保存明确布尔值；见 [风险策略与 fencing](FENCING.md)。
 旧 Intent 精确字段集合补入 `decisions: [], commands: %{}, judgment_revision: 0`，
 从导入事实开始建立新的审查基线，不伪造历史判断变化。
-已有 reports/grants/Outcome/History 保持；下一次实际写入保存 version 2。
-不完整 v2、未知字段/类型/原子/版本拒绝。不支持旧程序与新程序混合写入或降级。
+已有 reports/grants/Outcome/History 保持；下一次实际写入保存 version 3。
+不完整 v2/v3、未知字段/类型/原子/版本拒绝。不支持旧程序与新程序混合写入或降级。
 
 18 项领域验收、13 项真实 SQL/Runtime 验收覆盖采用、失败风险、全覆盖、全部排除、
 新证据失效、部分撤销、规则退役、命令身份/原结果、权限、并发、重启、

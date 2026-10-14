@@ -57,8 +57,50 @@ defmodule BeamletConformance do
     retry_rows = document["states"] |> List.last() |> Map.fetch!("retryRows") |> decode()
     Enum.each(retry_rows, &compare_retry!/1)
 
+    repeat_path = Path.join(directory, "repeat.qnt")
+    repeat_trace = Path.join(directory, "repeat.itf.json")
+
+    repeat_oracle =
+      oracle()
+      |> String.replace("module oracle {", "module repeatOracle {")
+      |> String.replace("ALLOW_REPEAT = false", "ALLOW_REPEAT = true")
+      |> String.replace("repeatAccepted:false", "repeatAccepted:true")
+
+    File.write!(repeat_path, repeat_oracle)
+    invoke!(["typecheck", repeat_path])
+
+    invoke!([
+      "run",
+      repeat_path,
+      "--main",
+      "repeatOracle",
+      "--init",
+      "oracleInit",
+      "--step",
+      "oracleStep",
+      "--max-samples",
+      "1",
+      "--max-steps",
+      "0",
+      "--backend",
+      "rust",
+      "--out-itf",
+      repeat_trace
+    ])
+
+    repeated =
+      repeat_trace
+      |> File.read!()
+      |> :json.decode()
+      |> Map.fetch!("states")
+      |> List.last()
+      |> Map.fetch!("retryRows")
+      |> decode()
+
+    Enum.each(repeated, &compare_retry!(Map.put(&1, "repeatAccepted", true)))
+
     IO.puts(
-      "Quint/Elixir conformance: #{length(rows)} ordered report cases and #{length(retry_rows)} retry protocol cases passed. Oracle: #{trace}"
+      "Quint/Elixir conformance: #{length(rows)} ordered report, #{length(retry_rows)} strict retry and #{length(repeated)} accepted-repeat retry cases passed. Oracles: #{trace}, #{repeat_trace}"
     )
   end
 
@@ -69,7 +111,12 @@ defmodule BeamletConformance do
 
   defp initial(opts \\ []) do
     {:ok, definition} =
-      Definition.new(%{operation: "request.v1", input: nil, policy: :retry_once})
+      Definition.new(%{
+        operation: "request.v1",
+        input: nil,
+        policy: :retry_once,
+        repeat_accepted: Keyword.get(opts, :repeat_accepted, false)
+      })
 
     {:ok, identity} = Identity.new("collection", "namespace", "key")
     {:ok, created} = Domain.new_intent("intent", identity, definition, @context)
@@ -138,9 +185,43 @@ defmodule BeamletConformance do
 
   defp compare_retry!(row) do
     {initial, token, binding} =
-      initial(valid_through: row["originalWindow"], authorize: row["basis"] != 1)
+      initial(
+        valid_through: row["originalWindow"],
+        authorize: row["basis"] != 1,
+        repeat_accepted: Map.get(row, "repeatAccepted", false)
+      )
 
     before = retry_before(initial, token, binding, row["basis"])
+
+    before =
+      if Map.get(row, "conflict", false) do
+        before =
+          if row["basis"] == 3 do
+            {:ok, t} =
+              Domain.transition(
+                before,
+                {:record_report,
+                 report({:worker, :failure, 0}, "conflict-failure", token, binding)},
+                @context
+              )
+
+            t.intent
+          else
+            before
+          end
+
+        {:ok, t} =
+          Domain.transition(
+            before,
+            {:record_report, report({:worker, :success, 0}, "conflict-success", token, binding)},
+            @context
+          )
+
+        t.intent
+      else
+        before
+      end
+
     old = before.executions["1"]
     context = Map.put(@context, :contract_time, row["at"])
 
@@ -267,16 +348,17 @@ defmodule BeamletConformance do
           failureEligible: sourceEligible(l, {kind: OutcomeFailed, exec: Current(1), value: 0})
             or sourceEligible(l, {kind: OutcomeFailed, exec: Current(1), value: 1})}
       }
-      type RetryRow = {basis: int, originalWindow: int, nextWindow: int, sameProtocol: bool,
+      type RetryRow = {basis: int, originalWindow: int, nextWindow: int, sameProtocol: bool, conflict: bool,
         at: int, originalValid: bool, canReplace: bool, qualified: bool, invocation: bool}
       pure def retryBefore(basis: int): Ledger =
         if (basis == 1) claimed else if (basis == 3) applyExpire(base,1)
         else if (basis == 2) applyReport(base, reportAt(6,1)) else applyReport(base,reportAt(3,1))
-      pure def retryRow(basis: int, oldWindow: int, nextWindow: int, sameProtocol: bool, at: int): RetryRow = {
+      pure def retryRow(basis: int, oldWindow: int, nextWindow: int, sameProtocol: bool, at: int, conflict:bool): RetryRow = {
         val entry: SubmissionEntry = {id:1, request:{...request, definition:{...definition,policy:RetryOnce}}, context:1}
         val u0 = {...initialUse, entries:List(entry)}
         val original = {...idempotentHandler, validThrough:oldWindow}
-        val before = retryBefore(basis)
+        val clean = retryBefore(basis)
+        val before = if(conflict) applyReport(if(basis==3) applyReport(clean,reportAt(3,1)) else clean,reportAt(1,2)) else clean
         val oldBinding = if (basis == 1) NoHandler else bindingFor(u0,original)
         val u1 = {...u0, bindings:u0.bindings.set(1,oldBinding)}
         val witness: RetryObservation = {oldExec:1,newExec:2,binding:oldBinding,at:0,repeatAccepted:false,
@@ -284,7 +366,7 @@ defmodule BeamletConformance do
         val u2 = {...u1,retries:List(witness)}
         val candidate = {...idempotentHandler,id:4,protocol:if(sameProtocol) 1 else 2,validThrough:nextWindow}
         val qualified = retryHandlerQualified(u2,2,candidate,at)
-        {basis:basis,originalWindow:oldWindow,nextWindow:nextWindow,sameProtocol:sameProtocol,at:at,
+        {basis:basis,originalWindow:oldWindow,nextWindow:nextWindow,sameProtocol:sameProtocol,at:at,conflict:conflict,
           originalValid:idempotencyValid(u1,1,at),
           canReplace:canReplaceWithEvidence(before,1,2,idempotencyValid(u1,1,at)),
           qualified:qualified,invocation:qualified}
@@ -294,7 +376,8 @@ defmodule BeamletConformance do
       action oracleInit = all {normalInit,
         retryRows' = 0.to(3).fold(List(),(xs,basis) => xs.concat(0.to(3).fold(List(),(ys,ow) =>
           ys.concat(0.to(3).fold(List(),(zs,nw) => zs.concat(0.to(6).fold(List(),(rs,at) =>
-            rs.append(retryRow(basis,ow,nw,true,at)).append(retryRow(basis,ow,nw,false,at))))))))),
+            rs.concat(List(retryRow(basis,ow,nw,true,at,false),retryRow(basis,ow,nw,false,at,false)))
+              .concat(if(basis==1) List() else List(retryRow(basis,ow,nw,true,at,true),retryRow(basis,ow,nw,false,at,true)))))))))),
         rows' = 0.to(9).fold(List(), (xs, a) => xs.concat(0.to(9).fold(List(), (ys, b) =>
           ys.concat(0.to(9).fold(List(), (zs, c) => zs.append(row(a,b,c,false)).append(row(a,b,c,true))))))),
       }

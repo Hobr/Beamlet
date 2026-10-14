@@ -11,11 +11,13 @@ defmodule BeamletRuntime.Object.Store do
   resource history. A persistent instance rejects a same-named replacement database;
   it does not fence clones or old backups, or prove filesystem power-loss durability.
   """
-  alias Beamlet.{Identity, Value}
-  alias BeamletRuntime.Object.{Repo, Schema}
+  alias Beamlet.{Identity, Token, Value}
+  alias BeamletRuntime.Object.{FenceSchema, Repo, Schema}
+  alias BeamletRuntime.Storage.Codec
   alias Ecto.Adapters.SQL
 
   @operation "object.replace_if_version.v1"
+  @fenced_operation "object.fenced_replace_if_version.v1"
   @max_version 9_007_199_254_740_991
   @enforce_keys [:repo, :identity, :instance, :account]
   defstruct @enforce_keys
@@ -49,7 +51,9 @@ defmodule BeamletRuntime.Object.Store do
 
   def migrate(repo, identity) do
     if Identity.valid_text?(identity) do
-      with_repo(repo, fn -> Ecto.Migrator.run(Repo, [{1, Schema}], :up, all: true, log: false) end)
+      with_repo(repo, fn ->
+        Ecto.Migrator.run(Repo, [{1, Schema}, {2, FenceSchema}], :up, all: true, log: false)
+      end)
 
       transaction(repo, fn ->
         sql(
@@ -172,7 +176,125 @@ defmodule BeamletRuntime.Object.Store do
     end
   end
 
-  defp replace_and_receipt(service, collection, intent_id, request) do
+  @doc "Invoke the distinct fenced protocol; invocation serializes with exclusion."
+  def invoke_fenced(service, token, request) do
+    with :ok <- authorized_scope(service, token, request) do
+      transaction(service.repo, fn -> invoke_unless_fenced(service, token, request) end)
+    end
+  end
+
+  defp invoke_unless_fenced(service, token, request) do
+    verify_service!(service)
+    verify_fenced_request!(service, token, request)
+    if fence_record(service, token, request), do: Repo.rollback(:object_execution_fenced)
+
+    receipt(service, token.collection, token.intent_id, request, @fenced_operation) ||
+      replace_and_receipt(service, token.collection, token.intent_id, request, @fenced_operation)
+  end
+
+  @doc "Atomically establish per-Execution exclusion or recover an already committed receipt."
+  def fence(service, token, request), do: fenced_observation(service, token, request, true)
+
+  def read_fenced_receipt(service, token, request),
+    do: fenced_observation(service, token, request, false)
+
+  defp fenced_observation(service, token, request, establish) do
+    with :ok <- authorized_scope(service, token, request) do
+      transaction(
+        service.repo,
+        fn ->
+          verify_service!(service)
+          verify_fenced_request!(service, token, request)
+
+          fence_record(service, token, request) ||
+            observe_unfenced(service, token, request, establish)
+        end,
+        if(establish, do: :immediate, else: :deferred)
+      )
+    end
+  end
+
+  defp observe_unfenced(service, token, request, establish) do
+    case receipt(service, token.collection, token.intent_id, request, @fenced_operation) do
+      nil when establish ->
+        fetch_object(service, request["object"])
+
+        sql(
+          "INSERT INTO object_fences(account,object_ref,operation,collection,intent_id,execution_id,request,authorization,evidence_ref) VALUES(?,?,?,?,?,?,?,?,?)",
+          fence_scope(service, token, request) ++
+            [Jason.encode!(request), Codec.encode(token), Ecto.UUID.generate()]
+        )
+
+        fence_record(service, token, request)
+
+      nil ->
+        Repo.rollback(:object_receipt_not_found)
+
+      saved ->
+        %{kind: :success, receipt: saved}
+    end
+  end
+
+  defp verify_fenced_request!(service, token, request) do
+    case sql(
+           "SELECT request FROM object_fences WHERE account=? AND object_ref=? AND operation=? AND collection=? AND intent_id=? LIMIT 1",
+           Enum.take(fence_scope(service, token, request), 5)
+         ).rows do
+      [] ->
+        :ok
+
+      [[encoded]] ->
+        if Jason.decode!(encoded) !== request, do: Repo.rollback(:object_request_conflict)
+    end
+  end
+
+  defp fence_record(service, token, request) do
+    case sql(
+           "SELECT request,authorization,evidence_ref FROM object_fences WHERE account=? AND object_ref=? AND operation=? AND collection=? AND intent_id=? AND execution_id=?",
+           fence_scope(service, token, request)
+         ).rows do
+      [] ->
+        nil
+
+      [[encoded, authorization, ref]] ->
+        saved = Jason.decode!(encoded)
+        if saved !== request, do: Repo.rollback(:object_request_conflict)
+
+        if Codec.decode(authorization) !== {:ok, token},
+          do: Repo.rollback(:object_authorization_conflict)
+
+        %{kind: :not_executed, request: saved, authorization: token, evidence_ref: ref}
+    end
+  end
+
+  defp fence_scope(service, token, request),
+    do: [
+      service.account,
+      request["object"],
+      @fenced_operation,
+      token.collection,
+      token.intent_id,
+      token.execution_id
+    ]
+
+  defp authorized_scope(service, %Token{} = token, request) when map_size(token) == 7 do
+    with :ok <- request_scope(service, token.collection, token.intent_id, request),
+         true <-
+           Enum.all?(
+             [token.execution_id, token.worker, token.incarnation],
+             &Identity.valid_text?/1
+           ),
+         true <- is_integer(token.generation) and token.generation in 1..9_223_372_036_854_775_807 do
+      :ok
+    else
+      false -> {:error, :invalid_object_authorization}
+      error -> error
+    end
+  end
+
+  defp authorized_scope(_service, _token, _request), do: {:error, :invalid_object_authorization}
+
+  defp replace_and_receipt(service, collection, intent_id, request, operation \\ @operation) do
     current = fetch_object(service, request["object"])
     applied = current["version"] == request["expected_version"]
     version = if applied, do: next_version!(current["version"]), else: current["version"]
@@ -198,7 +320,7 @@ defmodule BeamletRuntime.Object.Store do
       [
         service.account,
         request["object"],
-        @operation,
+        operation,
         collection,
         intent_id,
         Jason.encode!(request),
@@ -208,16 +330,16 @@ defmodule BeamletRuntime.Object.Store do
       ]
     )
 
-    receipt(service, collection, intent_id, request)
+    receipt(service, collection, intent_id, request, operation)
   end
 
   defp next_version!(@max_version), do: Repo.rollback(:object_version_exhausted)
   defp next_version!(version), do: version + 1
 
-  defp receipt(service, collection, intent_id, request) do
+  defp receipt(service, collection, intent_id, request, operation \\ @operation) do
     case sql(
            "SELECT request,applied,version,receipt_ref FROM object_receipts WHERE account=? AND object_ref=? AND operation=? AND collection=? AND intent_id=?",
-           [service.account, request["object"], @operation, collection, intent_id]
+           [service.account, request["object"], operation, collection, intent_id]
          ).rows do
       [] ->
         nil

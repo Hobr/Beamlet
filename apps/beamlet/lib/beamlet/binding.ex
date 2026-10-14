@@ -52,10 +52,16 @@ defmodule Beamlet.Binding do
     valid =
       binding["operation"] == operation and Identity.valid_text?(binding["handler"]) and
         Identity.valid_text?(binding["protocol"]) and is_map(binding["resource"]) and
-        optional_map?(binding["completion"]) and optional_map?(binding["query"])
+        valid_capabilities?(binding)
 
     if valid, do: :ok, else: {:error, :invalid_handler_binding}
   end
+
+  defp valid_capabilities?(binding),
+    do:
+      optional_map?(binding["completion"]) and optional_map?(binding["query"]) and
+        optional_map?(binding["fencing"]) and
+        (is_nil(binding["fencing"]) or is_map(binding["query"]))
 
   defp optional_map?(nil), do: true
   defp optional_map?(value), do: is_map(value) and map_size(value) > 0

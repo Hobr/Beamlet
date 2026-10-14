@@ -178,17 +178,20 @@ defmodule BeamletRuntime.Coordinator do
     end
   end
 
+  @doc "Establish resource exclusion outside Authority SQL; persist verified query evidence."
+  def fence(c, id, execution_id), do: evidence(c, id, execution_id, :fence, nil, nil)
+
   defp evidence(c, id, execution_id, kind, raw, transport_context) do
     with {:ok, facts} <- read(c, id),
          execution when not is_nil(execution) <- facts.intent.executions[execution_id],
-         true <- is_map(execution.binding),
          :ok <- evidence_supported(execution, kind),
+         true <- is_map(execution.binding),
          {:ok, {module, config}} <- Registry.resolve(c.handlers, execution.binding),
          {:ok, report} <-
            adapter_evidence(module, config, facts.intent, execution, kind, raw, transport_context),
          :ok <- Report.validate(report),
          true <-
-           Report.source_kind(report) == kind and
+           Report.source_kind(report) == if(kind == :fence, do: :query, else: kind) and
              Report.scope(report) == {c.collection, id, execution_id} do
       store_report(c, report)
     else
@@ -199,14 +202,28 @@ defmodule BeamletRuntime.Coordinator do
   end
 
   defp evidence_supported(execution, kind) do
-    key = if kind == :query, do: "query", else: "completion"
+    key =
+      case kind do
+        :query -> "query"
+        :fence -> "fencing"
+        :callback -> "completion"
+      end
 
     cond do
       is_nil(execution.authorization) -> {:error, :authorization_required}
       is_map(execution.binding[key]) -> :ok
       kind == :query -> {:error, :query_not_supported}
+      kind == :fence -> {:error, :fencing_not_supported}
       true -> {:error, :callback_not_supported}
     end
+  end
+
+  defp adapter_evidence(module, config, intent, execution, :fence, _raw, _context) do
+    safe_evidence(fn ->
+      if function_exported?(module, :fence, 3),
+        do: module.fence(intent, execution, config),
+        else: {:error, :fencing_not_supported}
+    end)
   end
 
   defp adapter_evidence(module, config, intent, execution, :query, _raw, _context) do

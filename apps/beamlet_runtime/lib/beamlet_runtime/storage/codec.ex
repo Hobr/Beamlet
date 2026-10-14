@@ -54,11 +54,11 @@ defmodule BeamletRuntime.Storage.Codec do
   @fields Enum.flat_map(@modules, &(Map.keys(&1.__struct__()) -- [:__struct__]))
   @names Map.new(Enum.uniq(@atoms ++ @fields), &{Atom.to_string(&1), &1})
 
-  def encode(value), do: Jason.encode!(%{"version" => 2, "value" => pack(value)})
+  def encode(value), do: Jason.encode!(%{"version" => 3, "value" => pack(value)})
 
   def decode(bytes) when is_binary(bytes) do
     case Jason.decode(bytes) do
-      {:ok, %{"version" => version, "value" => value}} when version in [1, 2] ->
+      {:ok, %{"version" => version, "value" => value}} when version in [1, 2, 3] ->
         {:ok, unpack(value, version)}
 
       _ ->
@@ -102,13 +102,16 @@ defmodule BeamletRuntime.Storage.Codec do
     fields = unpack(fields, version)
     expected = Map.keys(module.__struct__()) -- [:__struct__]
     legacy = expected -- [:judgment_revision, :decisions, :commands]
+    legacy_definition = expected -- [:repeat_accepted]
 
     valid =
       Enum.sort(Map.keys(fields)) == Enum.sort(expected) or
-        (version == 1 and module == Intent and Enum.sort(Map.keys(fields)) == Enum.sort(legacy))
+        (version == 1 and module == Intent and Enum.sort(Map.keys(fields)) == Enum.sort(legacy)) or
+        (version in [1, 2] and module == Definition and
+           Enum.sort(Map.keys(fields)) == Enum.sort(legacy_definition))
 
     unless valid, do: raise(ArgumentError, "invalid stored fields")
-    struct!(module, fields)
+    validate_repeat(struct!(module, fields))
   end
 
   defp unpack(%{"$map" => entries} = tagged, version) when map_size(tagged) == 1 do
@@ -119,4 +122,12 @@ defmodule BeamletRuntime.Storage.Codec do
     if map_size(result) != length(entries), do: raise(ArgumentError, "duplicate stored keys")
     result
   end
+
+  defp validate_repeat(%Definition{} = value) do
+    if is_boolean(value.repeat_accepted),
+      do: value,
+      else: raise(ArgumentError, "invalid repeat acceptance")
+  end
+
+  defp validate_repeat(value), do: value
 end
