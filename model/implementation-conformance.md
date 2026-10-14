@@ -311,6 +311,26 @@ Quint fencedTests 2、strictTests 23、repeatingTests 79 个场景以 seed=42/ma
 fencing README 示例实际执行通过。完整回归曾出现旧执行测试临时目录清理失败，目录改为 UUID 后完整 seed=42 重跑通过。
 有限轨迹不构成无界 refinement 证明。
 
+## 统一轨迹重放增量
+
+新增根目录入口 `mix run scripts/check_trace_conformance.exs --suite all --seed 42`。
+它原样导入既有 Quint 动作及 safety，先生成 checkpoint ITF，再让真实 Worker、Coordinator、
+独立 Authority/资源/Caller SQLite 重放；预期字段不参与驱动，只用操作标签决定下一步。
+严格比较生命周期、Knowledge、revision、来源计数、Outcome、真实资源调用/完成事实，
+以及 round/decision/manifest、原完整 Outcome 和后继身份对应。
+
+定向 Worker 4 条历史/54 个检查点、Caller/Continuation 3 条历史/57 个检查点通过。
+分别覆盖 Authority 离线后的原报告保留或 Worker 丢失结果、取消后迟到 Success、重复 grant/query，
+以及 decision 后、manifest 后、后继提交丢回复后的 Caller 库服务重启。
+共享 Worker 下 A/B 的相同本地 Execution ID 不混淆，C 完成不强迫 B 完成或改变原决定。
+统一入口也重新执行既有报告/重试、协调/撤销和资源轨迹 oracle；不是把这些独立矩阵改称全轨迹覆盖。
+
+生成源码、模型 SHA-256、版本/seed/预算、原始 ITF、完整预期、逐步实际投影和首个差异均保留。
+重放诊断新增 6 项测试，包含故意不匹配、多/缺字段、空/歧义轨迹和操作异常。
+[完整命令、映射与覆盖边界](trace-conformance.md) 明确组合接口的检查粒度、持久缓存细化、
+服务停止与实际掉电的区别，以及尚未接入统一轨迹的动作交错。
+本次没有修改既有 Quint 规则，也没有获得全动作/无界 refinement 证明。
+
 ## 剩余工程与验证缺口
 
 ALLOW_REPEAT 和本地 CAN_FENCE 协议已有具体实现；第三方资源仍须提供自己的真实排除协议。

@@ -13,7 +13,9 @@ Beamlet!!!!! 是基于它的 Agent 框架及其系列产品的名称, 五个感�
 [重复风险与资源 fencing](../apps/beamlet_runtime/FENCING.md) 已接入可选 ALLOW_REPEAT 策略、
 指定 Execution 的永久资源排除，以及真实 SQLite／资源的选定轨迹对照。
 独立治理控制面、远端 Transport、第三方 Provider Adapter、PostgreSQL 与完整 Agent loop 尚待验收.
-[模型与实现对照](implementation-conformance.md) 记录对应范围、修正与验证边界.
+[模型与实现对照](implementation-conformance.md) 记录对应范围、修正与验证边界。
+[统一轨迹重放](trace-conformance.md) 接入真实 Worker、协调命令与 Caller/Continuation，
+逐检查点比较 Quint 预期与独立 SQL 持久事实，并汇集已有报告/重试、证据协调和资源 fencing oracle。
 
 ## 从这里开始
 

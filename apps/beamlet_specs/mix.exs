@@ -1,6 +1,8 @@
 defmodule Beamlet.Specs.MixProject do
   use Mix.Project
 
+  def application, do: [extra_applications: [:crypto]]
+
   def project do
     [
       app: :beamlet_specs,
