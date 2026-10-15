@@ -2,21 +2,6 @@
 
 **WIP**, with broken changes before the first release.
 
-## Packages
-
-### Engine
-
-- Beamlet: the core Effect system
-- Beamlet-Runtime: the runtime for running effects
-
-### Beamlet!!!!!
-
-- Beamlet-Agent: an AI agent loop built on the Effect system
-- Beamlet-CLI: a command-line interface
-- Beamlet-TUI: an interactive terminal interface
-- Beamlet-Web: a web workbench built with Phoenix LiveView
-- Beamlet-Mobile: a mobile interface
-
 ## Build
 
 ```bash
@@ -27,30 +12,14 @@ nix develop
 ## Install Hex
 mix local.hex
 
-## Install igniter_new
-mix archive.install hex igniter_new
-
 ## Fetch dependencies
 mix deps.get
 
 ## Update dependencies
 mix deps.update --all
 
-## Compile dependencies
-mix deps.compile
-
 # Compile
 mix compile
-
-# Production build
-MIX_ENV=prod mix compile
-
-# Web server
-## Init
-mix setup
-mix assets.build
-## Webserver
-mix phx.server
 
 # Format
 pre-commit run --all-files
@@ -66,9 +35,6 @@ mix credo
 
 # Phoenix security static analysis
 mix sobelow
-
-# Quint
-mix quint {all/typecheck/test/simulate/mutations}
 ```
 
 ## Thanks
@@ -78,5 +44,4 @@ mix quint {all/typecheck/test/simulate/mutations}
 - [Phoenix](https://www.phoenixframework.org/)
 - [Elixir Desktop](https://github.com/elixir-desktop/desktop)
 - [Mob Framework](https://github.com/GenericJam/mob)
-- [Quint](https://github.com/quint-co/quint)
 - [Nix](https://nixos.org/)
