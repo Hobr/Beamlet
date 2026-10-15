@@ -21,6 +21,7 @@
           packages =
             (with pkgs; [
               pre-commit
+              inotify-tools
             ])
             ++ (with beam; [
               erlang
