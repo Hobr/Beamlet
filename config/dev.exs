@@ -47,5 +47,10 @@ config :phoenix_live_view,
   debug_heex_annotations: true,
   debug_attributes: true
 
+# Keep the LiveDebugger UI and browser assets accessible only on this machine.
+config :live_debugger,
+  ip: {127, 0, 0, 1},
+  port: 4007
+
 # Enable dev routes for dashboard and mailbox
 config :beamlet_web, dev_routes: true
