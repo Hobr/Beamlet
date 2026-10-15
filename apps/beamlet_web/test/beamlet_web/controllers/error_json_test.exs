@@ -1,12 +1,14 @@
 defmodule Beamlet.Web.ErrorJSONTest do
   use Beamlet.Web.ConnCase, async: true
 
+  alias Beamlet.Web.ErrorJSON
+
   test "renders 404" do
-    assert Beamlet.Web.ErrorJSON.render("404.json", %{}) == %{errors: %{detail: "Not Found"}}
+    assert ErrorJSON.render("404.json", %{}) == %{errors: %{detail: "Not Found"}}
   end
 
   test "renders 500" do
-    assert Beamlet.Web.ErrorJSON.render("500.json", %{}) ==
+    assert ErrorJSON.render("500.json", %{}) ==
              %{errors: %{detail: "Internal Server Error"}}
   end
 end

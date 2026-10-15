@@ -5,12 +5,14 @@ defmodule Beamlet.Web.Application do
 
   use Application
 
+  alias Beamlet.Web.Endpoint
+
   @impl true
   def start(_type, _args) do
     children = [
       Beamlet.Web.Telemetry,
       {Phoenix.PubSub, name: Beamlet.Web.PubSub},
-      Beamlet.Web.Endpoint
+      Endpoint
     ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html
@@ -23,7 +25,7 @@ defmodule Beamlet.Web.Application do
   # whenever the application is updated.
   @impl true
   def config_change(changed, _new, removed) do
-    Beamlet.Web.Endpoint.config_change(changed, removed)
+    Endpoint.config_change(changed, removed)
     :ok
   end
 end
