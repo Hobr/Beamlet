@@ -42,5 +42,10 @@ config :beamlet_web, Beamlet.Web.Endpoint,
 # configured to run both http and https servers on
 # different ports.
 
+# Include source locations and component metadata for Tidewave.
+config :phoenix_live_view,
+  debug_heex_annotations: true,
+  debug_attributes: true
+
 # Enable dev routes for dashboard and mailbox
 config :beamlet_web, dev_routes: true
