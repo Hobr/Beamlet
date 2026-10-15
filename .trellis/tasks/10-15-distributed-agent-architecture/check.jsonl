@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Review data flow and avoid duplicated protocol ownership"}
+{"file": ".trellis/tasks/10-15-distributed-agent-architecture/research/otp-execution-primitives.md", "reason": "Check that guarantees do not exceed researched OTP semantics"}
