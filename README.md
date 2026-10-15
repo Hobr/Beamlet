@@ -35,6 +35,9 @@ mix credo
 
 # Phoenix security static analysis
 mix sobelow
+
+# Example benchmark
+mix bench
 ```
 
 ## Thanks
