@@ -1,10 +1,22 @@
 # Implementation and Integration Plan
 
+## Final scope disposition — user-approved removal
+
+The user instructed: "取消跨物理主机验收这一要求, 继续开展后续工作".
+This supersedes earlier pending/deferred physical-gate statements below. Child AC5
+is removed; parent AC2/AC11 require the delivered multi-VM/release/deployment
+evidence only. Physical testing was not executed and is not claimed. All remaining
+implementation/check gates are accepted (123 ordinary tests;7 distributed tests at
+two seeds; copied named release/closure/control checks). No source changed for this
+scope reduction. Proceed to Phase3.4 commit plan, then archive/journal bookkeeping.
+Earlier records below remain historical where they conflict with this disposition.
+
 ## Authorization and Ownership
 
-Planning only until the user approves the latest final summary. All five tasks
-must remain `planning` in this turn. Do not run `task.py start`, edit product
-code, fetch project dependencies or start an implementation worker now.
+The user explicitly approved the final parent/child planning summary on 2026-10-16
+("批准"). Sequential implementation and checks of all four stages are authorized.
+Activate child 1 first; later children start only after their prerequisite gates pass.
+Physical-host access and paid upstream requests still require their stated prerequisites.
 
 The parent owns requirements/design/task mapping/final integration, not a broad
 implementation handoff. After approval, activate child 1 first. Child ownership
@@ -19,22 +31,44 @@ and curated manifests. A child cannot expand scope or commit on its own.
 - [x] Confirm B scope with user; research primary sources and record caveats.
 - [x] Probe existing toolchain, baseline tests and disposable same-host BEAM peers.
 - [x] Create parent/child planning artifacts with explicit ownership/dependencies.
-- [ ] Obtain explicit user approval of this final plan; record approval.
-- [ ] Start `10-16-operation-runtime`; implement and check child 1.
+- [x] Obtain explicit user approval of this final plan; user replied "批准" on 2026-10-16.
+- [x] Start `10-16-operation-runtime`; implement and check child 1.
+  Parent accepted the scoped implementation gate on 2026-10-16 after reviewing
+  check-report.md, verification.md, handoff.md and final facade/worker contracts.
+  Evidence: 42 umbrella tests and 4 same-host distributed tests passed; compile,
+  strict scoped Credo and existing-PLT Dialyzer analysis passed. Final LSP probe:
+  11 files inconclusive (timeout), not clean. PLT refresh timed out. Backend specs
+  updated. Commit/archive bookkeeping is deferred to the final delivery batch;
+  child 2 may proceed because the implementation/check prerequisite is met.
   Gate: non-AI submission, real multi-VM execution, local capacity/fault/uncertainty,
   bounded event/state handling and no automatic retry/replay.
-- [ ] Start `10-16-harness-providers`; implement and check child 2.
+- [x] Start `10-16-harness-providers`; implement and check child 2.
+  Parent accepted the scoped gate on 2026-10-16 after check-report/verification/
+  handoff and final source-contract review: 26 independent Harness tests, 66
+  umbrella tests, compile/format/Credo/Dialyzer and dependency checks passed.
+  Active LSP unavailable; live provider/physical-host evidence remains separate.
+  Native Harness executable specs updated. Commit/archive deferred to final
+  delivery batch; child 3 implementation/check prerequisites are satisfied.
   Gate: Harness independent tests, real HTTP adapter against local fixture,
   strict call validation, no retries/redirects, bounded response/read-only Tool.
-- [ ] Start `10-16-agent-orchestration` only after 1 and 2 gates.
+- [x] Start `10-16-agent-orchestration` only after 1 and 2 gates.
+  Parent accepted child3 on 2026-10-16 after final independent reports/source review.
+  Public guarded Runtime submit closes private admission bypass; lifecycle ownership,
+  retirement, nested cleanup, ordered joins and role/readiness gates pass. Independent
+  86 impacted tests seed631927 include all six distributed cases; static/dependency/
+  whitespace gates pass. LSP inconclusive. Agent/Node and guarded Runtime specs synced.
+  Commit/archive deferred; child4 prerequisites satisfied. Physical/release gates remain.
   Gate: complete model→parallel Tools→model loop through normal Runtime,
   delegation/peers/stop/loss/late reply tests, role and provider-readiness faults.
-- [ ] Start `10-16-backend-release` only after 1–3 gates.
+- [x] Start `10-16-backend-release` after accepted1–3 gates.
+  Local implementation/check accepted2026-10-16:123 ordinary tests,7 distributed
+  at seeds719916/631927; isolated closure/copied named boot/RPC/stop and static
+  gates pass. CLI/config/control-port fixes independently verified. Specs synced.
+  Physical B/C distinct-host gate removed by user; remaining delivery gates accepted.
   Gate: CLI plus actual backend release closure/boot, automated three-node end-to-end
-  suite and recorded cross-physical-host run; no claims based solely on peers.
-- [ ] Perform full parent AC1–AC12 integration review; do not archive parent with
-  missing required multi-host evidence or failing child gates.
-- [ ] Update backend executable-contract specs where implementation added knowledge.
+  suite; cross-physical-host test requirement removed, physical execution untested.
+- [x] Perform revised parent AC1–AC12 integration review; all remaining gates accepted. See integration-review.md for user-approved physical-condition removal.
+- [x] Update backend executable-contract specs for all four deliverables; physical acceptance requirement removed.
 - [ ] Follow finish-work/commit process; preserve unrelated staged changes and do
   not let worker subagents commit. Record actual checks and remaining limitations.
 
@@ -69,7 +103,7 @@ mix sobelow
 mix xref graph --format cycles
 git diff --check
 git diff --cached --check
-MIX_ENV=prod mix release beamlet_node
+BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_node
 ```
 
 Run focused tests from each child application (shared umbrella build paths).

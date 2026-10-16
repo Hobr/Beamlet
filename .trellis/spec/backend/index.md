@@ -1,9 +1,12 @@
 # Backend Development Guidelines
 
-Beamlet currently has a six-application Elixir Mix umbrella and a Phoenix web
-scaffold. Most non-web code is generated `hello/0` scaffolding, not an Agent or
-execution engine. These English guidelines describe checked-in behavior; source
-paths below are relative to the repository root.
+Beamlet has a six-application Elixir Mix umbrella with implemented generic Actions
+contracts, an opt-in distributed Runtime and independent native Harness providers.
+Agent implements bounded asynchronous orchestration; Node composes opt-in roles.
+Node also provides a thin CLI and isolated backend release; cross-physical-host acceptance
+was removed by user decision; no physical execution is claimed. Phoenix provides the existing web scaffold.
+These English guidelines describe checked-in behavior; source paths below are
+relative to the repository root.
 
 ## Pre-Development Checklist
 
@@ -32,6 +35,10 @@ commands for the change are identified.
 | Guide | Read for |
 | --- | --- |
 | [Directory Structure](./directory-structure.md) | Actual app boundaries, supervision, Phoenix request flow, file placement |
+| [Operation Runtime](./operation-runtime.md) | Generic contracts, opt-in supervision, admission, events, limits and failure semantics |
+| [Native Harness](./harness-providers.md) | Model/Tool contracts, schema/history validation, HTTP and trusted workspace boundaries |
+| [Agent and Node](./agent-orchestration.md) | Explicit authority, bounded orchestration, lifecycle ownership, subscriptions and roles |
+| [Backend CLI and Release](./backend-release.md) | CLI bounds, isolated packaging/config, named control ports and deployment evidence |
 | [State and Persistence](./database-guidelines.md) | Absence of a database, cookie sessions, configuration and storage pitfalls |
 | [Error Handling](./error-handling.md) | OTP startup propagation, status renderers, component feedback and gaps |
 | [Quality Guidelines](./quality-guidelines.md) | Formatting, build/test/static-analysis commands, test examples and coverage limits |

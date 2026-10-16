@@ -2,11 +2,13 @@
 
 ## Existing Contracts, Not a Domain Error Taxonomy
 
-Current application source defines no custom exceptions, domain error structs,
-`{:error, reason}` protocol, retry layer, or catch-all rescue wrapper. Non-web
-modules are still `hello/0` stubs. Do not describe the failure/cancellation model
-in `architecture.md` as implemented behavior; new domain failures need their own
-task-defined contract and tests.
+Actions/Runtime now define validated data contracts, immediate `{:error, reason}`
+responses and terminal Result statuses. See [Operation Runtime](./operation-runtime.md)
+for the executable failure matrix. No automatic retry or recovery exists.
+Harness returns safe native errors without raw credentials, paths or provider
+bodies; see [Native Harness](./harness-providers.md). Agent/Node expose explicit
+command/startup/terminal errors; see [Agent and Node](./agent-orchestration.md).
+Stopped generations reject late replies; infrastructure loss never replays work.
 
 ## Startup and Configuration Failures
 

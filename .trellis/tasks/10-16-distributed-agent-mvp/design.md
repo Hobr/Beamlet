@@ -2,7 +2,7 @@
 
 ## 1. Status and Boundaries
 
-Proposed implementation design awaiting final user review. Follow the accepted
+Implementation design approved by the user on 2026-10-16 ("批准"). Follow the accepted
 `architecture.md` / `architecture_zh.md`; the archived architecture task stays
 archived. This plan implements the approved B scope without future durability
 machinery. API names below are planned interfaces, not existing callable code.
@@ -260,11 +260,10 @@ automatic discovery, TLS-distribution rollout or authentication system is added.
 Automation: controllable fake handlers/providers across isolated `:peer` nodes,
 with alternative stdio control during partition tests. Assert correct execution
 node/authority and cleanup; do not infer absence of side effects from DOWN.
-Physical acceptance: A client, B authority, C executor on at least two physical
-hosts (B and C different hosts), using built release and an executor-only marker
-file. Capture host/node identities, role readiness, remote read/result, stop/loss
-behavior and absence of authority execution fallback. If only one host is available,
-report the missing physical record and do not sign off that acceptance criterion.
+Revised acceptance: A client, B authority, C executor in independent VMs, using a
+local real HTTP fixture and executor-only marker, with explicit role/correlation,
+stop/loss and no-fallback assertions. User cancelled cross-physical-host acceptance;
+physical deployment instructions remain optional and no physical run is claimed.
 
 No paid request is authorized by this plan. Local compatible HTTP fixtures test
 the real adapter deterministically; a separate opt-in live smoke uses operator

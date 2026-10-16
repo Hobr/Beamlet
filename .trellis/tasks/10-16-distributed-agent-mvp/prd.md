@@ -5,14 +5,14 @@
 Deliver the first usable backend of the accepted distributed-agent architecture:
 a caller chooses an Agent authority, the Agent runs model/Tool Operations on
 eligible connected BEAM nodes, and the caller observes results and controls work
-through IEx/CLI. The first version must work across physical machines, not just
-simulate distribution on one host.
+through IEx/CLI. The first version must execute across independent BEAM VMs. Cross-physical-host
+acceptance is removed by explicit user decision; no physical-host execution is claimed.
 
 The user approved task creation and selected **B: usable backend**. This includes
 real model integration, a constrained read-only workspace Tool, deterministic
 test providers, concurrent work, Sub-agent delegation, and peer interaction.
-It excludes a Web product UI. Approval of this final implementation plan is
-still pending; all parent/child tasks remain in planning.
+It excludes a Web product UI. The user approved the final parent/child implementation
+plan on 2026-10-16 ("批准"); execute sequentially after each prerequisite gate.
 
 ## Background and Evidence
 
@@ -108,7 +108,7 @@ workers behind.
 | ID | Observable result | Requirements | Owning child |
 | --- | --- | --- | --- |
 | AC1 | Non-AI handler submits/executes successfully with no Harness/Agent/Phoenix dependency; Harness tests independently without Actions/Runtime; sibling dependencies have no cycles. | R1 | 1, 2, 4 |
-| AC2 | On three BEAM nodes A/B/C, A controls an Agent on B and C executes model/Tool work. At least B/C run on different physical hosts for the physical acceptance record; same-host peers are separately labelled automation only. | R2, R6 | 4 |
+| AC2 | On three BEAM nodes A/B/C, A controls an Agent on B and C executes model/Tool work. Independent same-host VMs satisfy this release gate; cross-physical-host acceptance was cancelled by the user. | R2, R6 | 4 |
 | AC3 | Missing capability, stale/unready endpoint, wrong environment, insufficient capacity, or definite admission rejection produces a non-started result; competing callers never exceed one executor's configured capacity. | R2, R3 | 1, 3 |
 | AC4 | Tests cover submit vs admission, no-target results without synthetic executions, cancel before dispatch/during work/racing success, owner/coordinator/gateway loss, deadline, uncertain admission, partition, and stale/duplicate replies. No ambiguous attempt is retried. | R3, R7 | 1 |
 | AC5 | HTTP adapter sends a real compatible wire request through a local HTTP fixture, normalizes final text/function calls, preserves IDs, and rejects malformed/refused/incomplete/oversized replies. Redirect/429/500/timeout tests prove no hidden retry. An operator-run live-provider smoke path is documented separately. | R4 | 2, 4 |
@@ -117,7 +117,7 @@ workers behind.
 | AC8 | Parallel delegated child turns join asynchronously; stop/delegator loss requests child cleanup; late replies cannot resume a stopped/later turn; child failure/disconnection is explicit; peer lifetime is independent and parent waits consume no executor capacity. | R5 | 3 |
 | AC9 | Initial snapshot precedes events, slow clients see bounded/coalesced output, client exit removes only subscription, and reconnect obtains a fresh snapshot without replay promises. Limits and retention expiry are tested. | R6, R7 | 1, 3 |
 | AC10 | Backend release boots without source checkout, Phoenix artifacts/listeners, web secret or authority-side model credentials. Executor-only boot starts no authority services; local combined-role work uses the same gateway. Existing Web production secret fail-fast and CSP tests remain intact. | R1, R2, R6 | 3, 4 |
-| AC11 | README/runbook and repeatable scripts describe long names, cookie, reachable hostnames, EPMD/distribution ports, role/provider/workspace config, teardown, and an actual multi-host verification record. Missing hosts/credentials are recorded as pending, never reported as tested. | R2, R4, R6 | 4 |
+| AC11 | README/runbook and repeatable scripts describe long names, cookie, reachable hostnames, EPMD/distribution ports, role/provider/workspace config, teardown, and an automated multi-VM verification record. Cross-physical-host execution is untested and no longer a completion requirement. | R2, R4, R6 | 4 |
 | AC12 | Formatting, application compilation/tests, distributed tests, static analysis, dependency/release checks, and final parent integration review have recorded results; failures/skips have concrete explanations. | All | All |
 
 ## Out of Scope
@@ -155,6 +155,8 @@ No unresolved scope question remains beyond approval of the proposed detailed
 plan. Physical hosts/network access and live-provider credentials/spending are
 execution-time prerequisites, not silently granted permissions. Never request
 secrets in chat or make paid calls without approval. Automated local HTTP tests
-do not claim that a third-party model was called; same-host peer tests do not
-satisfy AC2/AC11's physical-host record. Parent completion remains blocked on any
-required physical-host evidence not yet obtained.
+do not claim that a third-party model was called. The user explicitly cancelled
+cross-physical-host acceptance: "取消跨物理主机验收这一要求, 继续开展后续工作".
+This supersedes the earlier deferral and removes only the physical test gate.
+Independent-VM automation and release checks remain required and accepted. Physical
+execution and optional live-provider smoke remain unexecuted; neither is claimed.

@@ -51,8 +51,10 @@ Each app has `test/test_helper.exs` calling `ExUnit.start()`. Non-web tests mirr
 source directories and use ExUnit plus doctests; examples include
 `apps/beamlet_actions/test/beamlet/actions_test.exs`,
 `apps/beamlet_agent/test/beamlet/agent_test.exs`, and
-`apps/beamlet_runtime/test/beamlet/runtime_test.exs`. They currently only verify
-`hello/0 == :world`, not domain behavior.
+`apps/beamlet_runtime/test/beamlet/runtime_test.exs`. Actions/Runtime now have
+behavioral validation, composition, lifecycle, limit and distributed tests; the
+Harness tests independently cover native contracts and actual TCP/TLS/workspace
+behavior; Agent/Node tests cover orchestration, roles, lifecycle ownership and actual peer VMs.
 
 Web tests use `apps/beamlet_web/test/support/conn_case.ex`, which imports
 `Plug.Conn`, `Phoenix.ConnTest`, and verified routes and builds a connection in
@@ -79,10 +81,58 @@ controller test directory use `ConnCase, async: true` and check 404/500 renderer
 the page tests do not opt into async. Follow a test's actual state needs rather
 than treating async as universal policy.
 
-Current gaps: no implemented Agent/runtime/action behavior to test; no focused
-supervision, telemetry, reusable component, or end-to-end exception tests. Add
-behavioral regression coverage with new functionality instead of counting the
-hello-world tests as evidence for it.
+Runtime distributed tests are excluded by default. Run them explicitly on a named
+VM with an isolated cookie and low peer scheduler counts; inspect actual executed
+counts. Same-host peers do not prove physical multi-host acceptance. Runtime
+`review_test.exs` covers limits, live progress, discovery and admission regressions.
+See [Operation Runtime](./operation-runtime.md) and [Native Harness](./harness-providers.md)
+for required assertions. Harness socket tests require local TCP/SSL, OpenSSL,
+mkfifo and Linux /proc/self/fd; report unavailable prerequisites as skips, not
+passing evidence. Agent contracts are covered by [Agent and Node](./agent-orchestration.md);
+local release/CLI review passed; cross-physical-host acceptance was removed by the user; physical execution is untested. See
+[Backend CLI and Release](./backend-release.md) for isolated build and copied named
+start/RPC/stop checks. Eval alone misses control-helper fixed-port collisions.
+An empty diagnostic cache or timed-out LSP probe is not a clean result. Record
+PLT refresh separately from Dialyzer analysis against an existing PLT.
+
+## Agent Helper Lifecycle Regression Gate
+
+Independent Agent/Node review exposed a recurring failure pattern: moving a
+blocking infrastructure call into a monitored helper preserves Agent callback
+responsiveness but does not bound the helper's lifetime. A receive timeout starts
+only after the call returns and can reset on recursion; it cannot interrupt an
+infinite supervisor admission call. A monitor alone cannot process owner loss
+while the monitored caller is blocked. Raw spawned helpers also need explicit
+authority-lifecycle ownership.
+
+For operation owners and delegation admission/cleanup helpers, assert actual DOWN
+within a finite bound while target infrastructure remains suspended. Exercise
+Agent loss, authority teardown, delayed coordinator/child creation after the
+requester exits, nested delegation and blocked progress acknowledgement. Resume
+infrastructure only after the bounded-cleanup assertion, then verify late-created
+work observes dead ownership and is not retried. Keep temporary helpers accounted
+until observed exit; accepting a business Result or sending `:finished` does not
+establish owner termination. Use genuine native progress followed by Runtime
+completion to test terminal/ack races.
+
+The previous repair missed these cases because tests resumed infrastructure before
+asserting cleanup and removed terminal-owner accounting before DOWN. This is an
+implicit lifecycle assumption and integration coverage gap. These are required regression assertions. Independent child3 review passed them
+with public Runtime admission integrated (86 impacted tests, seed631927); preserve
+these assertions in future changes. Physical-host and release acceptance are separate.
+
+
+## Distributed Capacity Synchronization
+
+A successful Result does not refresh Directory capacity. Sequential-success tests
+must observe actual gateway release/zero tasks and a newer eligible capacity report
+before the next single submission. Runtime's distributed regression uses a fence
+and lease both from the executor clock; wait deadlines remain local. Exercise an
+occupied cached report explicitly rather than rely on scheduler timing. Never add
+business retries or weaken success assertions to mask missing synchronization.
+The controlled probe established stale capacity → no_target; historical uncaptured
+failure reasons remain unknown. Independent final gates:123 ordinary tests and7
+actual distributed tests at two seeds; same-host evidence is not physical acceptance.
 
 ## Review Before Handoff
 

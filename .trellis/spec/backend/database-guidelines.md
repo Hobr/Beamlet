@@ -6,16 +6,18 @@ Beamlet has no implemented database, ORM, Repo, schemas, migrations, queries, or
 transactions. None of `apps/*/mix.exs` declares Ecto or a database adapter, and
 `mix.lock` has no resolved Ecto package entry. LiveDashboard's lock metadata lists
 optional Ecto integrations, but those are not selected as resolved packages.
-The five non-web `lib/beamlet/*.ex` entry modules only return `:world` from
-`hello/0`; Node's supervisor has no children
-(`apps/beamlet_node/lib/beamlet/node/application.ex`). There is no application
-ETS/DETS store or durable Agent/action history in the current `apps/*/lib/` tree.
+Runtime owns ephemeral process state: Directory snapshots, coordinator terminal
+retention, and gateway admission accounting/tombstones. None survives infrastructure
+restart. Node composes configured roles (empty by default). Agent retains bounded
+context/turn/subscriber/peer state; Resources retains infrastructure PID inventories
+until DOWN, with VM-local restart fencing and no business replay state. There is no
+durable Agent/Operation history. See [Agent and Node](./agent-orchestration.md). See [Operation Runtime](./operation-runtime.md).
 
 Accordingly, there are no established table names, migration commands, transaction
 patterns, or repository test fixtures to follow. Storage work needs an explicit
-task-level contract rather than an invented Ecto convention. The in-memory Agent
-and action model in `architecture.md` is intended architecture, not a store that
-can already be called.
+task-level contract rather than an invented Ecto convention. Runtime refs address
+live coordinators; status is unavailable after expiry or shared infrastructure loss.
+Do not turn retained Results/tombstones into replay or durable deduplication promises.
 
 ## Existing State Boundaries
 
