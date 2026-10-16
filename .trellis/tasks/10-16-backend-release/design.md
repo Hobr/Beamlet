@@ -4,14 +4,22 @@
 
 Parent requirements and cross-child acceptance: `../10-16-distributed-agent-mvp/prd.md`.
 Parent technical design and operational limits: `../10-16-distributed-agent-mvp/design.md`.
-This child is planning only. The parent final summary must be approved before
-activation; no product code or implementation dispatch is authorized yet.
+The user approved the complete parent/child plan on 2026-10-16 ("批准").
+Implementation is authorized once this child's prerequisite gates pass; only the
+currently activated child is an implementation target.
 A material contract/scope change returns to parent review. No persistence,
 distributed consistency, automatic replay, Web UI or sandbox scope expansion.
 
 ## Dependencies and Ordering
 
-BLOCKED until children 1–3 pass their gates and publish actual interfaces. Parent owns final cross-child AC sign-off and remains incomplete without required physical-host evidence.
+Prerequisites satisfied on 2026-10-16: parent accepted children1–3 scoped
+implementation/check gates and published actual handoffs/executable specs. Child3's
+final independent86-test gate (seed631927) includes all six distributed cases;
+public Runtime admission and bounded lifecycle contracts are accepted. Consume
+all three actual handoffs plus operation-runtime/harness-providers/agent-orchestration
+specs. Commit/archive bookkeeping remains deferred to final delivery. Parent owns
+cross-child sign-off. Physical-host acceptance was cancelled by the user;
+no physical execution is claimed.
 
 ## Owned Design
 
@@ -34,11 +42,10 @@ executor; never embed them in command transcripts/reports. The workspace exposed
 to the Tool must be a provisioned allowed-content tree with controlled backing
 writers; read-only API does not provide OS isolation.
 
-Physical run uses at least two distinct hosts; client A may share one host, but
-authority B and executor C must differ. Record actual host/node identity and
-execution evidence. Same-host :peer tests are useful automation, not physical
-acceptance. If external machines are unavailable, complete all local deliverables,
-leave physical gate pending and request only the missing access/instructions then.
+The user cancelled cross-physical-host acceptance. Independent A/B/C VMs and copied
+named-release checks satisfy the revised execution gates. Retain the physical
+runbook as an optional deployment resource; do not request hosts or imply physical
+evidence from same-host peers. No physical-host run was performed.
 
 ## Integration Ownership
 

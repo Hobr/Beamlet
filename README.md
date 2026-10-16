@@ -2,6 +2,11 @@
 
 **WIP**, with broken changes before the first release.
 
+Backend release, CLI/IEx, trusted multi-host configuration and acceptance:
+[deployment runbook](scripts/deployment/README.md). Local automated evidence is
+based on independent VMs and copied-release checks. Physical-host execution is
+untested; its acceptance requirement was removed for this MVP.
+
 ## Build
 
 ```bash

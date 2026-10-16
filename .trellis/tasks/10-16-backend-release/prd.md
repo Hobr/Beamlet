@@ -2,20 +2,28 @@
 
 ## Goal
 
-Deliver usable IEx/CLI entry points and a backend release, with reproducible automated and physical multi-machine acceptance.
+Deliver usable IEx/CLI entry points and a backend release, with reproducible automated multi-VM acceptance and deployment instructions.
 
 ## Shared Contract and Review Status
 
 Parent requirements and cross-child acceptance: `../10-16-distributed-agent-mvp/prd.md`.
 Parent technical design and operational limits: `../10-16-distributed-agent-mvp/design.md`.
-This child is planning only. The parent final summary must be approved before
-activation; no product code or implementation dispatch is authorized yet.
+The user approved the complete parent/child plan on 2026-10-16 ("批准").
+Implementation is authorized once this child's prerequisite gates pass; only the
+currently activated child is an implementation target.
 A material contract/scope change returns to parent review. No persistence,
 distributed consistency, automatic replay, Web UI or sandbox scope expansion.
 
 ## Dependencies
 
-BLOCKED until children 1–3 pass their gates and publish actual interfaces. Parent owns final cross-child AC sign-off and remains incomplete without required physical-host evidence.
+Prerequisites satisfied on 2026-10-16: parent accepted children1–3 scoped
+implementation/check gates and published actual handoffs/executable specs. Child3's
+final independent86-test gate (seed631927) includes all six distributed cases;
+public Runtime admission and bounded lifecycle contracts are accepted. Consume
+all three actual handoffs plus operation-runtime/harness-providers/agent-orchestration
+specs. Commit/archive bookkeeping remains deferred to final delivery. Parent owns
+cross-child sign-off. User cancelled the physical-host acceptance requirement;
+local gates pass and final commit/archive bookkeeping may proceed.
 
 ## Requirements
 
@@ -31,7 +39,7 @@ BLOCKED until children 1–3 pass their gates and publish actual interfaces. Par
 - AC2: Built release boots copied outside source/deps without SECRET_KEY_BASE; inspect .rel/.app/lib closure to prove Web/Phoenix/PubSub/Bandit absence. Executor-only/authority-only boots have only their configured role services.
 - AC3: Enabled production Web still fails for missing secret and existing Web CSP tests pass.
 - AC4: Automated A/B/C independent-VM end-to-end test completes model→workspace Tool→model and fault/control scenarios, with cleanup and no wrong-node fallback.
-- AC5: A repeatable physical-host run records B and C on distinct physical machines, remote marker-file operation, role/identity assertions and stop/loss behavior. No host access means explicit pending acceptance, not success.
+- AC5: Removed by explicit user instruction ("取消跨物理主机验收这一要求, 继续开展后续工作"). No physical-host run was performed or claimed. Keep deployment instructions as an optional operator resource.
 - AC6: Local HTTP fixture proves real adapter path; optional live smoke is opt-in with operator endpoint/key/spending approval and secret-free output.
 
 ## Out of Scope

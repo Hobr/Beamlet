@@ -6,3 +6,9 @@
 {"file":".trellis/spec/backend/logging-guidelines.md","reason":"Keep credentials and content out of logs; existing telemetry ownership"}
 {"file":".trellis/tasks/10-16-distributed-agent-mvp/research/provider-workspace-release.md","reason":"Pinned provider APIs, workspace limits and headless release caveats"}
 {"file":".trellis/tasks/archive/2026-10/10-15-distributed-agent-architecture/research/otp-execution-primitives.md","reason":"OTP task/discovery/monitor semantics and uncertainty"}
+{"file":".trellis/spec/backend/operation-runtime.md","reason":"Accepted generic admission and guarded local-owner contracts"}
+{"file":".trellis/spec/backend/harness-providers.md","reason":"Accepted native provider and workspace contracts"}
+{"file":".trellis/spec/backend/agent-orchestration.md","reason":"Accepted Agent API, subscriptions, lifecycle ownership and role composition"}
+{"file":".trellis/tasks/10-16-operation-runtime/handoff.md","reason":"Actual Runtime consumer interfaces"}
+{"file":".trellis/tasks/10-16-harness-providers/handoff.md","reason":"Actual provider interfaces and limitations"}
+{"file":".trellis/tasks/10-16-agent-orchestration/handoff.md","reason":"Parent-accepted CLI/release consumer seam"}
