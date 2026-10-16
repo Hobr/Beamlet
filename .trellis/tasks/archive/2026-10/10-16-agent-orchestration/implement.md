@@ -1,5 +1,15 @@
 # Agent Orchestration and Node Role Composition — Execution Plan
 
+## Final delivery bookkeeping
+
+The user approved the five-commit split with "行". Work commits are 6b17a9a,
+1987dcd, 8f67ebd, 82c8357 and 404c6b9. All revised-scope gates are accepted;
+this record accompanies task archival, followed by the session journal.
+Earlier unchecked review/commit checkpoints below are historical and superseded.
+Physical-host acceptance was removed by the user; physical and live-provider
+execution are not claimed. LSP coverage remains inconclusive.
+
+
 ## Parent accepted gate — 2026-10-16
 
 Parent reviewed final independent86-test evidence (seed631927), AC matrix, actual
@@ -17,7 +27,7 @@ Earlier pending/blocked checkpoints below are historical.
 - [x] Verify four delayed admission stages observe owner DOWN before resume/no late execution; preserve nested cleanup, restart/idempotent inventory, terminal/ack retirement and correlations.
 - [x] Compile warnings-as-errors, format, strict scoped Credo, existing-PLT Dialyzer, production dependency trees and whitespace pass; index empty.
 - [x] Publish CURRENT check-report/verification/handoff with exact commands, hashes, AC1–AC5 and parent disposition and limitations.
-- [ ] Parent accept child3/handoff, synchronize executable specs and activate child4; no worker task-state/spec/index/commit writes.
+- [x] Parent accepted child3/handoff, synchronized executable specs and activated child4; work committed in 8f67ebd.
 
 Independent recommendation: **accept child3 and consumer handoff**. The last public
 Runtime boundary blocker is closed. Later implementation/review checkpoints below
