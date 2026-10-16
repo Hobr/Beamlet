@@ -4,8 +4,9 @@
 
 Parent requirements and cross-child acceptance: `../10-16-distributed-agent-mvp/prd.md`.
 Parent technical design and operational limits: `../10-16-distributed-agent-mvp/design.md`.
-This child is planning only. The parent final summary must be approved before
-activation; no product code or implementation dispatch is authorized yet.
+The user approved the complete parent/child plan on 2026-10-16 ("批准").
+Implementation is authorized once this child's prerequisite gates pass; only the
+currently activated child is an implementation target.
 A material contract/scope change returns to parent review. No persistence,
 distributed consistency, automatic replay, Web UI or sandbox scope expansion.
 
@@ -20,15 +21,32 @@ then Trellis quality check. Worker agents do not commit.
 
 ## Ordered Checklist
 
-- [ ] Implement validated contracts and non-AI handler fixtures.
-- [ ] Implement opt-in shared discovery/directory/coordinator infrastructure.
-- [ ] Implement execution gateway, local admission and MFA worker wrapper.
-- [ ] Implement lifecycle, progress credits, retention, deadlines and timer-driven cancellation.
-- [ ] Exercise real VM success, concurrent capacity, uncertain admission/partition and infrastructure failure.
-- [ ] Perform focused/full checks and document consumer contracts before child 3.
-- [ ] Run active changed-file diagnostics where available; absent LSP coverage is recorded.
-- [ ] Review parent AC mapping and this child acceptance; record verification/handoff.
-- [ ] Update applicable executable-contract specs and follow finish-work process.
+- [x] Implement validated contracts and non-AI handler fixtures.
+- [x] Implement opt-in shared discovery/directory/coordinator infrastructure.
+- [x] Implement execution gateway, local admission and MFA worker wrapper.
+- [x] Implement lifecycle, progress credits, retention, deadlines and timer-driven cancellation.
+- [x] Exercise real VM success, concurrent capacity, uncertain admission/partition and infrastructure failure.
+- [x] Perform focused/full checks and document consumer contracts before child 3.
+- [x] Run active changed-file diagnostics where available; absent LSP coverage is recorded.
+- [x] Review parent AC mapping and this child acceptance; record verification/handoff.
+- [x] Update applicable executable-contract specs.
+- [ ] Commit and follow finish-work process (deferred to final delivery batch).
+
+Parent accepted this child's implementation/check gate on 2026-10-16 after report
+and source-contract review. `.trellis/spec/backend/operation-runtime.md` now records
+actual APIs, limits, failure semantics and required tests; linked overview/state/
+error/quality specs were corrected. A parent active LSP probe checked 11 source
+files: all timed out, none confirmed clean. Compile/tests/Credo and existing-PLT
+analysis remain the actual evidence. Archival is pending commit bookkeeping and
+does not block the independently verifiable Harness implementation gate.
+
+Implementation/check evidence is in `verification.md`; the actual consumer API is
+in `handoff.md`. Checked items record work performed, not child acceptance. Scoped
+check repaired deployment byte limits, registration/report bounds, live progress,
+membership/endpoint monitoring and lifecycle defects; see `check-report.md` for
+findings and final evidence. Spec/finish operations remain
+with the parent because this worker's write scope excludes backend specs and git
+operations.
 
 ## Validation
 

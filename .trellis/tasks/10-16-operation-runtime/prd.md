@@ -8,8 +8,9 @@ Make generic structured Operations execute on eligible connected BEAM nodes with
 
 Parent requirements and cross-child acceptance: `../10-16-distributed-agent-mvp/prd.md`.
 Parent technical design and operational limits: `../10-16-distributed-agent-mvp/design.md`.
-This child is planning only. The parent final summary must be approved before
-activation; no product code or implementation dispatch is authorized yet.
+The user approved the complete parent/child plan on 2026-10-16 ("批准").
+Implementation is authorized once this child's prerequisite gates pass; only the
+currently activated child is an implementation target.
 A material contract/scope change returns to parent review. No persistence,
 distributed consistency, automatic replay, Web UI or sandbox scope expansion.
 

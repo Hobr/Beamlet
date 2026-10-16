@@ -4,8 +4,9 @@
 
 Parent requirements and cross-child acceptance: `../10-16-distributed-agent-mvp/prd.md`.
 Parent technical design and operational limits: `../10-16-distributed-agent-mvp/design.md`.
-This child is planning only. The parent final summary must be approved before
-activation; no product code or implementation dispatch is authorized yet.
+The user approved the complete parent/child plan on 2026-10-16 ("批准").
+Implementation is authorized once this child's prerequisite gates pass; only the
+currently activated child is an implementation target.
 A material contract/scope change returns to parent review. No persistence,
 distributed consistency, automatic replay, Web UI or sandbox scope expansion.
 
@@ -31,6 +32,22 @@ Support startup options/child_specs independent of product Node composition.
 Reports never contain provider secrets/live clients. Resource/capability semantics
 are opaque, not Tool or LLM logic. Parent default limits are configurable validated
 options; overruns are explicit and serialized envelopes count toward size bounds.
+
+## Role Composition Decision (2026-10-16)
+
+The parent confirmed that execution is opt-in: `execution: false` is the default
+for a convenience runtime composition entry; `execution: true` starts the coupled
+Task.Supervisor/Gateway subtree. Shared-only nodes must start neither process,
+even when the handler table would be empty. Keep ExecutionSupervisor an owned
+subtree with a usable child specification for Node composition; a convenience
+shared entry may wire it without merging execution accounting ownership.
+
+NodeEndpoint remains discoverable on every role, including authority/interaction.
+Execution readiness and capabilities are advertised only with explicit execution
+activation and a live ready gateway/providers. An absent gateway is a normal
+shared-only configuration; gateway loss withdraws readiness and invalidates affected
+work. Add shared-only/executor/combined startup coverage and document exact options
+in the downstream handoff. This refines the approved role boundary, not task scope.
 
 ## Consumer Handoff
 

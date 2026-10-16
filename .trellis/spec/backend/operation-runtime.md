@@ -1,0 +1,148 @@
+# Operation Runtime
+
+## Scenario: submit generic work to an eligible connected node
+
+### 1. Scope / Trigger
+
+Use this contract when adding Runtime consumers, local handlers or Node composition.
+Actions owns data validation and Handler; Runtime depends only on Actions and OTP.
+No Agent, Harness or Phoenix dependency belongs in either application. Sources are
+under `apps/beamlet_{actions,runtime}/lib/beamlet/`; behavioral tests mirror them.
+
+### 2. Signatures
+
+```elixir
+{:ok, operation} = Beamlet.Actions.Operation.new(kind: "example.echo", payload: %{})
+{:ok, ref} = Beamlet.Runtime.submit(operation, owner: self(), sink: self())
+{:ok, snapshot} = Beamlet.Runtime.status(ref)
+:ok = Beamlet.Runtime.ack(ref, sequence)
+:ok = Beamlet.Runtime.cancel(ref) # request only, while nonterminal
+```
+
+Optional `submit(operation, owner: local_pid, require_live_owner: true)` rejects
+remote owner PIDs as invalid_operation and dead guarded startup as unavailable.
+Default mode retains remote-owner compatibility. Runtime alone owns validation,
+current Directory byte caps, ID/spec/ref allocation and error normalization (including
+ignored startup). The coordinator monitors before its init limits read and checks
+local liveness after limits and before/after selection. Observed death during blocked
+admission cannot create late execution; subsequent races use existing cleanup.
+Consumers must not construct private coordinator specs to duplicate this guard.
+
+Handlers implement `Beamlet.Actions.Handler.run(payload, context)` returning
+`{:ok, value}` or `{:error, safe_reason}`. Context contains executor-local
+`settings`, `remaining_ms`, `progress` and `cancelled?` callbacks. Use callbacks
+for neutral progress/cancellation; provider authors need not know coordinator IDs.
+
+### 3. Contracts
+
+Operation fields: `kind` (1..128 UTF-8 bytes), `version: 1`, `payload: %{}`,
+`metadata: %{}`, `capabilities: []`, `environment: nil`, `allowed_nodes: nil`,
+`claims: %{}`, `budget_ms: 60_000` (1..3_600_000). Capabilities/claims are bounded
+at 32 entries; allowed nodes are at most 64 existing node atoms. Never atomize
+untrusted text. Nested values are bounded data, not PIDs, references, functions,
+ports, tuples or arbitrary structs. Maximum nesting depth is 24. Conventional
+secret/root keys are rejected recursively; producers must still redact secrets
+and roots embedded in ordinary text. Executable arguments are never truncated.
+
+OperationRef contains opaque ID and live coordinator PID. Execution is distinct:
+operation ID, preallocated attempt ID, endpoint/incarnation, optional admitted
+handle and state. No target means no Execution. Result contains operation ID,
+optional execution ID, status, safe reason/value, source and bounded metadata.
+Execution-origin Results require an execution ID. Exactly one matching terminal
+Result is accepted in memory; no attempt is retried, replaced or replayed.
+
+Events arrive at the installed sink:
+
+```elixir
+{:beamlet_operation, ref, {:progress, attempt_id, sequence, value}}
+{:beamlet_operation, ref, {:result, result}}
+```
+
+Acknowledge consumed progress with `ack/2`. Terminal delivery does not require
+credits. Producer/gateway/sink drops appear in terminal metadata/status. A linked,
+monitored task-owned marshaler forwards auxiliary progress while run/2 executes.
+Handlers own arbitrary children and external resources they create.
+
+Start Runtime once per VM with `{Beamlet.Runtime, options}`. Default
+`execution: false` starts only SharedSupervisor: dedicated pg scope, Directory,
+temporary coordinator supervisor and NodeEndpoint. Explicit `execution: true`
+adds ExecutionSupervisor, coupling Workers Task.Supervisor and ExecutorGateway
+with one_for_all. Node may compose the execution subtree separately using its
+child spec; stop execution before shared infrastructure. Neither library has an
+application callback that automatically starts roles.
+
+Executor options include local `handlers: %{"kind" => {Module, settings}}`,
+opaque `capabilities`, `environments`, `pools: %{"requests" => 2}` and monitored
+`providers: [pid]`. Reports omit settings/providers. Registration validates module
+run/2, bounded labels/settings/counts and report overhead. Directory monitors pg
+membership/endpoints, queries joins immediately, refreshes nonce-correlated
+reports and expires them using local receive time. Shared-only endpoints remain
+discoverable with execution readiness false.
+
+Placement filters readiness, protocol/kind, freshness, capability/environment,
+allowed nodes and all claims; lower utilization then node/incarnation breaks ties.
+Gateway revalidates and atomically charges local pools. Report leases are checked
+only against the issuing gateway's clock; lease age conservatively reduces the
+remaining budget. Stale reports can shorten short operations. Discovery reserves
+no capacity. Tombstones/lease watermarks reject old dispatches without durable
+execution deduplication or public retry permission.
+
+Default configurable limits (`limits: [...]`): coordinators including retained
+256, retention 30_000 ms, refresh 1_000 ms, expiry 5_000 ms, admission 2_000 ms,
+cancel 100 ms, attempts 512, progress count 256, credit 16, rate 20/sec. Byte
+limits: Operation 262_144, Result 1_048_576, progress 8192, report 65_536; overrides
+accept 1024 through the corresponding default ceiling. Count full serialized
+envelopes, including identity/metadata, not just values. Unknown/invalid limits
+fail startup. These bounds do not enforce a hard RSS cap or hostile-node sandbox.
+
+### 4. Validation & Error Matrix
+
+| Condition | Observation |
+| --- | --- |
+| Invalid description/deployment byte cap | immediate `{:error, :invalid_operation}` |
+| Coordinator capacity/unavailable infrastructure | immediate `{:error, :capacity}` / `{:error, :unavailable}` |
+| No eligible target | coordinator error `:no_target`; Execution nil |
+| Definite admission rejection | `:ineligible` / `:capacity`; no retry |
+| Admission timeout | uncertain / `:admission_timeout` |
+| Connection/owner/endpoint loss | uncertain / `:connection_lost` or `:infrastructure_lost` |
+| Deadline without observed termination | deadline / `:termination_unconfirmed` |
+| Cancellation without observed termination | uncertain / `:cancel_unconfirmed` |
+| Observed shutdown or gateway-issued kill escalation | cancelled / `:worker_stopped` |
+| Unrelated crash, even after cancel request | error / `:worker_lost` |
+| Accepted racing success | remains successful |
+| Malformed/oversize handler output | explicit invalid-result error |
+| Ref expired/shared infrastructure restarted | status unavailable; no reconstruction |
+
+### 5. Good/Base/Bad Cases
+
+Good: submit a valid generic handler Operation, correlate progress/result by ref
+and attempt, ack progress, and handle a terminal uncertain result explicitly.
+Base: shared-only node discovers endpoints but runs no executor and advertises no
+execution capability. Bad: choose another workspace/node after uncertain admission,
+accept a late mismatched Result, or describe worker death as external rollback.
+
+### 6. Tests Required
+
+Preserve Actions validation and Runtime lifecycle/composition/review tests. Assert
+whole-envelope byte limits, all-pool capacity, task-start failures, live auxiliary
+progress/helper cleanup, membership leave invalidation, malformed reports,
+idempotent cancellation and unrelated-crash distinction, terminal identity/races,
+tombstone expiry/rejection watermark, provider/gateway/scope loss and retention.
+Assert public/consumer admission parity, malformed budget, current reduced cap,
+missing infrastructure, capacity normalization and ignored guarded startup. Observe
+owner DOWN before resuming suspended public limits/supervisor/init limits/selection,
+then prove no late execution. Preserve default remote ownership and guarded rejection.
+Run `:distributed` tests explicitly using isolated named peer VMs; assert remote
+execution, no fallback, concurrent capacity, partition uncertainty and delayed
+admission without retry. Bound startup/teardown and use independent stdio control
+for partition inspection. Same-host results are not physical-host acceptance.
+
+### 7. Wrong vs Correct
+
+Wrong: wait for a full remote job in a GenServer callback, automatically retry on
+lost acknowledgement, compare monotonic timestamps from different machines, or
+restart temporary business work after infrastructure loss.
+
+Correct: dispatch once, process correlated asynchronous admission/progress/result
+messages, monitor ownership, use executor-local leases and timer-driven cleanup.
+Temporary workers/coordinators and retained Results are deliberately ephemeral.
