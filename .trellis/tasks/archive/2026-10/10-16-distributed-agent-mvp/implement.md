@@ -1,5 +1,15 @@
 # Implementation and Integration Plan
 
+## Final delivery bookkeeping
+
+The user approved the five-commit split with "行". Work commits are 6b17a9a,
+1987dcd, 8f67ebd, 82c8357 and 404c6b9. All revised-scope gates are accepted;
+this record accompanies task archival, followed by the session journal.
+Earlier unchecked review/commit checkpoints below are historical and superseded.
+Physical-host acceptance was removed by the user; physical and live-provider
+execution are not claimed. LSP coverage remains inconclusive.
+
+
 ## Final scope disposition — user-approved removal
 
 The user instructed: "取消跨物理主机验收这一要求, 继续开展后续工作".
@@ -69,8 +79,9 @@ and curated manifests. A child cannot expand scope or commit on its own.
   suite; cross-physical-host test requirement removed, physical execution untested.
 - [x] Perform revised parent AC1–AC12 integration review; all remaining gates accepted. See integration-review.md for user-approved physical-condition removal.
 - [x] Update backend executable-contract specs for all four deliverables; physical acceptance requirement removed.
-- [ ] Follow finish-work/commit process; preserve unrelated staged changes and do
-  not let worker subagents commit. Record actual checks and remaining limitations.
+- [x] Parent executed the approved five-commit batch and archived the completed
+  task tree; session journal follows the archive commits. Actual checks and
+  limitations are recorded in integration-review.md and child reports.
 
 ## 2. Deliverable/Writer Boundaries
 
