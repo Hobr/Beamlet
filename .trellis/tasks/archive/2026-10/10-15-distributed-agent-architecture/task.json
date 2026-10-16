@@ -2,7 +2,7 @@
   "id": "distributed-agent-architecture",
   "name": "distributed-agent-architecture",
   "title": "分布式 Agent 架构与边界设计",
-  "description": "规划基于 Elixir/OTP BEAM 的通用分布式动作底座、Agent/Harness 分层和可组合节点角色；仅设计，不实现代码",
+  "description": "规划基于 Elixir/OTP BEAM 的通用 Operation/Execution 底座、共享 Result、Agent/Harness 分层、并发 Agent 协作与可组合节点角色；仅设计，不实现代码",
   "status": "completed",
   "dev_type": null,
   "scope": null,
@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "User approved the latest revised architecture summary: 同意以上设计. Architecture baseline accepted; implementation is not authorized. Keep planning status without task.py start; future implementation requires separately scoped and approved tasks.",
+  "notes": "Architecture baseline accepted: 同意以上设计. User subsequently requested a documentation-only revision adopting Operation/Execution, shared Result values with explicit local acceptance, independent concurrency, and OTP-based Sub-agent/Multi-agent interaction. Keep this archived task completed; no application implementation is authorized. Persistence, recovery, and distributed consistency are deferred. Future implementation requires separately scoped and approved tasks.",
   "meta": {}
 }

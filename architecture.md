@@ -16,7 +16,7 @@ The architecture separates three concerns: **deciding what to do, executing the 
 - [4. Agent, Harness, and integration adapters](#4-agent-harness-and-integration-adapters)
 - [5. Node roles and deployment](#5-node-roles-and-deployment)
 - [6. Discovery and placement](#6-discovery-and-placement)
-- [7. Action execution model](#7-action-execution-model)
+- [7. Operation and execution model](#7-operation-and-execution-model)
 - [8. A complete Agent turn](#8-a-complete-agent-turn)
 - [9. Streaming and user interfaces](#9-streaming-and-user-interfaces)
 - [10. Cancellation and failure semantics](#10-cancellation-and-failure-semantics)
@@ -31,8 +31,8 @@ The first version should make it straightforward to start an Agent in a cluster,
 The design prioritizes:
 
 - Reusable libraries with explicit, acyclic dependencies inside a Mix umbrella.
-- A generic action runtime, independent of Agent, Tool, model-provider, and UI semantics.
-- Harness implementations that do not need to know about the distributed action system.
+- A generic operation runtime, independent of Agent, Tool, model-provider, and UI semantics.
+- Harness implementations that do not need to know about the distributed operation system.
 - Independently configurable interaction, authority, and execution roles.
 - Native BEAM/OTP mechanisms rather than mandatory external infrastructure.
 - Honest failure reporting rather than durability or availability guarantees the system cannot provide.
@@ -53,7 +53,7 @@ flowchart LR
         direction TB
         agent_loop["Agent Loop: conversation and decisions"]
         caller_adapter["Caller-side adapter"]
-        coordinator["ActionCoordinator: placement and observation"]
+        coordinator["OperationCoordinator: placement and observation"]
         agent_loop --> caller_adapter --> coordinator
     end
 
@@ -64,31 +64,31 @@ flowchart LR
         harness["Harness implementation: model / Tool / environment"]
         gateway --> worker --> harness
         harness -.->|"Return value / progress"| worker
-        worker -.->|"Progress / outcome"| gateway
+        worker -.->|"Progress / result"| gateway
     end
 
     ui -->|"Commands"| agent_loop
     agent_loop -.->|"Events"| ui
     coordinator -->|"Dispatch via Distributed Erlang"| gateway
-    gateway -.->|"Progress / outcome"| coordinator
-    coordinator -.->|"Progress / outcome"| caller_adapter
+    gateway -.->|"Progress / result"| coordinator
+    coordinator -.->|"Progress / result"| caller_adapter
     caller_adapter -.->|"Normalized observations"| agent_loop
 ```
 
-The Agent decides which operation is needed. The runtime chooses where it may run and manages its execution. An adapter translates between AI-facing interfaces and generic action contracts. The UI issues commands and displays observations; it does not own the Agent loop.
+The Agent decides which operation is needed. The runtime chooses where it may run and manages its execution. An adapter translates between AI-facing interfaces and generic operation contracts. The UI issues commands and displays observations; it does not own the Agent loop.
 
 There is no cluster-wide singleton scheduler. Each submission has its own coordinator, and each execution node controls admission to its local resources.
 
 ## 3. Application Structure
 
-The planned application structure has six applications:
+The planned application structure has six applications. The existing package name `beamlet_actions` is retained; its domain contracts use Operation and Execution, not a separate Action abstraction. This document revision does not rename application code.
 
 | Application | Owns | Does not own |
 | --- | --- | --- |
-| `beamlet_actions` | Action descriptions, live handles, events, outcomes, and the handler behaviour | Processes, placement, AI semantics, UI, or storage |
-| `beamlet_runtime` | Submission, discovery, placement, admission, supervised execution, progress, outcomes, and cancellation | Tool catalogues, prompts, model-provider formats, or environment synchronization |
-| `beamlet_harness` | Backend-neutral Tool/model interfaces, catalogues and schemas, context policies, environment and sandbox integrations | Action types, runtime registration, or Agent-loop orchestration |
-| `beamlet_agent` | Agent lifecycle and loop, Tool-call orchestration, interaction interface, and isolated action integration adapters | Concrete model HTTP clients, sandbox implementations, or Phoenix |
+| `beamlet_actions` | Operation and Execution contracts, shared Result values, live handles, events, and the handler behaviour | Processes, placement, AI semantics, UI, or storage |
+| `beamlet_runtime` | Submission, discovery, placement, admission, supervised execution, progress, results, and cancellation | Tool catalogues, prompts, model-provider formats, or environment synchronization |
+| `beamlet_harness` | Backend-neutral Tool/model interfaces, catalogues and schemas, context policies, environment and sandbox integrations | Operation types, runtime registration, or Agent-loop orchestration |
+| `beamlet_agent` | Agent lifecycle and loop, concurrent operation orchestration, Sub-agent delegation and peer interaction, UI-independent commands/events, and isolated operation integration adapters | Concrete model HTTP clients, sandbox implementations, or Phoenix |
 | `beamlet_node` | Product composition: role configuration, selected supervision trees, handler registration, provider wiring, and readiness | The execution engine or reasoning policy |
 | `beamlet_web` | Phoenix/LiveView presentation and adaptation of Agent commands and events | Agent-loop state, placement, or direct Tool execution |
 
@@ -110,11 +110,11 @@ An empty list means no dependency on another Beamlet application; ordinary third
 The two critical restrictions are:
 
 - The generic runtime does not depend on Agent or Harness.
-- Harness does not depend on actions or runtime.
+- Harness does not depend on `beamlet_actions` or `beamlet_runtime`.
 
 A non-AI caller can use `beamlet_actions` and `beamlet_runtime` directly. Conversely, a Harness Tool or model implementation can be invoked and tested locally without either application.
 
-`beamlet_node` references the action registration contracts it assembles, so they are listed as a direct dependency. It remains a composition root, not a second implementation of the runtime. Dependencies should follow actual interface usage rather than be kept merely because another dependency happens to include them.
+`beamlet_node` references the operation registration contracts it assembles, so they are listed as a direct dependency. It remains a composition root, not a second implementation of the runtime. Dependencies should follow actual interface usage rather than be kept merely because another dependency happens to include them.
 
 ## 4. Agent, Harness, and Integration Adapters
 
@@ -122,7 +122,19 @@ A non-AI caller can use `beamlet_actions` and `beamlet_runtime` directly. Conver
 
 An Agent owns its in-memory conversation, current turn, outstanding operations, and the correlations between Tool calls and their results. It determines whether to request model generation, execute Tools, continue the loop, or finish the turn.
 
-The Agent is a responsive OTP process, conceptually a `GenServer` with explicit state. It is not Elixir's `Agent` state container, and it does not block a state-management callback for the duration of an LLM request or Tool invocation.
+The Agent is a responsive OTP process, conceptually a `GenServer` with explicit state. It is not Elixir's `Agent` state container, and it does not block a state-management callback for the duration of an LLM request, Tool invocation, or another Agent's work. `:gen_statem` is an alternative if waiting/joining states become complex, not an additional required service.
+
+### Concurrent work, Sub-agents, and peer Agents
+
+One Agent may submit several independent Operations; several Agents may do so concurrently. Each Agent serializes its own state transitions, not all outstanding work. Results are correlated by Operation, Tool-call, delegation, and turn identity rather than arrival order. Independent work still respects local capacity and environment exclusivity. Distinct proposed solutions are distinct Operations, not retries of the same Operation.
+
+Sub-agents are ordinary Agent processes started on an explicitly selected authority-ready node through `DynamicSupervisor` and local `Registry`. A parent delegates through the Agent interface and tracks the delegation and child AgentRef; peer Agents exchange correlated messages through that same UI-independent interface. Creation/acceptance may use short bounded requests, but completion is asynchronous. The Agent layer owns delegation, bounded messages, waiting/joining rules, and result interpretation; the generic runtime has no parent/child or conversation semantics.
+
+Business parenthood is not an OTP supervision link. A shared authority supervisor can host parent, child, and peer Agents; monitors observe failures without directly linking their lifetimes. Delegated work belongs to the delegating turn: stopping that turn or observing delegator loss requests a stop of the delegated child turn. Peer lifetimes are independent unless explicitly delegated. Cleanup is best effort, and late replies cannot advance a stopped or later turn. Remote disconnection reports unavailability, not proof that an Agent or its work stopped.
+
+A Sub-agent is not an Execution worker. Its own model/Tool work uses Operations through the runtime adapter. Waiting for a child reply is Agent state and must not reserve the execution slots that child work needs. A bounded request/reply integration may expose Agent work as an Operation, but this does not replace the Agent interaction protocol or require all peer messages to become Operations. No human-input handler or generic callback/completion system is introduced.
+
+Native mechanisms are sufficient for this in-memory interaction: `GenServer`/optional `:gen_statem` for state, `DynamicSupervisor` for Agent lifecycle, ordinary messages and monitors for communication, local `Registry` for authority lookup, and `:pg` for service discovery. Discovery is not global identity or exclusive ownership. Mailboxes and display output need bounded producer concurrency/rates; asynchronous messaging is not automatic backpressure or durable delivery.
 
 ### Harness: capabilities and context
 
@@ -134,7 +146,7 @@ Harness supplies the things that vary between Agent deployments:
 - Environment references and workspace, session, or sandbox implementations.
 - Backend-neutral hooks for intermediate output and cancellation.
 
-Harness authors do not construct Action structs, manage ActionRefs, implement the action-handler behaviour, or assign runtime resource-pool keys.
+Harness authors do not construct Operation structs, manage OperationRefs, implement the operation-handler behaviour, or assign runtime resource-pool keys.
 
 A Harness is not necessarily one long-running process. Catalogue and context functions may run on the authority node, while concrete model or Tool operations are invoked on execution nodes. Provider descriptions must not require starting a sandbox or accessing execution credentials merely to inspect a catalogue.
 
@@ -142,8 +154,8 @@ A Harness is not necessarily one long-running process. Catalogue and context fun
 
 The integration adapters live in an isolated module group inside `beamlet_agent`, separate from the loop itself. They perform two complementary jobs:
 
-1. **Caller side:** translate model/Tool invocations and native environment needs into action descriptions, capability requirements, and resource claims; translate outcomes into Agent observations.
-2. **Execution side:** implement generic action handlers, invoke Harness interfaces, and translate native progress/cancellation hooks into runtime events/control.
+1. **Caller side:** translate model/Tool invocations and native environment needs into operation descriptions, capability requirements, and resource claims; translate results into Agent observations.
+2. **Execution side:** implement generic operation handlers, invoke Harness interfaces, and translate native progress/cancellation hooks into runtime events/control.
 
 An executor can load these handler modules without starting an Agent process. Keeping the adapters in the Agent application does not assign the authority role to every node that loads that application.
 
@@ -153,8 +165,8 @@ Roles are declared when a node registers and may be combined freely:
 
 | Role | Runs | Does not require |
 | --- | --- | --- |
-| Interaction | A UI or client integration that sends commands and subscribes to observations | An Agent loop or action executor |
-| Authority | Agent processes, authority-local lookup, and coordinators for their actions | Local model or Tool execution |
+| Interaction | A UI or client integration that sends commands and subscribes to observations | An Agent loop or operation executor |
+| Authority | Agent processes, authority-local lookup, and coordinators for their operations | Local model or Tool execution |
 | Execution | An executor gateway, worker supervision, and configured providers | An Agent loop or UI |
 
 A physical BEAM node is not the `beamlet_node` application. The latter starts and configures the product services; the execution mechanism running on an execution node belongs to `beamlet_runtime`.
@@ -191,7 +203,7 @@ The coordinator filters targets by execution readiness, handler compatibility, c
 
 The selected executor then checks its **current local state** and charges capacity before starting the worker. Reports guide placement; local admission determines whether execution can start. Application-level capacity pools enforce concurrent slot limits, not physical CPU or memory isolation.
 
-If no target is eligible or the selected executor definitely rejects admission, the caller receives an explicit outcome. The first version does not need a queue, automatic re-placement, preemption, fairness guarantees, or cluster-global reservations. A timeout while requesting admission is ambiguous and is not a definite rejection.
+If no target is eligible or the selected executor definitely rejects admission, the caller receives an explicit result. The first version does not need a queue, automatic re-placement, preemption, fairness guarantees, or cluster-global reservations. A timeout while requesting admission is ambiguous and is not a definite rejection.
 
 ### Environment locality
 
@@ -201,21 +213,44 @@ Harness describes its environment in native terms. The integration adapter maps 
 
 Beamlet does not synchronize, replicate, migrate, or reconstruct environments. It never substitutes an unrelated environment just because the intended executor is unavailable. If a deployment exposes one shared environment on several nodes, its provider/deployment owns synchronization and cross-node mutual exclusion; a shared path alone does not make concurrent mutation safe.
 
-## 7. Action Execution Model
+## 7. Operation and Execution Model
 
-An **action** is a data description of one requested operation, not a shipped closure or an instruction to invoke arbitrary remote code. It includes a registered operation/protocol identifier, bounded payload, placement requirements, resource claims, time budget, and correlation metadata.
+There are two core entities: **Operation** and **Execution**. **Result** is a shared terminal-value representation, not a third independently managed entity. Events describe intermediate progress and observations, not terminal Results.
 
-Live PIDs, monitor references, HTTP clients, open sessions, and executable closures belong to execution context, not the operation description. Action descriptions and live handles are deliberately separate; this is not a persistence format or a promise of future schema compatibility.
+| Concept | Meaning |
+| --- | --- |
+| Operation | A structured data description of one requested operation: registered operation/protocol identifier, bounded payload, placement requirements, resource claims, time budget, and correlation metadata |
+| Execution | One identified attempt to perform an Operation; distinct from its worker process, it may be awaiting admission, running, completed, or uncertain |
+| Result | A terminal value expressing success, failure, rejection, cancellation, timeout, or loss/unknown, with cause, bounded return data, and source information where applicable |
+
+Operation is independent of Agent, user input, and natural-language intent. It is the operation description itself, not a wrapper around another OperationSpec. Its requested meaning is fixed for a submission. Live PIDs, monitor references, HTTP clients, open sessions, and executable closures belong to execution context, not the description. This is not a persistence format or a promise of future schema compatibility.
+
+### Results and acceptance
+
+An Execution can produce a Result. The OperationCoordinator may accept that same Result as the Operation's terminal result; it does not copy it into a separate Outcome entity. An execution-origin Result identifies its Operation and Execution. Receiving an execution Result is not itself acceptance: the coordinator validates its identity and current state, records the accepted value in memory, and ignores duplicate/stale reports after termination.
+
+The coordinator can also form a Result without an execution return value: no eligible target, definite non-admission, cancellation before dispatch, deadline expiry, or lost observation. Source information distinguishes coordinator-origin Results from execution-origin Results; no synthetic Execution is needed when no attempt was dispatched. A cancellation request alone is not a terminal Result. Timeout/loss does not prove remote termination.
+
+```text
+Operation
+  ├─ Execution → Result
+  └─ accepted_result → that Result, or a coordinator-origin Result
+```
+
+This version permits at most one Execution attempt per Operation, including an attempt whose admission becomes uncertain. No automatic retry, re-placement, or competing attempts are added. Several independent Operations can execute concurrently. The model can later represent additional attempts, but their admission/safety and selection policy are outside this version. One locally accepted Result does not imply exactly-once side effects.
+
+### Live references and process ownership
 
 | Concept | Responsibility |
 | --- | --- |
-| ActionRef | Identifies one submission and its live coordinator/address incarnation |
-| ActionCoordinator | Places and observes one action on the submitting node |
+| OperationRef | Identifies one submission and its live coordinator/address incarnation |
+| Execution identity | Correlates an attempt with its Operation, including before confirmed admission |
 | Execution handle | Identifies an admitted worker at a particular executor incarnation |
+| OperationCoordinator | Places an Operation, observes its Execution, handles control, and accepts its terminal Result |
 | ExecutorGateway | Enforces node-local admission and manages its workers |
 | Worker | Runs one registered handler invocation as a temporary supervised process |
 
-An old reference must not silently resolve to a replacement execution after a restart.
+References and execution handles are ephemeral, not persistent IDs or recovery records. An old reference must not silently resolve to a replacement execution after a restart.
 
 ### Caller interface
 
@@ -223,17 +258,17 @@ The conceptual interface has three operations; these are not final Elixir signat
 
 | Operation | Meaning |
 | --- | --- |
-| `submit(description, owner_and_event_sink)` | Create a local coordinator and return an ActionRef; this is not remote admission or success |
-| `cancel(action_ref)` | Request cancellation or report an already-terminal condition; it is not confirmation of remote termination |
-| `status(action_ref)` | Inspect a live or briefly retained result, or report that the reference is unavailable/expired |
+| `submit(operation, owner_and_event_sink)` | Create a local coordinator and return an OperationRef; this is not remote admission or success |
+| `cancel(operation_ref)` | Request cancellation or report an already-terminal condition; it is not confirmation of remote termination |
+| `status(operation_ref)` | Inspect a live or briefly retained result, or report that the reference is unavailable/expired |
 
-The event sink is installed as part of submission to avoid racing a separate subscription against a fast completion. Invalid submissions or exhausted coordinator capacity may fail immediately. Placement and execution outcomes arrive asynchronously. Terminal state is retained only for a bounded interval, not as durable history.
+The event sink is installed as part of submission to avoid racing a separate subscription against a fast completion. Invalid submissions or exhausted coordinator capacity may fail immediately. Placement and execution results arrive asynchronously. Terminal state is retained only for a bounded interval, not as durable history.
 
 The coordinator monitors its owner and requests cleanup if that owner disappears. Executors monitor coordinator ownership and attempt local cleanup when ownership loss is observed. These are best-effort lifetime policies, not partition-proof execution control.
 
 ### Worker execution
 
-The gateway starts a local temporary task through `Task.Supervisor.async_nolink`, using an explicit wrapper entry point. It owns task handles and processes result and monitor messages. Registered handlers receive local execution context for resolved provider resources, progress emission, and cancellation support.
+The gateway starts a local temporary task through `Task.Supervisor.async_nolink`, using an explicit wrapper entry point. It owns task handles and processes result and monitor messages. Registered handlers receive local execution context for resolved provider resources, progress emission, and cancellation support. The wrapper/gateway normalizes handler returns and observed worker failures into the shared Result representation; acceptance still belongs to the OperationCoordinator.
 
 Operation deadlines are measured on the coordinator's monotonic clock. The executor receives a remaining duration; absolute monotonic timestamps from different nodes are not compared as though they share a clock.
 
@@ -247,26 +282,30 @@ Consider UI node A, user-selected authority node B, and executor C:
 4. The coordinator selects an eligible executor. C checks current capabilities and local capacity, then starts a worker.
 5. C's execution adapter invokes the Harness model provider. Optional deltas return through the runtime and Agent to A.
 6. The final normalized model reply returns to B. The Agent uses that reply, not the displayed deltas, to advance its state.
-7. If the reply requests Tools, complete arguments are validated against catalogue schemas. The adapter creates actions with the appropriate environment and capacity requirements.
+7. If the reply requests Tools, complete arguments are validated against catalogue schemas. The adapter creates operations with the appropriate environment and capacity requirements.
 8. Tool results are correlated by Tool-call ID, converted to model observations, and used for the next model step or the final response.
 
 Partial streamed Tool-call arguments are never executable. If independent calls run concurrently, their results are correlated by identity rather than arrival order, and local resource/environment restrictions still apply.
 
-An executor D that supports the same Tool but lacks the required environment is not a candidate. An authority-only B does not silently execute the action itself if C is unavailable. When all roles share a node, local execution still uses the same gateway and admission checks.
+An executor D that supports the same Tool but lacks the required environment is not a candidate. An authority-only B does not silently execute the operation itself if C is unavailable. When all roles share a node, local execution still uses the same gateway and admission checks.
+
+### Parallel delegation
+
+Agent P can delegate independent requests to Agents Q and R on explicitly selected authority nodes. Each child submits its own model/Tool Operations through the normal runtime path; P waits asynchronously without holding child-required execution slots. Q and R return replies correlated to their delegations and P's turn. P joins them according to Agent policy, not arrival order, and remains responsive to control. Stopping P's turn requests a best-effort stop of the delegated child turns; late replies cannot advance a later turn. Peer exchanges use the same correlated messaging seam without implicitly establishing parent/child lifetime ownership. Agent failure/disconnection is observed, not transparently recovered.
 
 ## 9. Streaming and User Interfaces
 
 The output path is:
 
 ```text
-worker -> executor gateway -> action coordinator -> Agent -> UI subscribers
+worker -> executor gateway -> operation coordinator -> Agent -> UI subscribers
 ```
 
-Provider output from other processes is marshalled through the worker wrapper before emission. The gateway forwards progress and completion through the same logical action stream; arbitrary cluster processes are not assumed to share message order. Action-local sequence information helps identify gaps or stale messages but does not provide reliable delivery.
+Provider output from other processes is marshalled through the worker wrapper before emission. The gateway forwards progress and completion through the same logical operation stream; arbitrary cluster processes are not assumed to share message order. Operation-local sequence information helps identify gaps or stale messages but does not provide reliable delivery.
 
-Intermediate events and terminal outcomes are distinct. Output size and forwarding volume are bounded; progress may be batched or coalesced. Raw stdout and token callbacks must not create an unconstrained stream. Tool output may be truncated with an explicit indication. Final model output is assembled on the execution side and returned independently of display events.
+Intermediate events and terminal results are distinct. Output size and forwarding volume are bounded; progress may be batched or coalesced. Raw stdout and token callbacks must not create an unconstrained stream. Tool output may be truncated with an explicit indication. Final model output is assembled on the execution side and returned independently of display events.
 
-The Agent exposes UI-independent start, input, snapshot, subscription, unsubscription, and turn-stop operations. A subscription receives an initial bounded snapshot and subsequent events through the same sink/channel, in that order. A separate command acknowledgement is not the snapshot barrier.
+The Agent exposes UI-independent start, input, snapshot, subscription, unsubscription, turn-stop, work-delegation, and correlated Agent-message operations. A subscription receives an initial bounded snapshot and subsequent events through the same sink/channel, in that order. A separate command acknowledgement is not the snapshot barrier.
 
 UI disconnection removes the subscription, not the Agent. Reconnection obtains a fresh snapshot; missing intermediate events are not replayed. A slow UI must not block the reasoning loop. Session/context state remains bounded and in memory.
 
@@ -287,9 +326,9 @@ The runtime reports what it knows, including when it cannot determine what happe
 
 Cancelling before dispatch prevents the coordinator from starting work. During execution, the gateway attempts bounded local shutdown without blocking unrelated admission or event processing. Cancellation and completion can race: an accepted success is not rewritten by a later cancellation, and a real result may win even after a cancellation request was acknowledged.
 
-A surviving coordinator accepts at most one local terminal outcome and ignores stale or subsequent reports. This is not a distributed exactly-once guarantee.
+A surviving coordinator accepts at most one terminal Result for its Operation, whether execution-origin or coordinator-origin, and ignores stale or subsequent reports. This is a local in-memory acceptance decision, not a durable or cluster-wide agreement and not a distributed exactly-once guarantee.
 
-Stopping an Agent turn first prevents follow-on work, then requests cancellation of outstanding actions. Late outcomes cannot resume that stopped turn or advance a later one. Stopping a BEAM worker does not promise to undo a filesystem change, terminate every OS child, or cancel an already accepted remote LLM request.
+Stopping an Agent turn first prevents follow-on work, then requests cancellation of outstanding operations. Late results cannot resume that stopped turn or advance a later one. Stopping a BEAM worker does not promise to undo a filesystem change, terminate every OS child, or cancel an already accepted remote LLM request.
 
 ### No automatic replay after ambiguity
 
@@ -313,14 +352,14 @@ Beamlet.Node.Supervisor
     dedicated :pg scope
     NodeEndpoint                               role/capability/resource reports
     Directory                                  local endpoint snapshots
-    ActionCoordinatorSupervisor                temporary coordinators
+    OperationCoordinatorSupervisor             temporary coordinators
   Agent.AuthoritySupervisor                    authority role
     local Registry
     DynamicSupervisor                          temporary Agent processes
   Harness.ProviderSupervisor                   configured execution providers
     environment / session / sandbox children
   Runtime.ExecutionSupervisor                  execution role
-    Task.Supervisor                            temporary action workers
+    Task.Supervisor                            temporary operation workers
     ExecutorGateway                            admission and worker ownership
 
 Beamlet.Web.Supervisor                         separate web application
@@ -331,27 +370,27 @@ Providers must be ready before their capabilities are advertised. Losing a provi
 
 The worker supervisor and gateway form a coupled infrastructure subtree: losing gateway accounting must not leave workers running while a replacement gateway advertises fresh capacity. Similarly, losing authority lookup infrastructure invalidates affected in-memory Agents rather than pretending their registrations/state can be reconstructed.
 
-Infrastructure may restart, but Agents, coordinators, and action workers are temporary. **OTP supervision is not business recovery:** restarting services must not automatically repeat LLM requests, Tool calls, or a conversation from its initial arguments.
+Infrastructure may restart, but Agents, coordinators, and operation workers are temporary. **OTP supervision is not business recovery:** restarting services must not automatically repeat LLM requests, Tool calls, or a conversation from its initial arguments.
 
-The principal OTP mechanisms are `GenServer`, `DynamicSupervisor`, `Task.Supervisor`, local `Registry`, `:pg`, and process monitors. A local Registry is not a global Agent directory; `:pg` membership is not an atomic resource reservation.
+The principal OTP mechanisms are `GenServer` (optionally `:gen_statem`), `DynamicSupervisor`, `Task.Supervisor`, local `Registry`, `:pg`, and process monitors. A local Registry is not a global Agent directory; `:pg` membership is not an atomic resource reservation. Agent supervision and business delegation are separate relationships; temporary Execution workers are not Agent lifecycle owners.
 
 ## 12. Scope and Future Evolution
 
 The first version deliberately excludes:
 
-- Action persistence, checkpoints, replay, recovery, and durable queues.
-- Action review/approval workflows.
+- Agent/Operation persistence, checkpoints, replay, recovery, and durable queues.
+- Operation review/approval workflows.
 - Consensus, leader election, transparent authority migration, and automatic failover.
 - Reliable-delivery or distributed exactly-once guarantees.
 - Environment synchronization, replication, migration, and cross-node environment locking.
 - Side-effect rollback guarantees.
-- Human questions/replies represented as actions, waiting human-request handlers, or an external callback/completion protocol.
+- Human questions/replies represented as operations, waiting human-request handlers, or an external callback/completion protocol.
 - Authentication/authorization between trusted cluster nodes.
 - Mandatory external database servers or message brokers.
 
-Ordinary user messages remain Agent commands; they do not complete a waiting human-input action. That form of interaction may be revisited with future callback-related work, but no handler topology or input-routing mechanism is designed now.
+Ordinary user messages remain Agent commands; they do not complete a waiting human-input operation. That form of interaction may be revisited with future callback-related work, but no handler topology or input-routing mechanism is designed now.
 
-Future work has room to evolve because operation descriptions are separate from live execution context, identities distinguish submission from execution, lifecycle outcomes have clear owners, and provider integrations sit behind explicit interfaces. The current design does not add empty storage adapters, review states, recovery protocols, or a workflow DSL in anticipation of those features. Future durability work may require contract changes.
+Future work has room to evolve because Operation descriptions are separate from live execution context, Operation and Execution identities are distinct, Result acceptance has one local owner, and provider integrations sit behind explicit interfaces. Persistence, state recovery, and distributed consistency are deferred topics, not designed mechanisms in this revision. Do not add storage adapters, checkpoints, inboxes/outboxes, authority epochs, consensus protocols, review states, or a workflow DSL in anticipation of those features. Future durability work may require contract changes.
 
 ## 13. Design Rationale and References
 
@@ -360,17 +399,19 @@ Future work has room to evolve because operation descriptions are separate from 
 | Separate libraries and explicit dependencies | Keep execution reusable and prevent UI/provider concerns from spreading into the loop or runtime |
 | Backend-neutral Harness plus integration adapters | Let capability authors work independently of distributed execution |
 | Explicit authority references | Avoid solving global uniqueness and failover before they are needed |
-| Per-action coordination plus executor-local admission | Avoid a singleton scheduler while retaining clear resource ownership |
+| Per-operation coordination plus executor-local admission | Avoid a singleton scheduler while retaining clear resource ownership |
 | Data descriptions instead of public remote closures | Make contracts explicit and keep runtime handles out of operation definitions |
 | Temporary business processes | Avoid confusing supervision with safe replay of side effects |
 | No external broker/database | Keep the first deployment lightweight and focused on cluster execution |
 
-The accepted trade-offs are stale reports, explicit capacity rejection, incomplete progress, uncertain outcomes after loss, and loss of an Agent when its authority fails. These limits are intentional and visible to callers.
+The accepted trade-offs are stale reports, explicit capacity rejection, incomplete progress, uncertain results after loss, and loss of an Agent when its authority fails. These limits are intentional and visible to callers.
 
 Relevant primary documentation:
 
 - [Elixir Task: distributed tasks](https://hexdocs.pm/elixir/Task.html#module-distributed-tasks)
 - [Task.Supervisor](https://hexdocs.pm/elixir/Task.Supervisor.html)
+- [GenServer](https://hexdocs.pm/elixir/GenServer.html)
+- [Erlang generic state machines (`gen_statem`)](https://www.erlang.org/doc/apps/stdlib/gen_statem.html)
 - [DynamicSupervisor](https://hexdocs.pm/elixir/DynamicSupervisor.html)
 - [Registry](https://hexdocs.pm/elixir/Registry.html)
 - [Erlang process groups (`pg`)](https://www.erlang.org/doc/apps/kernel/pg.html)

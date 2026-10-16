@@ -27,9 +27,9 @@ Architecture implications (inference, not selected contracts):
 
 - OTP can supply supervised execution and result observation without a separate broker.
 - A caller/coordinator should remain responsive while work runs; it should process completion messages rather than synchronously awaiting an entire LLM/Tool operation inside its state-management callback.
-- Use a known executor entry point plus an action description rather than shipping caller closures as the public action abstraction. This also separates the execution mechanism from AI semantics.
-- A task supervisor is not an action scheduler: capability matching, environment eligibility, local admission, normalized outcomes, and caller-facing action identity still require project-owned contracts.
-- A task reference is an execution mechanism detail, not a sufficient long-term public action identifier. This is an interface concern only; it does not require persistence design.
+- Use a known executor entry point plus an operation description rather than shipping caller closures as the public operation abstraction. This also separates the execution mechanism from AI semantics.
+- A task supervisor is not an operation scheduler: capability matching, environment eligibility, local admission, normalized results, and caller-facing operation identity still require project-owned contracts.
+- A task reference is an execution mechanism detail, not a sufficient long-term public operation identifier. This is an interface concern only; it does not require persistence design.
 
 ## 2. Process-Group Discovery
 
@@ -73,7 +73,7 @@ Architecture implications (inference):
 These are design deductions from R10, not OTP guarantees:
 
 - Capability support, access to a particular environment, and available resource capacity are separate eligibility inputs.
-- A node with a Shell Tool implementation is not automatically eligible for a Shell action targeting another node's session or filesystem.
+- A node with a Shell Tool implementation is not automatically eligible for a Shell operation targeting another node's session or filesystem.
 - An environment reference denotes a provider-owned context; the generic runtime should consume opaque placement requirements rather than understand filesystem synchronization or sandbox internals.
 - An eligible-node decision may use stale reports. The selected executor must still validate local capability/environment availability and admission before starting work; discovery cannot reserve remote capacity.
 - No suitable executor must not silently cause execution in a different environment.
@@ -105,8 +105,33 @@ Architecture implications (inference):
 
 - Make reusable libraries export interfaces and child specifications without automatically activating every service. A top-level composition application can start the selected role subtrees, avoiding accidental Agent execution or web listeners on executor-only nodes.
 - Use a local Registry for authority-local Agent uniqueness rather than relying on DynamicSupervisor child IDs or introducing a cluster-global uniqueness service.
-- A single executor gateway can forward intermediate events and terminal outcomes to an action coordinator. Do not assume ordering among an HTTP provider process, a task process, and an independent result sender.
+- A single executor gateway can forward intermediate events and terminal results to an operation coordinator. Do not assume ordering among an HTTP provider process, a task process, and an independent result sender.
 - Use ordinary subscription PIDs and monitoring for the initial Agent notification interface. Phoenix.PubSub remains a possible later fan-out implementation, not a mandatory core dependency.
+
+## 6. Live Sub-agent and Multi-agent Interaction
+
+Primary sources revisited for the terminology/concurrency revision:
+
+- [GenServer](https://hexdocs.pm/elixir/GenServer.html)
+- [Erlang gen_statem](https://www.erlang.org/doc/apps/stdlib/gen_statem.html)
+- [DynamicSupervisor](https://hexdocs.pm/elixir/DynamicSupervisor.html)
+- [Erlang processes](https://www.erlang.org/doc/system/ref_man_processes.html)
+- [Erlang pg](https://www.erlang.org/doc/apps/kernel/pg.html)
+
+Confirmed documentation facts:
+
+- `GenServer` callbacks serialize state handling, while `handle_info/2` can consume asynchronous completion/monitor messages. Synchronous calls wait for replies; `cast` returning does not establish handling by its destination.
+- `:gen_statem` supports explicit states, state-entry handling, state/event/named timeouts, postponed events, and asynchronous request/response mechanisms. These are live state-machine facilities, not persistent checkpoints.
+- A monitor observes process loss without directly linking the observer's fate to the observed process. Remote `noconnection` is connection-loss evidence, not proof of remote termination.
+- Message ordering is per sender/destination, not a total order across Agent peers. Process groups provide discovery, not unique ownership or a delivery queue.
+- Ordinary asynchronous messages do not supply bounded-mailbox backpressure or durable delivery. Supervision does not reconstruct an Agent's conversation from its initial arguments.
+
+Architecture implications (inference):
+
+- Temporary Agent processes can be siblings under an authority supervisor while forming parent/child or peer relationships in the Agent protocol. Business delegation need not be represented by a supervision link.
+- Track concurrent Operations and child/peer replies by explicit operation/delegation/turn correlations. Remain responsive while waiting; do not block a callback until a remote Agent finishes.
+- The Agent layer owns delegation and joining. A waiting parent should not hold Execution capacity its children require. Each child uses the normal adapter/admission path for its own model/Tool Operations.
+- Use explicit authority addresses, local Registry, bounded messages/outstanding work, and monitors for this in-memory design. Do not add persistent inboxes/outboxes, recovery, or distributed consistency mechanisms in this revision.
 
 ## Confirmed Interaction Requirements and Limits
 
