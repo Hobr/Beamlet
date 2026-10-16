@@ -1,5 +1,15 @@
 # Operation Contracts and Multi-node Runtime — Execution Plan
 
+## Final delivery bookkeeping
+
+The user approved the five-commit split with "行". Work commits are 6b17a9a,
+1987dcd, 8f67ebd, 82c8357 and 404c6b9. All revised-scope gates are accepted;
+this record accompanies task archival, followed by the session journal.
+Earlier unchecked review/commit checkpoints below are historical and superseded.
+Physical-host acceptance was removed by the user; physical and live-provider
+execution are not claimed. LSP coverage remains inconclusive.
+
+
 ## Shared Contract and Review Status
 
 Parent requirements and cross-child acceptance: `../10-16-distributed-agent-mvp/prd.md`.
@@ -30,7 +40,7 @@ then Trellis quality check. Worker agents do not commit.
 - [x] Run active changed-file diagnostics where available; absent LSP coverage is recorded.
 - [x] Review parent AC mapping and this child acceptance; record verification/handoff.
 - [x] Update applicable executable-contract specs.
-- [ ] Commit and follow finish-work process (deferred to final delivery batch).
+- [x] Work committed in 6b17a9a; archive bookkeeping recorded with this task.
 
 Parent accepted this child's implementation/check gate on 2026-10-16 after report
 and source-contract review. `.trellis/spec/backend/operation-runtime.md` now records
