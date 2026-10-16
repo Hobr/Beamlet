@@ -21,8 +21,12 @@ the rest conversationally.
 
 ## Status (update the checkboxes as you complete each item)
 
-- [ ] Fill backend guidelines
-- [ ] Add code examples
+- [x] Fill backend guidelines
+- [x] Add code examples
+
+Verified against current application source and tests; documentation checks and
+remaining coverage limits are recorded in `verification.md`. Final review and
+publication remain with the parent session.
 
 ---
 

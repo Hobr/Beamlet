@@ -12,7 +12,7 @@
   "assignee": "hobr",
   "createdAt": "2026-10-14",
   "completedAt": null,
-  "branch": null,
+  "branch": "dev",
   "base_branch": null,
   "worktree_path": null,
   "commit": null,
