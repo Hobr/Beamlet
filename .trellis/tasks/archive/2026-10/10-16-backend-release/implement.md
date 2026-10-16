@@ -1,5 +1,15 @@
 # Backend CLI, Release and Multi-machine Acceptance — Execution Plan
 
+## Final delivery bookkeeping
+
+The user approved the five-commit split with "行". Work commits are 6b17a9a,
+1987dcd, 8f67ebd, 82c8357 and 404c6b9. All revised-scope gates are accepted;
+this record accompanies task archival, followed by the session journal.
+Earlier unchecked review/commit checkpoints below are historical and superseded.
+Physical-host acceptance was removed by the user; physical and live-provider
+execution are not claimed. LSP coverage remains inconclusive.
+
+
 ## Final scope disposition — user-approved removal
 
 The user instructed: "取消跨物理主机验收这一要求, 继续开展后续工作".
@@ -59,7 +69,7 @@ then Trellis quality check. Worker agents do not commit.
 - [x] Run active changed-file diagnostics where available; absent LSP coverage is recorded.
 - [x] Review parent AC mapping and this child acceptance; record verification/handoff.
 - [x] Update applicable executable-contract specs (backend-release.md and linked overviews).
-- [ ] Follow final commit/finish-work process (external gate removed; awaiting batched commit confirmation).
+- [x] Approved split work batch committed; release work is 82c8357. Archive bookkeeping recorded with this task.
 
 ## Validation
 
