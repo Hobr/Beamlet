@@ -28,3 +28,25 @@ Accepted the Elixir/OTP distributed Agent architecture: six acyclic umbrella app
 ### Status
 
 [OK] **Completed**
+
+
+## Session 2: Bootstrap Backend Guidelines
+<!-- trellis-session: v=2 fp=47f0b871e406d0df -->
+
+**Date**: 2026-10-16
+**Task**: Bootstrap Backend Guidelines
+**Branch**: `dev`
+
+### Summary
+
+Populated all six backend spec documents with source-backed English guidance for the current six-app Elixir umbrella and Phoenix scaffold. Documented actual module/supervision boundaries, absence of a database layer, session state, error rendering, logging/telemetry, quality commands and testing gaps; distinguished intended Agent architecture from implemented behavior. Added seven source examples and conditional pre-development routing. Independent full-scope review passed after clarifying optional Ecto metadata versus resolved packages; verified links, paths, snippets, placeholders, write scope and whitespace. Application builds/tests/static checks were not run for Markdown-only changes. Committed documentation and archived the completed bootstrap task; no product code changed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6e1d549` | spec: bootstrap backend guidelines |
+
+### Status
+
+[OK] **Completed**
