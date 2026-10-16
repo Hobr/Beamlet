@@ -4,14 +4,19 @@
 
 Parent requirements and cross-child acceptance: `../10-16-distributed-agent-mvp/prd.md`.
 Parent technical design and operational limits: `../10-16-distributed-agent-mvp/design.md`.
-This child is planning only. The parent final summary must be approved before
-activation; no product code or implementation dispatch is authorized yet.
+The user approved the complete parent/child plan on 2026-10-16 ("批准").
+Implementation is authorized once this child's prerequisite gates pass; only the
+currently activated child is an implementation target.
 A material contract/scope change returns to parent review. No persistence,
 distributed consistency, automatic replay, Web UI or sandbox scope expansion.
 
 ## Dependencies and Ordering
 
-BLOCKED until child 1 operation-runtime and child 2 harness-providers pass their gates and publish actual contract handoffs. No broad speculative adapter implementation before both.
+Prerequisite gate satisfied on 2026-10-16: parent accepted child 1 and child 2
+implementation/check evidence and their actual handoffs. Consume
+`../10-16-operation-runtime/handoff.md` and `../10-16-harness-providers/handoff.md`
+plus linked executable specs. Commit/archive bookkeeping is deferred to final
+delivery; no speculative or weakened upstream contracts are authorized.
 
 ## Owned Design
 
@@ -38,6 +43,25 @@ registrations, opaque profile/environment labels and local capacity pools.
 Provider supervision/readiness invalidates affected work on loss. Authority may
 inspect descriptors without starting clients or needing executor keys/roots.
 Shared Node API must accept trusted configuration usable later by release/CLI.
+
+## Parent-owned public Runtime admission repair
+
+Parent reviewed the independent seam proposal and authorizes this narrow owning-seam
+repair under the approved R1/R3/R7 contracts. Runtime owns all admission validation,
+current Directory byte caps, ID/ref/spec allocation and error normalization. Add an
+optional public `require_live_owner: true` submit mode for local owner PIDs; preserve
+default API compatibility. The Runtime-owned start/init/dispatch boundary must
+reject dead ownership after delayed supervisor or Directory admission, monitor
+before dispatch, and never retry. Agent OperationOwner calls public submit and
+removes its private coordinator construction. This is a single admission seam
+repair across producer and consumer, not an architecture or scope expansion.
+
+Runtime must retain no Agent/Harness dependency. Checks cover malformed Operations,
+current reduced byte cap/unavailable Directory, capacity/errors, dead owner before
+and during blocked admission, actual DOWN before resume, and no late execution.
+Only Runtime facade/coordinator plus focused tests and Agent OperationOwner plus
+focused Agent/Node regressions are authorized product edits for this pass.
+Independent recheck remains required before child 4. Parent owns spec sync.
 
 ## Consumer Handoff
 

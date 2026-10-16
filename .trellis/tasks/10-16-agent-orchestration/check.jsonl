@@ -6,3 +6,7 @@
 {"file":".trellis/spec/backend/logging-guidelines.md","reason":"Keep credentials and content out of logs; existing telemetry ownership"}
 {"file":".trellis/tasks/10-16-distributed-agent-mvp/research/provider-workspace-release.md","reason":"Pinned provider APIs, workspace limits and headless release caveats"}
 {"file":".trellis/tasks/archive/2026-10/10-15-distributed-agent-architecture/research/otp-execution-primitives.md","reason":"OTP task/discovery/monitor semantics and uncertainty"}
+{"file":".trellis/spec/backend/operation-runtime.md","reason":"Verified actual runtime contracts and ownership"}
+{"file":".trellis/spec/backend/harness-providers.md","reason":"Verified independent native provider APIs and limits"}
+{"file":".trellis/tasks/10-16-operation-runtime/handoff.md","reason":"Actual runtime composition, events, lifecycle and integration boundary"}
+{"file":".trellis/tasks/10-16-harness-providers/handoff.md","reason":"Final native model/tool APIs, ordered history and executor-local settings"}
