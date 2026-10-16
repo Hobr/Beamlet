@@ -38,6 +38,9 @@ mix sobelow
 
 # Example benchmark
 mix bench
+
+# Generate SBoM
+mix sbom.cyclonedx
 ```
 
 ## Thanks

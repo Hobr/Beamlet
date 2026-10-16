@@ -22,7 +22,8 @@ defmodule Beamlet.Umbrella.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.16.0", only: [:dev, :test], runtime: false},
-      {:benchee, "~> 1.5", only: [:dev, :test], runtime: false}
+      {:benchee, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:sbom, "~> 0.8", only: :dev, runtime: false}
     ]
   end
 
