@@ -2,19 +2,6 @@
 
 **WIP**, with broken changes before the first release.
 
-Backend release, CLI/IEx, trusted multi-host configuration and acceptance:
-[deployment runbook](scripts/deployment/README.md). Local automated evidence is
-based on independent VMs and copied-release checks. Physical-host execution is
-untested; its acceptance requirement was removed for this MVP.
-
-Models use trusted local `model_providers` registrations and one immutable
-Agent-owned provider/config/credentials/placement binding. Supply credentials at
-Agent creation; executor Tool profiles and workspace settings remain local.
-Legacy model profiles and `key_env` are rejected without environment fallback.
-Deploy matching builds. Credentials may remain in plaintext process/message copies
-until ordinary cleanup; secure memory erasure is not promised. See the runbook for
-creation, child isolation and deployment examples.
-
 ## Build
 
 ```bash
