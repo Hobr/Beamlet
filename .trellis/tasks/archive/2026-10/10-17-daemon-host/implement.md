@@ -31,7 +31,7 @@ node-library 已交付并通过 check；先确认本子任务 status 为 in_prog
 - [x] 实际验证：171 ordinary（含1 doctest），16 actual named distributed；format、forced warning-fatal compile、strict Credo、daemon build 和同一复制产物三方案 named/RPC/pid/stop/remote turn 通过。
 - [x] Web missing-secret 预期失败及现有7个 Web/CSP 测试保持；runtime11类拒绝无 synthetic sentinel 泄漏。
 - [x] 主会话独立只读 check 完成；初次发现 F1/F2，修复后最终 READY，主会话接受本子任务交付（见下方最终验收）。
-- [ ] 主任务最终两产物/CLI stdin/reattachment 门禁（后续 cli-host）。
+- [x] 主任务最终两产物/CLI stdin/reattachment 门禁已由后续cli-host及父任务最终验收完成，见父任务research/final-acceptance.md；此处不宣称重跑。
 - 主动 LSP：10个当前 Elixir 路径初始化超时/工具自身依赖失败，**inconclusive**，不宣称 clean；启动脚本自行尝试 Mix.install 后被限时终止，未主动修复/安装依赖或改动项目版本。
 - 既有 index 被未知 actor 更新；本 worker 没有 stage/unstage/reset/commit，保留全部既有及新 staged 内容，`noStagedFiles=false`。详细前后指纹/日志见证据。
 

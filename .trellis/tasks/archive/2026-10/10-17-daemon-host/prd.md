@@ -1,5 +1,7 @@
 # Daemon 宿主与 release 部署
 
+> 归档收尾（2026-10-17）：用户明确要求归档剩余六个任务。实现、独立检查及父任务最终AC1–AC9验收已完成；最终196项普通/23项命名测试、双copied release与静态门禁的历史范围见父任务research/final-acceptance.md，提交记录见research/commit-execution.md（子任务从父目录查阅）。旧发现传输语义以后续simplify-agent-queries任务为准。 下文“待验收/待提交/未授权归档”等描述保留为当时阶段的历史记录，最终状态以task.json及本收尾说明为准。任务未建立独立PR，使用归档命令支持的--skip-branch-validation，不伪造分支或合并记录。
+
 ## Goal
 
 复用 OTP 骨架交付可配置的常驻 daemon，取代 Node 的可执行身份。
