@@ -219,3 +219,47 @@ Delivered immutable Agent-owned provider/config/credentials/placement bindings, 
 ### Next Steps
 
 - 全部已完成任务均已归档，活动任务列表为空。
+
+---
+
+## Session 7: Beamlet Web 工作台、管理页与浏览器验收
+
+**Date**: 2026-10-18
+**Task**: Beamlet Web 通用 Agent 工作台与管理页面（含 Runtime deadline 修复）
+**Branch**: `dev`
+
+### Summary
+
+交付已批准的单可信空间 Web 产品，并补齐其依赖的共享观测契约。新增 Agent 可选 display 投影与安全 metadata、Runtime/Node 公共观测读；修复 Gateway 首触发来源分类，使 deadline 与取消不再被误报为普通 worker_stopped。Web 侧加入默认关闭的 Host（单 Node、可信 catalogue、一次性 peer bootstrap、rest_for_one）、不可变 Presets 与仅服务端 resolver、分离创建/输入/导航结果的 Agents 适配、有界临时 Handles、任务优先工作台（条件环境、精确发现、替换式显示、实时活动、stop/close 语义、OwnedCall 调用者与 sink 归属），以及只读 /admin/{nodes,presets,diagnostics}。未引入数据库、持久化或浏览器 transcript。
+
+四个子任务与父任务均通过独立检查；随后用缓存中的 geckodriver + Firefox 158 对真实端点做了本地浏览器走查：35 项检查 34 通过、1 项受阻（390px 视口被 Firefox 钳制到 500px）、0 失败，未发现产品缺陷。宿主 peer 仍为同机命名节点，不构成物理多主机或付费 provider 证据。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8820bd0` | feat(web): add preset-driven agent workbench and read-only management |
+| `cd9e276` | docs(trellis): sync backend specs and record web acceptance evidence |
+| `d371b83` | chore(task): archive 10-17-web-observation |
+| `58a4283` | chore(task): archive 10-17-web-presets |
+| `5df99eb` | chore(task): archive 10-17-web-workbench |
+| `272cfcf` | chore(task): archive 10-17-web-management |
+| `8d734da` | chore(task): archive 10-17-runtime-deadline-classification |
+| `9033b62` | chore(task): archive 10-17-beamlet-web |
+
+### Testing
+
+- [OK] Web 测试 59 通过 / 5 分布式排除；umbrella 282 通过 / 34 排除。
+- [OK] 命名 Web+Node 152 通过，其中 25 项真实 distributed；私密 cookie，peer 已清理。
+- [OK] format、warning-fatal compile（dev+test）、strict Credo、Sobelow、复用既有 PLT 的 Dialyzer（未刷新）与根级资产构建/压缩/摘要通过。
+- [OK] 浏览器走查 34/35：桌面与 500x758 无横向溢出、条件环境、预设切换/调整/重置、Enter 创建、真实模型→工具→模型与第二 turn、实时活动、子检查器仅观察、滚动不被强制拉回、19 个焦点停靠点、离开/重新发现、stop/close、三个管理页、CSP 与转义。
+- [!] 未验证：390px 视口、浏览器 console 日志（驱动 405）、浏览器内 busy/多观察者、触控、读屏、对比度/缩放、真实断网重连；物理多主机与付费 provider 未测试。
+- [!] 负载下既有 Harness/Runtime 夹具曾各失败一次（与本交付无关），单独留证，未弱化断言。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 活动任务列表已清空；后续工作（durable action、账号/授权集成、Web release 打包）需另行立项。
