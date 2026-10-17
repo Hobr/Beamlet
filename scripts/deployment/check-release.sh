@@ -18,8 +18,9 @@ RELEASE_COOKIE=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 export BEAMLET_CONFIG="$work/node.exs" BEAMLET_DIST_PORT=19100
 unset SECRET_KEY_BASE BEAMLET_MODEL_KEY
 cd "$work"
-for role in authority executor; do
-  printf 'import Config\nconfig :beamlet_node, :boot, roles: [:%s]\n' "$role" >"$BEAMLET_CONFIG"
+for role in interaction authority executor interaction,authority interaction,executor authority,executor interaction,authority,executor; do
+  roles=":${role//,/, :}"
+  printf 'import Config\nconfig :beamlet_node, :boot, roles: [%s]\n' "$roles" >"$BEAMLET_CONFIG"
   BEAMLET_EXPECT_ROLE="$role" ./release/bin/beamlet_node eval '
     forbidden? = fn app ->
       Regex.match?(~r/\A(beamlet_web|phoenix.*|plug.*|bandit|websock.*)\z/, Atom.to_string(app))
@@ -35,9 +36,11 @@ for role in authority executor; do
       false = Enum.any?(required, forbidden?)
     end
     {:ok, _} = Application.ensure_all_started(:beamlet_node)
-    authority? = System.fetch_env!("BEAMLET_EXPECT_ROLE") == "authority"
+    roles = String.split(System.fetch_env!("BEAMLET_EXPECT_ROLE"), ",")
+    authority? = "authority" in roles
+    executor? = "executor" in roles
     true = (Process.whereis(Beamlet.Agent.Registry) != nil) == authority?
-    true = (Process.whereis(Beamlet.Runtime.ExecutorGateway) != nil) == not authority?
+    true = (Process.whereis(Beamlet.Runtime.ExecutorGateway) != nil) == executor?
     false = Code.ensure_loaded?(Phoenix)
     false = Code.ensure_loaded?(Beamlet.Web.Endpoint)
     IO.puts("copied release role boot passed")

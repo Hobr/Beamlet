@@ -31,9 +31,11 @@ def main():
                 text=True, timeout=timeout,
             )
 
-        for role in ["authority", "executor"]:
+        for role in ["interaction", "authority", "executor", "interaction,authority",
+                     "interaction,executor", "authority,executor", "interaction,authority,executor"]:
+            roles = ", ".join(":" + item for item in role.split(","))
             (root / "node.exs").write_text(
-                f"import Config\nconfig :beamlet_node, :boot, roles: [:{role}]\n"
+                f"import Config\nconfig :beamlet_node, :boot, roles: [{roles}]\n"
             )
             with (root / "boot.log").open("w") as log:
                 process = subprocess.Popen(
@@ -48,8 +50,8 @@ def main():
                       true = Node.alive?()
                       true = Atom.to_string(node()) == System.fetch_env!("RELEASE_NODE")
                       {{:ok, 19101}} = :application.get_env(:kernel, :inet_dist_listen_min)
-                      true = (Process.whereis(Beamlet.Agent.Registry) != nil) == {str(role == "authority").lower()}
-                      true = (Process.whereis(Beamlet.Runtime.ExecutorGateway) != nil) == {str(role == "executor").lower()}
+                      true = (Process.whereis(Beamlet.Agent.Registry) != nil) == {str("authority" in role.split(",")).lower()}
+                      true = (Process.whereis(Beamlet.Runtime.ExecutorGateway) != nil) == {str("executor" in role.split(",")).lower()}
                       false = Code.ensure_loaded?(Phoenix)
                       IO.puts("named copied {role} boot passed")
                     '''

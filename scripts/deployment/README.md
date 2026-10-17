@@ -9,7 +9,7 @@ configuration is `config/backend_runtime.exs`; default Web production configurat
 continues to require SECRET_KEY_BASE. No dummy secret is needed.
 
 Run `bash scripts/deployment/check-release.sh` to inspect the shipped .rel/.app/lib
-closure and boot copied authority/executor releases outside source/deps, including
+closure and boot all seven copied role combinations outside source/deps, including
 named foreground startup, RPC and stop. Control helper VMs use ephemeral distribution
 ports so they do not collide with the service listener. The local checker needs
 Python3 and reserves ports19100/19101 while running. Run
@@ -22,17 +22,19 @@ file outside the release. BEAMLET_CONFIG names this trusted Elixir file: it is c
 with the deployment user's privileges. Never load model-provided configuration or
 modules. Roles must be a unique nonempty subset of interaction/authority/executor.
 Use authority-only B, executor-only C, interaction-only A initially. Local combined
-roles use the same Gateway. Authority needs routes/catalogue but no keys/root.
-Executor profiles use the bundled native allowlist, portable IDs, bounded pools,
-local key_env and trusted workspace roots. No model strings are converted to atoms.
+roles use the same Gateway. Authority Node boot needs no user credentials or workspace root. Authority stores
+each Agent's supplied binding privately after creation. Register trusted local
+model adapters with `model_providers` on authority and executor; defaults register
+`openai-compatible` and `deterministic`. Executor Tool profiles retain the bundled
+Tool allowlist, portable IDs, bounded pools and trusted workspace roots. No model strings are converted to atoms.
 The Node application consumes `Application.get_env(:beamlet_node, :boot)`.
 
 Set RELEASE_NODE to a long name such as `authority@b.example.internal`,
 RELEASE_COOKIE securely to the same cookie on all three nodes, BEAMLET_CONFIG to
 the absolute local file and BEAMLET_DIST_PORT to a fixed local port (default 9100).
-Never paste the cookie/key into transcripts or shell tracing. Provision environment
-through a restricted service environment file. Export BEAMLET_MODEL_KEY on C only
-if its profile uses that key_env. Use the system CA trust for HTTPS; this adapter
+Never paste the cookie/key into transcripts or shell tracing. Provision the cookie through a restricted service environment file. Model keys
+are supplied at Agent creation, never provisioned to executor profiles. Use the
+system CA trust for HTTPS; this adapter
 exposes no custom CA option and never disables verification. Supply model-specific
 endpoint/model values compatible with text non-streaming Chat Completions and
 standard function tools. No live provider call is needed for boot/readiness.
@@ -56,8 +58,14 @@ allowed = ["authority@b.example.internal", "executor@c.example.internal"]
 {:ok, c} = CLI.authority("executor@c.example.internal", allowed)
 true = :erpc.call(b, Node, :connect, [c], 5000)
 {:ok, catalogue} = Beamlet.Harness.Catalogue.new([Beamlet.Harness.Tools.WorkspaceRead.descriptor()])
+# Explicit operator input on A to construct the creation binding. The adapter
+# never reads this environment variable, and C needs no provisioned user key.
+user_key = System.fetch_env!("BEAMLET_CREATION_KEY")
 opts = [id: "operator-demo",
-  model: %{id: "model", capability: "model-v1", claims: %{"native" => 1}, allowed_nodes: [c]},
+  model: %{provider: "openai-compatible",
+    config: %{"base_url" => "https://provider.example/v1", "model" => "operator-selected-model"},
+    credentials: %{"api_key" => user_key},
+    placement: %{claims: %{"native" => 1}, allowed_nodes: [c]}},
   catalogue: catalogue,
   tools: %{"workspace_read" => %{id: "tree", capability: "read-v1", environment: "tree-v1",
     claims: %{"native" => 1}, allowed_nodes: [c]}}]
@@ -78,7 +86,7 @@ cancellation. A disconnected watcher does not own Agent lifetime. A fresh watch
 gets a snapshot, without event replay. Provider requests are never retried.
 
 Live refs are ephemeral and cannot be serialized as stable IDs for later RPC
-sessions. Release `rpc 'IO.inspect(Beamlet.Node.profile("model"))'` and
+sessions. Release `rpc 'IO.inspect(Beamlet.Node.profile("tree"))'` on an executor and
 `rpc 'IO.inspect(Process.whereis(Beamlet.Agent.Registry) != nil)'` are suitable
 one-shot readiness checks. Keep control refs in one IEx session or use an
 operator-owned trusted script evaluated in one RPC; do not invent ID lookup APIs.
@@ -117,9 +125,11 @@ Hardlinks, mounts, races and hostile local writers are outside this trust bounda
 For a deterministic physical trial without provider spending, copy
 `http-fixture.py` to C and run `python3 http-fixture.py --requests 16` there
 (loopback TCP18080 only, at most16 requests,30-second accept waits and10-second whole-request deadlines). On C use
-OpenAICompatible settings `base_url: "http://127.0.0.1:18080/v1"`,
-`model: "fixture"`, `key_env: "BEAMLET_FIXTURE_KEY"`, `allow_local_http: true` and
-set BEAMLET_FIXTURE_KEY to a local fixture-only value. The fixture never calls a
+the same trusted adapter registration. On A create an Agent with config
+`%{"base_url" => "http://127.0.0.1:18080/v1", "model" => "fixture",
+"allow_local_http" => true}` and credentials `%{"api_key" => "synthetic-fixture-key"}`.
+The endpoint is loopback on the selected executor C; C receives credentials only
+in the dedicated model Operation invocation. The fixture never calls a
 provider and always requests marker.txt then reports an observation digest. Before
 acceptance, compare that digest with SHA256 of the expected Tool JSON content;
 a final fixture string alone does not prove successful workspace reading. Inspect
@@ -139,7 +149,21 @@ no-target/wrong-environment behavior; reconnect never replays. A future physical
 record. Same-host peers establish automation evidence only.
 
 Optional live smoke is not executed: obtain separate spending/endpoint approval,
-configure an executor-local HTTPS profile/key and run the input/watch example above,
+supply an Agent HTTPS binding with explicit credentials and run the input/watch example above,
 first with empty catalogue then with the permitted marker. Record only normalized
 bounded outcome, never raw requests/settings/credentials. This probes that endpoint's
 supported subset and makes no general model compatibility claim.
+
+Model migration requires matching builds on every participating node; mixed-version
+execution is unsupported. Old `type: :model` profiles, `key_env`, top-level Agent
+`api_key`, model collections and switching options fail explicitly. Each Agent has
+one immutable provider/config/credentials/placement binding for its lifetime;
+create a separate Agent for a different binding. Tools carry empty credentials.
+Children require an explicit binding in creation options; peer messages do not
+inherit one. No automatic routing, fallback or replay exists.
+
+Bindings and credentials exist as plaintext in authority/executor processes and
+transient messages until ordinary cleanup. There is no persistence or secure memory
+erasure guarantee or protection from administrator inspection. Generated snapshots,
+progress and results omit binding fields; malicious providers can still echo data.
+Keep creation options and operator environment out of logs and shell tracing.

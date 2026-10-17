@@ -5,10 +5,10 @@ logs=$(mktemp -d /tmp/beamlet-acceptance.XXXXXX)
 printf 'Evidence directory: %s\n' "$logs"
 mix format --check-formatted >"$logs/format.log" 2>&1
 mix compile --warnings-as-errors >"$logs/compile.log" 2>&1
-mix test >"$logs/tests.log" 2>&1
+mix test --seed 631927 >"$logs/tests.log" 2>&1
 # Isolated names/cookie, stdio peer control and finite peer lifecycle in tests.
 cookie=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
-elixir --sname "beamlet_acceptance_$$" --cookie "$cookie" -S mix test --only distributed >"$logs/distributed.log" 2>&1
+elixir --sname "beamlet_acceptance_$$" --cookie "$cookie" -S mix test --only distributed --seed 631927 >"$logs/distributed.log" 2>&1
 mix credo --strict >"$logs/credo.log" 2>&1
 mix dialyzer >"$logs/dialyzer.log" 2>&1
 mix sobelow >"$logs/sobelow.log" 2>&1
