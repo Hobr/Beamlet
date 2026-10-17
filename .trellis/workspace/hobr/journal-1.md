@@ -134,3 +134,42 @@ Delivered immutable Agent-owned provider/config/credentials/placement bindings, 
 ### Next Steps
 
 - Task complete and archived. Branch feat/agent-model-credentials remains local; merge/push awaits user direction.
+
+
+## Session 5: Agent查询简化验收、清理与归档
+<!-- trellis-session: v=2 fp=a2ad5d36290ad753 -->
+
+**Date**: 2026-10-17
+**Task**: Agent查询简化验收、清理与归档
+**Branch**: `dev`
+
+### Summary
+
+以有限本地读取和OTP erpc替换自定义查询端点；独立检查及用户验收完成，按用户要求清理中间文件、提交并归档simplify-agent-queries。修复归档引用，前置研究及其他任务状态保持不变，未推送。
+
+### Main Changes
+
+- 移除Endpoint及其监督耦合，保留真实身份校验、公有API和有界聚合；记录批准的有限后台执行与重连语义。
+- 保留最终验收、研究来源和历史验证摘要；用户接受后精确清理原始研究及实现中间文件。
+- 当前任务已归档为completed，清除会话指针；检查19份文档的42个本地链接及任务跨目录引用。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2735879` | refactor(agent): simplify discovery queries with erpc |
+| `dafaa8f` | format: run |
+
+### Testing
+
+- [OK] 历史产品门禁：普通umbrella 194通过/25排除；命名Node/CLI/daemon 101通过；独立review PASS；定向读者屏障回归1通过。
+- [OK] 归档阶段：两份JSONL上下文清单各7项通过，归档元数据/本地链接/引用及git diff --check通过；仅任务文档变动，未重跑产品测试。
+- [OK] 保留已知限制：test Dialyzer受ExUnit PLT影响、LSP超时为inconclusive、同机peers不证明物理部署。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 前置query-transport-research及node-host-split相关任务本次未归档。

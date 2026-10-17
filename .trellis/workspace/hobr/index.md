@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-10-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~136 | Active |
+| `journal-1.md` | ~175 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-10-17 | Agent查询简化验收、清理与归档 | `2735879`, `dafaa8f` | `dev` |
 | 4 | 2026-10-17 | Agent-owned model bindings and extensible providers | `7b47fa3`, `4cef74f`, `2d55c0b`, `2fc02a9`, `988e117` | `feat/agent-model-credentials` |
 | 3 | 2026-10-17 | Distributed backend MVP delivery and split commits | `6b17a9a`, `1987dcd`, `8f67ebd`, `82c8357`, `404c6b9` | `feat/distributed-agent-mvp` |
 | 2 | 2026-10-16 | Bootstrap Backend Guidelines | `6e1d549` | `dev` |
