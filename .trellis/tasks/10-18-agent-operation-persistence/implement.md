@@ -1,6 +1,6 @@
 # 父任务执行与集成计划
 
-状态：planning。仅创建规划；用户尚未授权激活或实施，不运行 `task.py start`，不安装依赖、不修改应用代码。
+状态：A–F 全部实现并提交（3aefa85、1cb394c、f7be001、22d6159、c4b37fd、06aea2c）。父任务验收见各子任务 research/*-evidence.md。
 
 ## 前置审查
 
