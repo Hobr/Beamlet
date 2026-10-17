@@ -54,6 +54,30 @@ Read `apps/beamlet_storage/README.md` before changing it. Established facts:
   executor journal, codec and installation. Never report a skipped adapter as
   passing.
 
+## Implemented Durable Host Wiring (Stage F)
+
+`Beamlet.Storage.Host` is the only host wiring. `Beamlet.Daemon.configuration/1`
+accepts an optional trusted `storage:` block (`:adapter` `:sqlite` default or
+`:postgres`, `:database`, `:dataset_id`, `:journal` `[:database, :dataset_id,
+:peer_database]`, `:executor_id`); it opens only the datasets the configured roles
+need, mints one `executor_boot_id` per boot and exposes the durable wiring through
+`Host.runtime/1`. Absent `storage:` means no Repo and no database. Loading the
+library and the interaction-only/CLI hosts start nothing.
+
+`Beamlet.Storage.Admission` is durable admission, distinct from Node/Repo
+readiness: every `status/1` call re-runs `Dataset.verify/2` plus a real
+rolled-back write probe, `Failure/2` turns it off after a failed durable write, and
+the durable submit (`Beamlet.Runtime.submit/2` with `persistence:`) and accept
+(`OperationCoordinator`) paths refuse with `:unavailable` / `:durable_unavailable`
+while it is off. Never report admission from a cached observation or from `ready`.
+
+Migration stays an explicit operator action (`mix beamlet.storage.migrate` or
+`Beamlet.Storage.Operator.initialize/2` inside a release). Boot, Agents and
+`Dataset.open/2` never migrate, create or repair a dataset: missing, newer-format,
+identity-mismatched and `restored_backup` datasets are refused. Consistent database
+backups only (SQLite `.backup`/`VACUUM INTO`, `pg_dump`/`pg_basebackup`); a
+restored dataset pauses admission until an operator resolves the marker.
+
 ## Proposed Next Architecture (Not Implemented)
 
 The documentation-only [Agent / Operation persistence proposal](../../../docs/architecture/agent-operation-persistence.md)

@@ -13,7 +13,14 @@ defmodule Beamlet.Storage.ContractFixture do
   alias Ecto.Adapters.SQL
 
   def open(:sqlite) do
-    dir = Path.join(System.tmp_dir!(), "beamlet-contract-#{System.unique_integer([:positive])}")
+    # Unique per VM *and* per wall clock: a leftover directory from an interrupted
+    # run must not turn into :dataset_exists on the next run.
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "beamlet-contract-#{System.system_time(:nanosecond)}-#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(dir)
 
     opts = [

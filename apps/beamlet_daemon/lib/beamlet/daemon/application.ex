@@ -8,11 +8,12 @@ defmodule Beamlet.Daemon.Application do
       {:ok, settings} ->
         children =
           if settings[:enabled] do
-            [
-              {Beamlet.Node, settings[:node]},
-              {Beamlet.Daemon.Bootstrap,
-               peers: settings[:peers], allowed_nodes: settings[:allowed_nodes]}
-            ]
+            [{Beamlet.Node, settings[:node]}] ++
+              storage(settings[:storage]) ++
+              [
+                {Beamlet.Daemon.Bootstrap,
+                 peers: settings[:peers], allowed_nodes: settings[:allowed_nodes]}
+              ]
           else
             []
           end
@@ -23,4 +24,9 @@ defmodule Beamlet.Daemon.Application do
         {:error, reason}
     end
   end
+
+  # The storage host opens the configured datasets and starts durable admission
+  # after the roles exist. It is absent unless the operator configured storage.
+  defp storage(nil), do: []
+  defp storage(settings), do: [{Beamlet.Storage.Host, storage: settings}]
 end

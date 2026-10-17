@@ -1,6 +1,6 @@
 # 持久化发布与运维验收
 
-状态：planning。仅创建规划；用户尚未授权激活或实施，不运行 `task.py start`，不安装依赖、不修改应用代码。
+状态：in_progress。用户于 2026-10-18 授权 A–F 连续实施；先决 A–E 已验收并提交（3aefa85、11577fb、f7be001、22d6159、c4b37fd）。
 
 ## Goal
 
@@ -22,11 +22,11 @@
 
 ## Acceptance Criteria
 
-- [ ] 所有七种角色组合正确启动 authority/journal 所需 Repo；库加载及 interaction-only 不误启数据库，executor-only 不启动 Agent。
-- [ ] SQLite/PostgreSQL 跑同一存储契约与集成路径，迁移/格式不兼容安全拒绝；具体版本和 PRAGMA 有记录。
-- [ ] Repo/Node/Gateway 保持注册时断开数据库或注入磁盘满，输入/派发/worker 启动按角色受阻，历史只读可行时仍可用。
-- [ ] 一致性备份恢复至隔离 release，默认暂停核对；持久卷重启后可审阅、paused restore、显式继续、fork 和导出。
-- [ ] format、warning-fatal compile、针对性/完整测试、显式 named distributed suite、静态检查和受影响 release 验证均有证据与环境限制说明。
+- [x] 所有七种角色组合正确启动 authority/journal 所需 Repo；库加载及 interaction-only 不误启数据库，executor-only 不启动 Agent。
+- [x] SQLite/PostgreSQL 跑同一存储契约与集成路径，迁移/格式不兼容安全拒绝；具体版本和 PRAGMA 有记录。
+- [x] Repo/Node/Gateway 保持注册时断开数据库或注入磁盘满，输入/派发/worker 启动按角色受阻，历史只读可行时仍可用。
+- [x] 一致性备份恢复至隔离 release，默认暂停核对；持久卷重启后可审阅、paused restore、显式继续、fork 和导出。
+- [x] format、warning-fatal compile、针对性/完整测试、显式 named distributed suite、静态检查和受影响 release 验证均有证据与环境限制说明。
 
 ## Scope Limits
 

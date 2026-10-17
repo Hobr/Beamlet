@@ -121,7 +121,22 @@ builds and copied/stdin/reattachment gates; final parent evidence is recorded se
 requires an old artifact with its matching config/protocol; restart is not Agent
 recovery. No physical deployment or paid provider evidence is implied.
 
-## 5. Tests and evidence boundaries
+## 5. Durable storage in the packaged hosts
+
+`storage:` is an optional trusted operator block in the daemon `BEAMLET_CONFIG`
+only; the daemon release ships `beamlet_storage`/Ecto/Exqlite/Postgrex in its
+closure and opens exactly the datasets the configured roles need. The CLI host is
+fixed interaction-only: no database, no storage key, release entrypoint unchanged.
+`Beamlet.Storage.Host.status/1` reports durable admission (a live format check plus
+a real rolled-back write) separately from Node/Repo readiness; durable
+submit/accept are refused while it is off, and recovery re-admits on a fresh probe
+without a restart. Migration is the explicit `mix beamlet.storage.migrate` (or
+`Beamlet.Storage.Operator.initialize/2` via release `eval`) operator action; boot
+never migrates, creates or repairs a dataset. `$REL start` is foreground and
+`$REL rpc` is unusable in this environment; probe with a separate
+`erl -name ... -setcookie ... -eval 'rpc:call(...)'` node.
+
+## 6. Tests and evidence boundaries
 
 Preserve the migrated Client malformed-option, cleanup/event-limit, dead-ref,
 watch/ack and authority-loss tests. CLI's named distributed integration must retain

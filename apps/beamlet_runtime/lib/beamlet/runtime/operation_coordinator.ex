@@ -382,11 +382,32 @@ defmodule Beamlet.Runtime.OperationCoordinator do
           Map.put(attrs, :agent, accept_identity(owner))
       end
 
-    case Beamlet.Storage.OperationRecords.accept_result(persistence.authority_repo, attrs) do
-      {:ok, accepted} -> {:ok, accepted}
-      {:error, _reason} -> {:error, :durable_unavailable}
+    # Accept is gated on live durable admission: a host that turned admission off
+    # (unwritable or refused dataset) must not commit an accepted Result. The gate
+    # probes the dataset, so recovery re-enables accept without a restart.
+    with :ok <- admission(),
+         {:ok, accepted} <-
+           Beamlet.Storage.OperationRecords.accept_result(persistence.authority_repo, attrs) do
+      {:ok, accepted}
+    else
+      {:error, reason} ->
+        admission_failure(reason)
+        {:error, :durable_unavailable}
     end
   end
+
+  defp admission do
+    case Beamlet.Storage.Admission.consult() do
+      :ok -> :ok
+      {:error, _reason} -> {:error, :durable_not_admitted}
+    end
+  end
+
+  # Only a storage failure turns admission off; a refused transition is a data fact.
+  defp admission_failure(reason) when reason in [:storage_unavailable, :storage_outcome_unknown],
+    do: Beamlet.Storage.Admission.failure(reason)
+
+  defp admission_failure(_reason), do: :ok
 
   # An owner carries exactly one Agent position: the strict version CAS or the
   # position a whole batch reserved for this Operation's accepted Result.

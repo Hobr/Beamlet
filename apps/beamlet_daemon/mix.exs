@@ -26,7 +26,8 @@ defmodule Beamlet.Daemon.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:beamlet_node, in_umbrella: true}
+      {:beamlet_node, in_umbrella: true},
+      {:beamlet_storage, in_umbrella: true}
     ]
   end
 end

@@ -144,11 +144,18 @@ defmodule Beamlet.Runtime do
 
   # A durable submit commits an Operation and a prepared attempt, so refuse before
   # writing when no coordinator can ever pick it up: an orphan prepared attempt has
-  # no id the caller could reconcile with.
+  # no id the caller could reconcile with. A host that configured durable storage
+  # also gates this on live durable admission, which is a fresh probe of the
+  # dataset and never the cached readiness of a registered Repo.
   defp coordinators_available(nil), do: :ok
 
   defp coordinators_available(%Persistence{}) do
-    if Process.whereis(Beamlet.Runtime.Coordinators), do: :ok, else: {:error, :unavailable}
+    with :ok <- Beamlet.Storage.Admission.consult(),
+         true <- Process.whereis(Beamlet.Runtime.Coordinators) != nil do
+      :ok
+    else
+      _refused -> {:error, :unavailable}
+    end
   end
 
   defp coordinators_available(_), do: :ok

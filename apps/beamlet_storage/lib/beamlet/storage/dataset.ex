@@ -54,7 +54,7 @@ defmodule Beamlet.Storage.Dataset do
   end
 
   defp initialize_and_verify(repo, opts, mode) do
-    with :ok <- maybe_initialize(repo, opts, mode), do: verify(repo, opts)
+    with :ok <- maybe_initialize(repo, opts, mode), do: verify_metadata(repo, opts)
   end
 
   defp authority_available(ExecutorJournalRepo), do: :ok
@@ -164,7 +164,25 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
-  defp verify(repo, opts) do
+  @doc """
+  Format/identity/migration check of an already-running dataset: reads
+  `storage_metadata` and `schema_migrations` only. It never migrates, creates or
+  writes, and returns `:ok` or a safe refusal (`:dataset_missing`,
+  `:dataset_mismatch`, `:schema_unsupported`, `:restored_backup`,
+  `:storage_unavailable`).
+  """
+  def verify(repo, opts) when is_list(opts) do
+    if Keyword.keyword?(opts) and Codec.uuid?(opts[:dataset_id]) and
+         repo in [SQLiteAuthorityRepo, PostgresAuthorityRepo, ExecutorJournalRepo] do
+      safely(fn -> verify_metadata(repo, opts) end)
+    else
+      {:error, :invalid_data}
+    end
+  end
+
+  def verify(_, _), do: {:error, :invalid_data}
+
+  defp verify_metadata(repo, opts) do
     case SQL.query(
            repo,
            "SELECT dataset_id, role, format_version, restored_backup FROM storage_metadata WHERE id = 1",
