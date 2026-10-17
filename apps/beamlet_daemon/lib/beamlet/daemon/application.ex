@@ -1,20 +1,26 @@
 defmodule Beamlet.Daemon.Application do
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
   @moduledoc false
-
   use Application
 
   @impl true
   def start(_type, _args) do
-    children = [
-      # Starts a worker by calling: Beamlet.Daemon.Worker.start_link(arg)
-      # {Beamlet.Daemon.Worker, arg}
-    ]
+    case Beamlet.Daemon.configuration(Application.get_all_env(:beamlet_daemon)) do
+      {:ok, settings} ->
+        children =
+          if settings[:enabled] do
+            [
+              {Beamlet.Node, settings[:node]},
+              {Beamlet.Daemon.Bootstrap,
+               peers: settings[:peers], allowed_nodes: settings[:allowed_nodes]}
+            ]
+          else
+            []
+          end
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Beamlet.Daemon.Supervisor]
-    Supervisor.start_link(children, opts)
+        Supervisor.start_link(children, strategy: :one_for_one, name: Beamlet.Daemon.Supervisor)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 end
