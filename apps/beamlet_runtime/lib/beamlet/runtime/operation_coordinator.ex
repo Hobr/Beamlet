@@ -92,11 +92,6 @@ defmodule Beamlet.Runtime.OperationCoordinator do
     valid = valid_completion?(result, handle, s)
 
     if valid do
-      result =
-        if s.stopping && result.reason == :worker_stopped,
-          do: %{result | status: :cancelled, reason: :worker_stopped},
-          else: result
-
       {:noreply,
        accept(%{s | execution: %{s.execution | handle: handle, state: :completed}}, result)}
     else

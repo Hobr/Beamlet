@@ -6,8 +6,39 @@ defmodule Beamlet.Node do
   use Supervisor
   alias Beamlet.Agent.Integration.{Caller, Handler}
   alias Beamlet.Harness.Catalogue
-  alias Beamlet.Node.Routes
+  alias Beamlet.Node.{Observation, Routes}
   @tools [Beamlet.Harness.Tools.Deterministic, Beamlet.Harness.Tools.WorkspaceRead]
+
+  @doc """
+  Returns the safe local version1 observation; see `observe/1` for schema/bounds.
+  Explicitly supports the local non-distributed VM. No Node tree is represented
+  by configured=false, roles=unknown and services=not_configured.
+  """
+  def observation, do: Observation.local()
+
+  @doc """
+  Observes at most32 distinct trusted atom targets, including local node().
+  Returns `{:ok, %{nodes: %{target => observation}, failures: %{target => reason},
+  complete: boolean}}`; malformed/duplicate/excess targets return invalid_query.
+  Each version1 observation has node, configured, roles (startup declarations or
+  unknown), services and runtime (`{:ok, Runtime observation}` or static error).
+  Services map authority/executor/runtime/routes to ready/unavailable/not_configured;
+  ready means required local registrations exist, not a responsiveness/health probe.
+  Interaction is a declaration, not an additional service. Missing configured
+  metadata fails unavailable rather than inventing roles. Runtime read errors
+  preserve the node with complete=false; all failures are explicit.
+
+  Max8 concurrent requests share one5s receive deadline including queued targets.
+  Complete serialized reply <=1MiB with16KiB reserved for failures. Oversize node
+  observations fail limit. Static errors: invalid_query/unavailable/timeout/limit.
+  Only initially connected remote targets are eligible; no atoms are created or
+  connections requested. OTP can reconnect after that precheck. Caller exit or
+  timeout abandons replies; remote reads may start late and finish within their
+  own finite relative budget. Nested reads share that source deadline. Scheduler
+  delays are possible; this is not hard real time or remote cancellation.
+  Reads are non-atomic, advisory and dispatch no model/tool work or retries.
+  """
+  def observe(nodes), do: Observation.observe(nodes)
 
   def profile(id), do: GenServer.call(Routes, {:profile, id})
   def catalogue, do: GenServer.call(Routes, :catalogue)
@@ -82,7 +113,9 @@ defmodule Beamlet.Node do
 
       children = [
         {Routes,
-         routes: Keyword.get(opts, :routes, %{}), catalogue: Keyword.get(opts, :catalogue, %{})}
+         roles: roles,
+         routes: Keyword.get(opts, :routes, %{}),
+         catalogue: Keyword.get(opts, :catalogue, %{})}
         | children
       ]
 

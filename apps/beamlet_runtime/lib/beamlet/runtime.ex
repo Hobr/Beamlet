@@ -1,7 +1,25 @@
 defmodule Beamlet.Runtime do
   @moduledoc "Opt-in, ephemeral, one-attempt distributed operations. See task handoff for wire events."
   alias Beamlet.Actions.{Operation, OperationRef}
-  alias Beamlet.Runtime.{Directory, SharedSupervisor}
+  alias Beamlet.Runtime.{Directory, Observation, SharedSupervisor}
+
+  @doc """
+  Safe Directory-owned report observation, `{:ok, %{version: 1, source: node,
+  expiry_ms: integer, reports: list, complete: boolean}}`.
+
+  Reports contain node, status (`fresh`, `stale`, `not_reported`) and age_ms
+  (nonnegative receipt age on this VM, or `unknown`). Received reports also
+  contain ready/execution_ready booleans, capabilities/environments lists and
+  available pool quantities. These are advisory available quantities, never
+  totals, utilization or reservations. Missing reports do not establish death.
+  Empty reports means no observed members. Stale reports remain until departure.
+  At most256 reports and1,000,000 full serialized reply bytes; count overflow
+  sets complete=false, byte overflow returns `{:error, :limit}`.
+  Finite5s read; static errors are timeout/unavailable/limit. No work is submitted.
+  This is a non-atomic observation; no private leases or timestamps are exported.
+  """
+  def observation, do: Observation.read(Directory, :observation, 5000)
+
   def child_spec(opts), do: SharedSupervisor.child_spec(opts)
 
   @doc """

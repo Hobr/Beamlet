@@ -6,5 +6,6 @@ defmodule Beamlet.Node.Routes do
   def init(opts), do: {:ok, opts}
   @impl true
   def handle_call({:profile, id}, _, opts), do: {:reply, Map.fetch(opts[:routes], id), opts}
+  def handle_call(:roles, _, opts), do: {:reply, {:ok, opts[:roles]}, opts}
   def handle_call(:catalogue, _, opts), do: {:reply, {:ok, opts[:catalogue]}, opts}
 end

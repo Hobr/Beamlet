@@ -72,27 +72,13 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   end
 
   def handle_info({:cancel, coordinator, attempt}, s) do
-    key = {coordinator, attempt}
-
-    case s.attempts[key] do
-      %{task: task, cancellation: cancellation} ->
-        if :atomics.exchange(cancellation, 1, 1) == 0 do
-          Process.exit(task.pid, :shutdown)
-          Process.send_after(self(), {:kill, key, task.pid}, s.limits.cancel_ms)
-        end
-
-      _ ->
-        :ok
-    end
-
-    {:noreply, s}
+    {:noreply, stop_worker(s, {coordinator, attempt}, :cancelled)}
   end
 
   def handle_info({:execution_deadline, key, pid}, s) do
     if match?(%{task: %{pid: ^pid}}, s.attempts[key]),
-      do: send(self(), {:cancel, elem(key, 0), elem(key, 1)})
-
-    {:noreply, s}
+      do: {:noreply, stop_worker(s, key, :deadline)},
+      else: {:noreply, s}
   end
 
   def handle_info({:kill, key, pid}, s) do
@@ -142,17 +128,13 @@ defmodule Beamlet.Runtime.ExecutorGateway do
         key = s.tasks[ref]
         entry = s.attempts[key]
 
+        stopped = observed_stop?(entry, reason)
+
         result = %Result{
           operation_id: entry.id,
           execution_id: entry.handle.id,
-          status: :error,
-          reason:
-            if(
-              :atomics.get(entry.cancellation, 1) == 1 and
-                (reason == :shutdown or (reason == :killed and entry.kill_requested)),
-              do: :worker_stopped,
-              else: :worker_lost
-            ),
+          status: if(stopped, do: entry.stop_source, else: :error),
+          reason: if(stopped, do: :worker_stopped, else: :worker_lost),
           source: :execution
         }
 
@@ -189,6 +171,27 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   end
 
   def handle_info(_, s), do: {:noreply, s}
+
+  defp observed_stop?(entry, reason) do
+    :atomics.get(entry.cancellation, 1) == 1 and
+      (reason == :shutdown or (reason == :killed and entry.kill_requested))
+  end
+
+  # The first trigger processed here owns provenance, including kill escalation.
+  defp stop_worker(s, key, source) do
+    case s.attempts[key] do
+      %{task: task, cancellation: cancellation, stop_source: nil} ->
+        if :atomics.exchange(cancellation, 1, 1) == 0 do
+          Process.exit(task.pid, :shutdown)
+          Process.send_after(self(), {:kill, key, task.pid}, s.limits.cancel_ms)
+        end
+
+        put_in(s, [:attempts, key, :stop_source], source)
+
+      _ ->
+        s
+    end
+  end
 
   defp admission(s, coordinator, id, attempt, incarnation, lease, op, remaining) do
     key = {coordinator, attempt}
@@ -250,6 +253,7 @@ defmodule Beamlet.Runtime.ExecutorGateway do
       handle: handle,
       id: id,
       kill_requested: false,
+      stop_source: nil,
       progress_dropped: false,
       cancellation: cancellation
     }

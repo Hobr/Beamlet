@@ -1,5 +1,5 @@
 defmodule Beamlet.Agent.Server do
-  alias Beamlet.Agent.ModelBinding
+  alias Beamlet.Agent.{Display, ModelBinding}
   @moduledoc false
   use GenServer, restart: :temporary
   alias Beamlet.Actions.{Operation, Result}
@@ -49,6 +49,8 @@ defmodule Beamlet.Agent.Server do
          model: Keyword.fetch!(opts, :model),
          tools: Keyword.get(opts, :tools, %{}),
          messages: [],
+         display_entries: [],
+         display_metadata: Keyword.get(opts, :display_metadata, %{}),
          turn: nil,
          terminal_turn: nil,
          status: :idle,
@@ -79,9 +81,10 @@ defmodule Beamlet.Agent.Server do
   defp valid_options?(opts, binding_validator \\ &ModelBinding.valid?/1)
 
   defp valid_options?(opts, binding_validator) when is_list(opts) do
-    if Keyword.keyword?(opts) and Catalogue.validate(Keyword.get(opts, :catalogue, %{})) == :ok,
-      do: valid_keyword_options?(opts, binding_validator),
-      else: false
+    if Keyword.keyword?(opts) and Catalogue.validate(Keyword.get(opts, :catalogue, %{})) == :ok and
+         Display.metadata?(Keyword.get(opts, :display_metadata, %{})),
+       do: valid_keyword_options?(opts, binding_validator),
+       else: false
   end
 
   defp valid_options?(_, _), do: false
@@ -89,7 +92,7 @@ defmodule Beamlet.Agent.Server do
   defp valid_keyword_options?(opts, binding_validator) do
     tools = Keyword.get(opts, :tools, %{})
 
-    Keyword.keys(opts) -- [:id, :model, :tools, :catalogue, :delegator] == [] and
+    Keyword.keys(opts) -- [:id, :model, :tools, :catalogue, :delegator, :display_metadata] == [] and
       valid_id?(opts[:id]) and
       (is_nil(opts[:delegator]) or is_pid(opts[:delegator])) and
       binding_validator.(opts[:model]) and
@@ -209,6 +212,8 @@ defmodule Beamlet.Agent.Server do
 
   defp control(:close, s), do: {:stop, :normal, :ok, stop_owned(s)}
   defp control(:snapshot, s), do: {:reply, {:ok, view(s)}, s}
+  defp control({:snapshot, []}, s), do: control(:snapshot, s)
+  defp control({:snapshot, [view: :display]}, s), do: {:reply, {:ok, view(s, :display)}, s}
 
   defp control({:input, text}, %{status: status} = s)
        when status in [:idle, :done, :error, :stopped] do
@@ -224,8 +229,7 @@ defmodule Beamlet.Agent.Server do
            ) do
       s = %{
         s
-        | messages: messages,
-          turn: make_ref(),
+        | turn: make_ref(),
           terminal_turn: nil,
           status: :running,
           steps: 0,
@@ -233,6 +237,7 @@ defmodule Beamlet.Agent.Server do
           progress: nil
       }
 
+      s = Display.annotate(s, messages)
       send(self(), {:advance, s.turn})
       {:reply, {:ok, s.turn}, publish(s)}
     else
@@ -271,7 +276,11 @@ defmodule Beamlet.Agent.Server do
     {:reply, :ok, s}
   end
 
-  defp control({:subscribe, pid}, s) when is_pid(pid) do
+  defp control({:subscribe, pid}, s), do: control({:subscribe, pid, []}, s)
+
+  defp control({:subscribe, pid, opts}, s) when is_pid(pid) and opts in [[], [view: :display]] do
+    projection = if opts == [], do: :default, else: :display
+
     cond do
       Map.has_key?(s.subscribers, pid) ->
         {:reply, {:error, :already_subscribed}, s}
@@ -281,8 +290,15 @@ defmodule Beamlet.Agent.Server do
 
       true ->
         seq = s.sequence + 1
-        send(pid, {:beamlet_agent, s.ref, seq, {:snapshot, view(s)}})
-        sub = %{monitor: Process.monitor(pid), outstanding: MapSet.new([seq]), dirty: false}
+        send(pid, {:beamlet_agent, s.ref, seq, {:snapshot, view(s, projection)}})
+
+        sub = %{
+          monitor: Process.monitor(pid),
+          outstanding: MapSet.new([seq]),
+          dirty: false,
+          view: projection
+        }
+
         {:reply, :ok, %{s | sequence: seq, subscribers: Map.put(s.subscribers, pid, sub)}}
     end
   end
@@ -328,7 +344,7 @@ defmodule Beamlet.Agent.Server do
         results = Map.put(s.results, id, %{child: child, turn: turn, result: result})
         s = %{s | children: rest, results: results}
 
-        {:noreply, if(map_size(rest) == 0, do: joined(s), else: s)}
+        {:noreply, if(map_size(rest) == 0, do: joined(s), else: publish_activity(s))}
     end
   end
 
@@ -505,6 +521,20 @@ defmodule Beamlet.Agent.Server do
     end
   end
 
+  def handle_info(
+        {:child_observed, group, id, %Ref{} = child, turn},
+        %{turn: group, status: :waiting} = s
+      ) do
+    case Map.fetch(s.children, id) do
+      {:ok, entry} ->
+        children = Map.put(s.children, id, Map.merge(entry, %{ref: child, turn: turn}))
+        {:noreply, publish_activity(%{s | children: children})}
+
+      :error ->
+        {:noreply, s}
+    end
+  end
+
   def handle_info({:child_startup, helper, group, ticket}, s) do
     if s.turn == group and s.status == :waiting and
          Enum.any?(s.children, fn {_, c} -> c.pid == helper end) do
@@ -529,7 +559,7 @@ defmodule Beamlet.Agent.Server do
           sequence: 0
         }
 
-        {:noreply, %{s | pending: Map.put(s.pending, ref.id, pending)}}
+        {:noreply, publish_activity(%{s | pending: Map.put(s.pending, ref.id, pending)})}
 
       owner ->
         if owner, do: send(owner.pid, :stop)
@@ -589,7 +619,7 @@ defmodule Beamlet.Agent.Server do
       case append_child_observations(s.messages, results) do
         {:ok, messages} ->
           send(self(), {:advance, s.turn})
-          publish(%{s | status: :running, messages: messages, steps: 0, results: %{}})
+          publish(%{Display.annotate(s, messages) | status: :running, steps: 0, results: %{}})
 
         _ ->
           fail(s, :context_limit)
@@ -624,7 +654,7 @@ defmodule Beamlet.Agent.Server do
         end)
 
       owner = %{pid: pid, monitor: monitor, key: key, turn: s.turn}
-      %{s | owners: Map.put(s.owners, token, owner)}
+      publish_activity(%{s | owners: Map.put(s.owners, token, owner)})
     else
       error -> fail(s, %{type: :dispatch_failed, reason: error})
     end
@@ -641,8 +671,11 @@ defmodule Beamlet.Agent.Server do
     case canonical_reply(reply, s.catalogue) do
       {:ok, %{kind: :text, assistant: assistant, content: content}} ->
         case Context.append(s.messages, [assistant]) do
-          {:ok, messages} -> publish(%{s | messages: messages, status: :done, final: content})
-          _ -> fail(s, :context_limit)
+          {:ok, messages} ->
+            publish(%{Display.annotate(s, messages) | status: :done, final: content})
+
+          _ ->
+            fail(s, :context_limit)
         end
 
       {:ok, %{kind: :tool_calls, assistant: assistant}} ->
@@ -686,13 +719,19 @@ defmodule Beamlet.Agent.Server do
       case Context.append(s.messages, additions) do
         {:ok, messages} ->
           send(self(), {:advance, s.turn})
-          %{s | messages: messages, results: %{}, order: [], assistant: nil}
+
+          publish_activity(%{
+            Display.annotate(s, messages)
+            | results: %{},
+              order: [],
+              assistant: nil
+          })
 
         _ ->
           fail(s, :context_limit)
       end
     else
-      s
+      publish_activity(s)
     end
   end
 
@@ -766,7 +805,12 @@ defmodule Beamlet.Agent.Server do
 
   defp view(s), do: Map.take(s, [:ref, :turn, :terminal_turn, :status, :steps, :final, :progress])
 
-  defp publish(s) do
+  defp view(s, :default), do: view(s)
+  defp view(s, :display), do: Display.project(view(s), s)
+
+  defp publish_activity(s), do: publish(s, [:display])
+
+  defp publish(s, views \\ [:default, :display]) do
     s =
       if :erlang.external_size(view(s)) > 1_048_000,
         do: %{s | status: :error, final: :snapshot_limit},
@@ -776,11 +820,16 @@ defmodule Beamlet.Agent.Server do
 
     subscribers =
       Map.new(s.subscribers, fn {pid, sub} ->
-        if MapSet.size(sub.outstanding) < 16 do
-          send(pid, {:beamlet_agent, s.ref, seq, {:snapshot, view(s)}})
-          {pid, %{sub | outstanding: MapSet.put(sub.outstanding, seq), dirty: false}}
-        else
-          {pid, %{sub | dirty: true}}
+        cond do
+          sub.view not in views ->
+            {pid, sub}
+
+          MapSet.size(sub.outstanding) < 16 ->
+            send(pid, {:beamlet_agent, s.ref, seq, {:snapshot, view(s, sub.view)}})
+            {pid, %{sub | outstanding: MapSet.put(sub.outstanding, seq), dirty: false}}
+
+          true ->
+            {pid, %{sub | dirty: true}}
         end
       end)
 
