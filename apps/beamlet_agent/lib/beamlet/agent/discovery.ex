@@ -1,6 +1,5 @@
 defmodule Beamlet.Agent.Discovery do
   @moduledoc false
-  alias Beamlet.Agent.Discovery.Endpoint
   alias Beamlet.Agent.Ref
   @budget 5000
   @bytes 1_048_576
@@ -26,18 +25,9 @@ defmodule Beamlet.Agent.Discovery do
   def lookup(_), do: {:error, :invalid_query}
 
   def query(authority, query) when is_atom(authority) and authority not in [nil, true, false] do
-    cond do
-      authority != node() and authority not in Node.list(:connected) ->
-        {:error, :unavailable}
-
-      authority == node() and is_nil(Process.whereis(Endpoint)) ->
-        {:error, :unavailable}
-
-      true ->
-        # The stream controller monitors the public caller independently of the
-        # blocking receive and kills its task on owner loss or fixed deadline.
-        bounded_request(authority, query)
-    end
+    if authority != node() and authority not in Node.list(:connected),
+      do: {:error, :unavailable},
+      else: bounded_request(authority, query)
   end
 
   def query(_, _), do: {:error, :invalid_query}
@@ -53,57 +43,66 @@ defmodule Beamlet.Agent.Discovery do
   end
 
   defp request(authority, query, deadline) do
-    reply = :erlang.alias()
+    budget = remaining(deadline)
 
-    try do
-      case send_safe({Endpoint, authority}, {:offer, self(), reply}) do
-        :ok -> receive_offer(reply, query, deadline)
-        _ -> {:error, :unavailable}
-      end
-    after
-      :erlang.unalias(reply)
+    if budget == 0 do
+      {:error, :timeout}
+    else
+      if authority == node(),
+        do: query_local(query, budget),
+        else: :erpc.call(authority, __MODULE__, :query_local, [query, budget], budget)
     end
+  catch
+    :error, {:erpc, :timeout} -> {:error, :timeout}
+    _, _ -> {:error, :unavailable}
   end
 
-  defp receive_offer(reply, query, deadline) do
-    receive do
-      {^reply, {:offer, endpoint, token}} when is_pid(endpoint) ->
-        if remaining(deadline) > 0 do
-          send_safe(endpoint, {:confirm, self(), reply, token, query, remaining(deadline)})
-          receive_result(reply, deadline)
-        else
-          {:error, :timeout}
-        end
+  # Relative budgets are interpreted on the executing VM. OTP may complete this
+  # finite read after its caller has abandoned the response; it is not cancelled.
+  def query_local(query, budget) when is_integer(budget) and budget in 1..@budget do
+    deadline = now() + budget
 
-      {^reply, {:error, reason}} ->
-        if remaining(deadline) > 0, do: {:error, reason}, else: {:error, :timeout}
-    after
-      remaining(deadline) -> {:error, :timeout}
-    end
-  end
+    if valid_query?(query) do
+      registry = Process.whereis(Beamlet.Agent.Registry)
 
-  defp receive_result(reply, deadline) do
-    if remaining(deadline) > 0 do
-      receive do
-        {^reply, {:ping, controller, token}} ->
-          budget = remaining(deadline)
-          if budget > 0, do: send_safe(controller, {:pong, token, budget})
-          receive_result(reply, deadline)
+      cond do
+        is_nil(Process.whereis(Beamlet.Agent.AuthoritySupervisor)) ->
+          {:error, :not_authority}
 
-        {^reply, result} ->
-          if remaining(deadline) > 0, do: result, else: {:error, :timeout}
-      after
-        remaining(deadline) -> {:error, :timeout}
+        is_nil(registry) ->
+          {:error, :unavailable}
+
+        true ->
+          validate_result(local(query, deadline), registry, deadline)
       end
     else
-      {:error, :timeout}
+      {:error, :invalid_query}
+    end
+  rescue
+    _ -> {:error, :unavailable}
+  catch
+    _, _ -> {:error, :unavailable}
+  end
+
+  def query_local(_, _), do: {:error, :invalid_query}
+
+  defp validate_result(result, registry, deadline) do
+    cond do
+      Process.whereis(Beamlet.Agent.Registry) != registry -> {:error, :unavailable}
+      remaining(deadline) == 0 -> {:error, :timeout}
+      :erlang.external_size(result) > @bytes -> {:error, :limit}
+      true -> result
     end
   end
 
-  def send_safe(destination, message),
-    do: :erlang.send(destination, message, [:noconnect, :nosuspend])
+  defp valid_query?(:list), do: true
 
-  def local(:list, _deadline) do
+  defp valid_query?({:lookup, id, expected}),
+    do: valid_id?(id) and (is_nil(expected) or (is_pid(expected) and node(expected) == node()))
+
+  defp valid_query?(_), do: false
+
+  defp local(:list, _deadline) do
     entries =
       Registry.select(Beamlet.Agent.Registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
 
@@ -122,7 +121,7 @@ defmodule Beamlet.Agent.Discovery do
     ArgumentError -> {:error, :unavailable}
   end
 
-  def local({:lookup, id, expected}, deadline) do
+  defp local({:lookup, id, expected}, deadline) do
     case Registry.lookup(Beamlet.Agent.Registry, id) do
       [{pid, _}] when not is_nil(expected) and pid != expected -> {:error, :stale_agent}
       [{pid, _}] -> fetch_ref(pid, id, deadline)

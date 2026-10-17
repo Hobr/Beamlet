@@ -89,7 +89,7 @@ defmodule Beamlet.Node do
       {:ok,
        if(:authority in roles,
          do: children ++ [{Beamlet.Agent.AuthoritySupervisor, model_providers: models}],
-         else: children ++ [{Beamlet.Agent.Discovery.Endpoint, authority: false}]
+         else: children
        )}
     else
       _ -> {:error, :invalid_node_configuration}

@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend ownership and before-dev routing"}
+{"file":".trellis/spec/backend/agent-orchestration.md","reason":"Identity and existing discovery contracts; design.md explicitly supersedes strict transport portions after user approval"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Agent/Node ownership, opt-in role composition"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Finite worker lifecycle, real peers, static/build gates"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Safe static failures, preserve OTP authority failure semantics"}
+{"file":".trellis/tasks/10-17-query-transport-research/research/report.md","reason":"Completed research and standard OTP semantics"}
+{"file":".trellis/tasks/10-17-query-transport-research/research/quality-review.md","reason":"Independent evidence and caveats; user confirmed simplified semantics"}

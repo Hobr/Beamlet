@@ -211,17 +211,21 @@ limit. A closed descriptor with no current registration returns not_found.
 List enumerates Registry identities, max128, without waiting for each Server.
 Lookup asks that PID's existing `:ref` handler and verifies authority/ID/PID and
 reference incarnation. Queries have one5s local receive budget. Only already
-connected remote nodes are queried. Dependency loading starts no endpoint.
-AuthoritySupervisor owns the Agent Discovery.Endpoint last in its one_for_all
-island. Non-authority Node roles explicitly supervise the same endpoint in
-non-authority mode; all seven role combinations retain one fixed-name endpoint.
-A bare remote VM without an endpoint is unavailable/timeout, not a successful
-empty authority. Matching library/protocol builds are required.
+connected remote nodes are queried at entry. Local reads use a disposable OTP Task;
+remote reads use fixed `:erpc.call(authority, Discovery, :query_local, [query, budget], budget)`.
+The entry accepts only list or validated lookup and relative integer budgets1..5000ms,
+creates its deadline on the executing VM, and waits for Server only within that budget.
+Registry identity is checked before and after the read. Authority capability comes
+from AuthoritySupervisor/Registry; loaded non-authorities return not_authority,
+missing code/unreachable nodes return unavailable. Registry loss still invalidates
+Agents through the existing identity island. Query execution has no supervised
+endpoint and its death cannot restart that island. Matching library builds are required.
 
 `Node.Agents.discover([trusted_node_atom, ...])` returns
 `{:ok, %{agents: descriptors, failures: %{node => static_reason}, complete: boolean}}`.
 Use Cluster.authority/2 to resolve trusted configured names; discovery uses
-Cluster.connected/1 filtering and never atomizes input or connects. Invalid or
+Cluster.connected/1 filtering and never atomizes input. Initially disconnected
+targets are rejected; subsequent OTP reconnection is permitted. Invalid or
 duplicate targets / >32 nodes return invalid_query wholly. Empty request completes.
 An alive allowlisted local node follows Cluster inclusion. Max8 requests run at
 once; queued requests share one5s receive deadline. Serialized full `{:ok, result}`
@@ -232,40 +236,26 @@ explicit, including non-authority/unavailable/timeout/limit. `complete` describe
 only the requested set. Liveness is an eventual observed view, not an atomic
 cluster snapshot; subsequent commands can still lose the returned instance.
 
-Transport uses only noconnect/nosuspend sends for offers, confirms, heartbeat and
-replies, including disposable reply aliases; no remote process monitor/link,
-erpc/rex, remote group leader or remote IO. A passive5s offer must be confirmed
-before query work is admitted. Endpoint holds<=256 offers+active controllers;
-callbacks do no Registry/Server waits. Each controller owns linked local query
-work and timers outside calls: max5s lifetime and250ms heartbeat lease with50ms
-renewal interval. Caller loss kills its local task tree; remote work exits after
-lease loss (normally<=300ms plus scheduling), even while Server remains suspended.
-This is finite cleanup, not instantaneous distributed cancellation. Passive queued
-messages can be discarded after caller expiry; they cannot start work without a
-live confirmation. No credentials/options/binding/history enter discovery results.
+Transport follows standard OTP semantics. An initially disconnected target is
+rejected; after the connected precheck, a disconnect may trigger OTP reconnection.
+There is no application query retry, business replay or automatic Agent recreation.
+Caller timeout/exit abandons the response; already issued remote reads may finish
+within their own finite budget, which starts when the entry executes. Delayed
+execution can therefore begin after local abandonment. No instantaneous cancellation,
+300ms remote retirement, expired-admission rejection or mailbox retraction is promised.
+Task/erpc/GenServer response correlation discards late replies. Scheduling can delay
+timeout delivery; the budgets are not hard real-time guarantees.
 
+There is no query endpoint, offer/confirmation/challenge/heartbeat/lease protocol,
+or former256 offer/controller quota. No new global admission service is added.
+Per-query128 identity/1MiB limits and per-aggregation32 targets/8 requests/5s deadline
+remain. No credentials/options/binding/history enter discovery results.
 
-## Queued admission repair (new candidate)
-
-The original frozen candidate's confirmation was insufficient: it could remain
-queued past the public deadline and spawn work before a fresh requester response.
-Confirmation now creates only a passive, quota-accounted controller. Before any
-Registry/Server query, it issues a fresh nonce challenge through the disposable
-alias. The requester checks its original deadline before confirming, answering a
-challenge, or accepting a result, including messages already queued at expiry.
-The public deadline is allocated before task startup, not inside the helper.
-
-The endpoint passes a local absolute deadline to the controller, so controller
-startup cannot reset the sampled confirmation budget. Each admission/heartbeat
-response carries the requester's current remaining duration. The controller
-subtracts the entire locally measured challenge roundtrip (conservative), clamps
-to its existing deadline, and rejects responses received after that deadline or
-the250ms lease even if the response is already in its mailbox. Neither node
-compares the other's timestamps. Worker startup and the final Server call also
-check the deadline. Unanswered passive controllers retire within the lease plus
-scheduling; pending offers retain their5s expiry and the combined256 quota.
-No new endpoint, retry, connection policy, public API or dependency is introduced.
-
-Freshness is an observed exchange, not atomic remote liveness or hard real-time
-execution: ordinary scheduling and distributed death races remain possible after
-a timely response. No instantaneous remote-death detection is claimed.
+Regression gates: real local and named remote Server suspension, query execution
+kill with unchanged Agent/Registry/supervisor identity, finite remote completion
+before Server resume, late response isolation, same-name authorities, descriptor
+replacement, Registry loss, all seven role subsets, trusted input and full-envelope
+limits. Resource tests delay code loading on ten peers to observe eight in-flight
+requests and a single receive deadline. Same-host tests do not prove physical deployment.
+Wrong: infer remote cancellation from caller timeout, or promise never reconnect
+from a connected precheck. Correct: finite independent reads and explicit partial failures.

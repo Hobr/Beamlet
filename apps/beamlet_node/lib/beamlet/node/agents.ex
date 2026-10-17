@@ -3,7 +3,8 @@ defmodule Beamlet.Node.Agents do
   Eventual observed identities from an explicit set of trusted node atoms.
 
   Targets are already-resolved trusted nodes (use Cluster.authority/2); no string
-  is atomized and no connection is attempted. An alive local VM is eligible as in
+  is atomized. Initially disconnected targets are rejected; OTP may reconnect
+  after the connection precheck. An alive local VM is eligible as in
   Cluster.connected/1. At most32 unique targets,8 concurrent requests, one total
   five-second receive deadline and a complete serialized envelope of at most1MiB.
   `complete` covers only the requested set; every failed/limited node is explicit.

@@ -8,7 +8,7 @@ invocations. Node composes opt-in roles and trusted local model provider registr
 Node is an explicitly supervised library; CLI owns the migrated terminal adapter.
 Daemon is an opt-in host with startup-only authority/executor selection and an
 isolated release; CLI is an opt-in fixed interaction host with a foreground standalone session. Agent discovery now provides safe live identity list/lookup and bounded trusted-connected
-aggregation. The standalone CLI release owns bounded stdin, local Ref aliases and explicit reattachment.
+aggregation through finite local reads/OTP erpc, with query failures isolated from the identity island. The standalone CLI release owns bounded stdin, local Ref aliases and explicit reattachment.
 Cross-physical-host acceptance was removed by user decision; no physical execution is claimed. Phoenix provides the existing web scaffold.
 These English guidelines describe checked-in behavior; source paths below are
 relative to the repository root.

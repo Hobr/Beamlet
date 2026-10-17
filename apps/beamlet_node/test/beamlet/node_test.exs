@@ -53,6 +53,10 @@ defmodule Beamlet.NodeTest do
       assert is_pid(Process.whereis(Beamlet.Runtime.Directory))
       assert is_pid(Process.whereis(Beamlet.Node.Routes))
       assert is_pid(Process.whereis(Beamlet.Agent.Registry)) == :authority in roles
+
+      assert Beamlet.Agent.list(node()) ==
+               if(:authority in roles, do: {:ok, []}, else: {:error, :not_authority})
+
       assert is_pid(Process.whereis(Beamlet.Runtime.ExecutorGateway)) == :executor in roles
       assert is_pid(Process.whereis(Beamlet.Node.Provider)) == :executor in roles
       assert :ok = stop_supervised(Beamlet.Node)

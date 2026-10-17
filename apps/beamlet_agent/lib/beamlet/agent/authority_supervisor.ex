@@ -21,8 +21,7 @@ defmodule Beamlet.Agent.AuthoritySupervisor do
           {DynamicSupervisor,
            name: Beamlet.Agent.Agents, strategy: :one_for_one, max_children: 128},
           shutdown: 1000
-        ),
-        {Beamlet.Agent.Discovery.Endpoint, authority: true}
+        )
       ],
       strategy: :one_for_all
     )
