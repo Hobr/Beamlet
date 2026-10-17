@@ -67,6 +67,18 @@ optional execution ID, status, safe reason/value, source and bounded metadata.
 Execution-origin Results require an execution ID. Exactly one matching terminal
 Result is accepted in memory; no attempt is retried, replaced or replayed.
 
+Gateway records the first stop trigger it processes for each admitted worker:
+execution deadline or cancellation. Later triggers do not replace that source.
+A cancellation-marked shutdown, or a killed DOWN following Gateway kill escalation,
+proves local worker retirement and uses that source with reason `:worker_stopped`.
+Other crashes remain `:error/:worker_lost`. Coordinator preserves valid Gateway
+classification even with cancellation pending; a handler returning an error named
+worker_stopped alone is not observed-stop evidence. Valid success racing before
+terminal acceptance keeps existing semantics; any accepted terminal is immutable.
+There is no global trigger ordering across VMs. Local worker exit does not prove
+external provider cancellation, rollback, absence of effects or stopped billing.
+Matching trusted Gateway builds are required for corrected provenance.
+
 Events arrive at the installed sink:
 
 ```elixir
@@ -123,7 +135,8 @@ fail startup. These bounds do not enforce a hard RSS cap or hostile-node sandbox
 | Connection/owner/endpoint loss | uncertain / `:connection_lost` or `:infrastructure_lost` |
 | Deadline without observed termination | deadline / `:termination_unconfirmed` |
 | Cancellation without observed termination | uncertain / `:cancel_unconfirmed` |
-| Observed shutdown or gateway-issued kill escalation | cancelled / `:worker_stopped` |
+| Execution deadline initiated observed shutdown or Gateway kill escalation | deadline / `:worker_stopped` |
+| Cancellation initiated observed shutdown or Gateway kill escalation | cancelled / `:worker_stopped` |
 | Unrelated crash, even after cancel request | error / `:worker_lost` |
 | Accepted racing success | remains successful |
 | Malformed/oversize handler output | explicit invalid-result error |
@@ -159,6 +172,14 @@ execution, no fallback, concurrent capacity, partition uncertainty and delayed
 admission without retry. Bound startup/teardown and use independent stdio control
 for partition inspection. Same-host results are not physical-host acceptance.
 
+Preserve `deadline_classification_test.exs`: use a genuine valid aged report and
+actual admission to make the executor budget expire before the Coordinator timer;
+assert actual worker DOWN and execution-source deadline/worker_stopped. Cover both
+first-trigger orders against shutdown/kill, unrelated crash and racing success;
+late/wrong-PID timers, duplicate completion/admission, one result, restored capacity
+and zero remaining tasks. Keep unconfirmed deadline/cancel tests with a live worker
+at terminal acceptance. Do not weaken errors or remove lease-age reduction to pass.
+
 ### 7. Wrong vs Correct
 
 Wrong: wait for a full remote job in a GenServer callback, automatically retry on
@@ -168,3 +189,6 @@ restart temporary business work after infrastructure loss.
 Correct: dispatch once, process correlated asynchronous admission/progress/result
 messages, monitor ownership, use executor-local leases and timer-driven cleanup.
 Temporary workers/coordinators and retained Results are deliberately ephemeral.
+Wrong: infer deadline from the final DOWN time or relabel all worker_stopped errors
+as cancelled. Correct: Gateway owns first-trigger provenance; Coordinator accepts
+only valid correlated completion once and preserves that classification.

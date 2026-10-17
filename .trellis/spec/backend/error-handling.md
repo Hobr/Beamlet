@@ -16,6 +16,15 @@ semantic errors. Delegation rejects common-invalid options before helper spawn;
 target-only adapter rejection uses correlated authority_unavailable after one dispatch.
 Parent validation must not require the target's provider in its own registry.
 
+Runtime distinguishes deadline-origin `deadline/worker_stopped` from cancellation-
+origin `cancelled/worker_stopped` using the first trigger handled by Gateway and
+actual shutdown/requested-kill DOWN. Unconfirmed termination remains
+`deadline/termination_unconfirmed` or `uncertain/cancel_unconfirmed`. Unrelated
+crashes and handler-supplied error reasons are not stop confirmation. Accepted
+terminals are immutable. See the Runtime matrix; local worker exit never proves
+external provider rollback or cancellation. Safe observation errors and omission
+markers are documented in [Live Observation](./live-observation.md).
+
 ## Startup and Configuration Failures
 
 Node is a callback-free library, started explicitly with `Beamlet.Node.start_link/1`

@@ -1,0 +1,12 @@
+{"file":".trellis/spec/backend/index.md","reason":"当前应用边界与相关 spec 路由"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Web 命名空间、OTP 生命周期及直接依赖归属"}
+{"file":".trellis/spec/backend/agent-orchestration.md","reason":"Ref、模型绑定、订阅 credit、存活发现与角色组合契约"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"无数据库/持久化、临时上下文及可读 cookie 限制"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"有界错误、不确定性和安全反馈"}
+{"file":".trellis/tasks/10-17-beamlet-web/research/current-capabilities.md","reason":"源码证据与拟议接口区分，防止用私有状态/虚假历史补功能"}
+{"file":".trellis/spec/backend/operation-runtime.md","reason":"容量报告/新鲜度/连接与就绪的边界"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"LiveDashboard 不是持久业务观测，dev-only 门控"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"只读、安全、资产及多层完整验收"}
+{"file":".trellis/spec/backend/live-observation.md","reason":"已实现公共观察与 Web 适配/调用/订阅契约；复用安全共享组件，不重复实现"}
+{"file":".trellis/spec/backend/web-host.md","reason":"已实现公共观察与 Web 适配/调用/订阅契约；复用安全共享组件，不重复实现"}
+{"file":".trellis/spec/backend/web-workbench.md","reason":"已实现公共观察与 Web 适配/调用/订阅契约；复用安全共享组件，不重复实现"}

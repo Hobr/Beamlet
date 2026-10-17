@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/index.md","reason":"当前应用边界与相关 spec 路由"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Web 命名空间、OTP 生命周期及直接依赖归属"}
+{"file":".trellis/spec/backend/agent-orchestration.md","reason":"Ref、模型绑定、订阅 credit、存活发现与角色组合契约"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"无数据库/持久化、临时上下文及可读 cookie 限制"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"有界错误、不确定性和安全反馈"}
+{"file":".trellis/tasks/10-17-beamlet-web/research/current-capabilities.md","reason":"源码证据与拟议接口区分，防止用私有状态/虚假历史补功能"}
+{"file":".trellis/spec/backend/harness-providers.md","reason":"受信 provider/tool 配置、catalogue 与环境边界"}
+{"file":".trellis/spec/backend/backend-release.md","reason":"复用 Node/Cluster、宿主 opt-in 和独立闭包"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"配置校验、实例不变和加载隔离测试"}
+{"file": ".trellis/spec/backend/live-observation.md", "reason": "已验收公共观察契约及安全边界"}

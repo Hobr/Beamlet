@@ -1,0 +1,31 @@
+{
+  "id": "beamlet-web",
+  "name": "beamlet-web",
+  "title": "Beamlet Web 通用 Agent 工作台与管理页面",
+  "description": "实现任务优先、可调整 preset 驱动的单可信空间 Agent Web 工作台及只读管理页面；暂不引入数据库、持久化或 durable action 实现",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "hobr",
+  "assignee": "hobr",
+  "createdAt": "2026-10-17",
+  "completedAt": null,
+  "branch": "dev",
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-17-web-observation",
+    "10-17-web-presets",
+    "10-17-web-workbench",
+    "10-17-web-management"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

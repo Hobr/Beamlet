@@ -16,7 +16,7 @@ lockfile, and configuration paths.
 | `beamlet_node` | Explicitly supervised role composition, Routes/Provider/Runtime; shared trusted-name/connect/filter API in `Beamlet.Node.Cluster`, bounded discovery in `Beamlet.Node.Agents`; no Application callback |
 | `beamlet_cli` | Opt-in interaction host, terminal Client and bounded Command/Session/Renderer/Runner; foreground release |
 | `beamlet_daemon` | Opt-in Application, startup configuration policy and owned one-shot peer bootstrap; authority/executor daemon release |
-| `beamlet_web` | Phoenix endpoint, router, page/error renderers, components, telemetry |
+| `beamlet_web` | Phoenix endpoint, router, page/error renderers, components, telemetry; opt-in Host/Bootstrap, immutable Presets, Agents adapter and ephemeral Handles |
 
 Runtime declares `{:beamlet_actions, in_umbrella: true}` and OTP `:crypto`.
 Harness declares exact Req 0.7.5 and direct Jason; it has no sibling dependencies.
@@ -29,7 +29,7 @@ Harness, Runtime and Node have no Application callback. CLI, daemon and Web decl
 callbacks in their own `mix.exs`. CLI directly declares Node/Agent, and test-only
 Runtime/Harness/Jason dependencies for its migrated HTTP integration fixture.
 Daemon directly declares Node; it calls business APIs only through Node composition.
-Node has no dependency on either host.
+Node has no dependency on either host. Web directly declares Node/Agent/Actions/Harness and test-only Runtime, plus OTP crypto; its adapters have no CLI/daemon dependency. See [Web Host and Presets](./web-host.md).
 Root dependencies are development/analysis tools, not child runtime dependencies;
 root `mix.exs` explicitly documents this distinction. Put app dependencies in the
 owning child manifest, not only at the umbrella root.
@@ -52,6 +52,7 @@ Node starts before the task; network work does not block Supervisor.init. Web us
 
 ```elixir
 children = [
+  {Beamlet.Web.Host, Application.get_env(:beamlet_web, :host, [])},
   Beamlet.Web.Telemetry,
   {Phoenix.PubSub, name: Beamlet.Web.PubSub},
   Endpoint
@@ -60,7 +61,7 @@ children = [
 
 `Endpoint` is an alias for `Beamlet.Web.Endpoint`; `config_change/3` forwards
 changes there. Telemetry owns a poller supervisor
-(`apps/beamlet_web/lib/beamlet_web/telemetry.ex`). These are the current product
+(`apps/beamlet_web/lib/beamlet_web/telemetry.ex`). Host defaults to an empty tree; explicitly enabled it owns Node, Presets, Handles and temporary Bootstrap in rest_for_one order. Navigation loss cannot restart Node; Node loss clears navigation. These are the current product
 process boundaries. Runtime separately exposes opt-in SharedSupervisor and
 ExecutionSupervisor trees; see [Operation Runtime](./operation-runtime.md). Node
 composes them by declared roles, starts executor Provider first, and adds the
@@ -70,12 +71,11 @@ coupled authority Registry/Resources/Delegations/Agents tree only for authority.
 
 - `apps/beamlet_web/lib/beamlet_web/endpoint.ex`: static serving, `/live` socket,
   development plugs, request IDs/telemetry, parsers, session, then router.
-- `apps/beamlet_web/lib/beamlet_web/router.ex`: browser and API pipelines; only
-  product route is browser `GET /` → `PageController.home/2`. The API pipeline
-  has no routes. `/dev/dashboard` is gated by compile-time `:dev_routes`, enabled
+- `apps/beamlet_web/lib/beamlet_web/router.ex`: browser and API pipelines; LiveView workbench routes `/`, `/agents/new` and `/agents/:handle` use WorkbenchLive; read-only `/admin/nodes`, `/admin/presets` and `/admin/diagnostics` use ManagementLive. The API pipeline has no routes. `/dev/dashboard` is gated by compile-time `:dev_routes`, enabled
   in `config/dev.exs`.
-- `apps/beamlet_web/lib/beamlet_web/controllers/page_controller.ex`: renders
-  `:home`; `controllers/page_html.ex` uses `Beamlet.Web, :html` and
+- WorkbenchLive/WorkbenchCommands/OwnedCall under `lib/beamlet_web/live/` own task entry, exact attachment and disposable callers/sinks; ObservationComponents renders escaped current context/activity. See [Web Workbench](./web-workbench.md). ManagementReads/ManagementLive under the same directory expose bounded read-only node/preset/diagnostics views; see [Web Management](./web-management.md).
+- `apps/beamlet_web/lib/beamlet_web/controllers/page_controller.ex`: unrouted retained scaffold controller (the `/`
+  route now renders WorkbenchLive) still renders `:home`; `controllers/page_html.ex` uses `Beamlet.Web, :html` and
   `embed_templates "page_html/*"` for adjacent HEEx files.
 - `apps/beamlet_web/lib/beamlet_web/components/layouts.ex` similarly embeds
   `layouts/*`; reusable HEEx components live in `components/core_components.ex`.

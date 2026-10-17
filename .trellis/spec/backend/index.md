@@ -9,7 +9,7 @@ Node is an explicitly supervised library; CLI owns the migrated terminal adapter
 Daemon is an opt-in host with startup-only authority/executor selection and an
 isolated release; CLI is an opt-in fixed interaction host with a foreground standalone session. Agent discovery now provides safe live identity list/lookup and bounded trusted-connected
 aggregation through finite local reads/OTP erpc, with query failures isolated from the identity island. The standalone CLI release owns bounded stdin, local Ref aliases and explicit reattachment.
-Cross-physical-host acceptance was removed by user decision; no physical execution is claimed. Phoenix provides the existing web scaffold.
+Cross-physical-host acceptance was removed by user decision; no physical execution is claimed. Phoenix provides the web scaffold and disabled-by-default trusted Host/preset/navigation adapters; LiveView workbench and read-only management source are independently checked, and a real local browser walkthrough passed34/35 checks (390px viewport blocked by a Firefox minimum-width clamp).
 These English guidelines describe checked-in behavior; source paths below are
 relative to the repository root.
 
@@ -43,6 +43,10 @@ commands for the change are identified.
 | [Operation Runtime](./operation-runtime.md) | Generic contracts, opt-in supervision, admission, events, limits and failure semantics |
 | [Native Harness](./harness-providers.md) | Model/Tool contracts, schema/history validation, HTTP and trusted workspace boundaries |
 | [Agent and Node](./agent-orchestration.md) | Explicit authority, bounded orchestration, lifecycle ownership, subscriptions and roles |
+| [Web Management](./web-management.md) | Read-only nodes/presets/diagnostics, bounded refresh and explicit unknown facts |
+| [Web Workbench](./web-workbench.md) | LiveView caller/sink ownership, trusted discovery, separate feedback and replacement display |
+| [Web Host and Presets](./web-host.md) | Opt-in startup, public selection/private resolution, uncertain creation and ephemeral navigation |
+| [Live Observation](./live-observation.md) | Opt-in Agent display/metadata, safe report ages, Node readiness and bounded aggregation |
 | [Backend CLI and Release](./backend-release.md) | CLI bounds, isolated packaging/config, named control ports and deployment evidence |
 | [State and Persistence](./database-guidelines.md) | Absence of a database, cookie sessions, configuration and storage pitfalls |
 | [Error Handling](./error-handling.md) | OTP startup propagation, status renderers, component feedback and gaps |

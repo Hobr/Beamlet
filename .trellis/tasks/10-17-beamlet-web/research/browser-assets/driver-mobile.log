@@ -1,0 +1,15 @@
+1792262286510	geckodriver	INFO	Listening on 127.0.0.1:19603
+1792262289566	mozrunner::runner	INFO	Running command: MOZ_CRASHREPORTER="1" MOZ_CRASHREPORTER_NO_REPORT="1" MOZ_CRASHREPORTER_SHUTDOWN="1" "/home/kanade/.nix-profile/bin/firefox" "--marionette" "-headless" "-no-remote" "-profile" "/tmp/rust_mozprofile6m58Pn"
+*** You are running in headless mode.
+1792262289850	Marionette	INFO	Marionette enabled
+1792262289906	Marionette	INFO	Listening on port 45499
+Read port: 45499
+1792262290001	RemoteAgent	WARN	TLS certificate errors will be ignored for this session
+[GFX1-]: RenderCompositorSWGL failed mapping default framebuffer, no dt
+console.error: "Experiment desktop-release-rollout-show-relay-to-all-browsers-next-sign-up-modal-cta has unknown featureId: email-autocomplete-relay"
+console.error: "Experiment visual-card-updates has unknown featureId: newtabRefinedCardsLayout"
+console.error: "Experiment enable-nimbus-unenrollment-synchronization has unknown featureId: nimbusStore"
+console.error: "Experiment private-window-visual-refresh-design-change-only has unknown featureId: feltPrivacy"
+1792262291977	Marionette	INFO	Stopped listening on port 45499
+JavaScript error: resource://gre/modules/PrivateBrowsingUtils.sys.mjs, line 50: TypeError: can't access property "QueryInterface", aWindow.docShell is null
+JavaScript error: resource://gre/modules/UrlClassifierListManager.sys.mjs, line 627: NS_ERROR_NOT_INITIALIZED: Component returned failure code: 0xc1f30001 (NS_ERROR_NOT_INITIALIZED) [nsIUrlClassifierDBService.getTables]

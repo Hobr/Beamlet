@@ -1,0 +1,1278 @@
+
+02:41:18.925 [notice]     :alarm_handler: {:set, {{:disk_almost_full, ~c"/mnt/windows"}, []}}
+
+02:41:18.996 [info] Running Beamlet.Web.Endpoint with Bandit 1.13.1 at 127.0.0.1:19601 (http)
+
+02:41:18.997 [info] Access Beamlet.Web.Endpoint at http://127.0.0.1:19601
+BROWSER_FIXTURE_READY port=19601 handles=%{"cli-external-agent" => "NXrhNbfkjCtUkS_Doj4a27io_sXlNMEc", "parent-browser" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+
+02:41:22.009 [info] GET /
+
+02:41:22.014 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:22.050 [info] Sent 200 in 41ms
+
+02:41:22.105 [info] CONNECTED TO Phoenix.LiveView.Socket in 24µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:22.126 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:22.126 [debug] Replied in 121µs
+
+02:41:22.126 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+
+02:41:22.127 [debug] Replied in 688µs
+
+02:41:22.525 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+
+02:41:22.525 [debug] Replied in 113µs
+
+02:41:22.603 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "tools"], "draft" => %{"_unused_authority" => "", "_unused_model" => "", "_unused_preset" => "", "_unused_task" => "", "_unused_title" => "", "authority" => "local", "model" => "local", "preset" => "chat", "task" => "", "title" => "Chat only", "tools" => ["slow-echo"]}}
+
+02:41:22.603 [debug] Replied in 135µs
+
+02:41:22.756 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "tools"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_preset" => "", "_unused_task" => "", "_unused_title" => "", "authority" => "local", "environment" => "", "model" => "local", "preset" => "chat", "task" => "", "title" => "Chat only"}}
+
+02:41:22.756 [debug] Replied in 127µs
+
+02:41:22.988 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "preset"], "draft" => %{"_unused_authority" => "", "_unused_model" => "", "_unused_task" => "", "_unused_title" => "", "authority" => "local", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Chat only"}}
+
+02:41:22.989 [debug] Replied in 147µs
+
+02:41:23.031 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runB", "tools" => ["slow-echo"]}}
+
+02:41:23.031 [debug] Replied in 166µs
+
+02:41:23.031 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBr", "tools" => ["slow-echo"]}}
+
+02:41:23.031 [debug] Replied in 137µs
+
+02:41:23.033 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBro", "tools" => ["slow-echo"]}}
+
+02:41:23.033 [debug] Replied in 92µs
+
+02:41:23.033 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrow", "tools" => ["slow-echo"]}}
+
+02:41:23.033 [debug] Replied in 72µs
+
+02:41:23.034 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrows", "tools" => ["slow-echo"]}}
+
+02:41:23.034 [debug] Replied in 60µs
+
+02:41:23.034 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowse", "tools" => ["slow-echo"]}}
+
+02:41:23.034 [debug] Replied in 65µs
+
+02:41:23.034 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser", "tools" => ["slow-echo"]}}
+
+02:41:23.034 [debug] Replied in 69µs
+
+02:41:23.034 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser ", "tools" => ["slow-echo"]}}
+
+02:41:23.034 [debug] Replied in 65µs
+
+02:41:23.034 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser p", "tools" => ["slow-echo"]}}
+
+02:41:23.034 [debug] Replied in 43µs
+
+02:41:23.034 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser pr", "tools" => ["slow-echo"]}}
+
+02:41:23.034 [debug] Replied in 62µs
+
+02:41:23.036 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser pre", "tools" => ["slow-echo"]}}
+
+02:41:23.036 [debug] Replied in 162µs
+
+02:41:23.037 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser pres", "tools" => ["slow-echo"]}}
+
+02:41:23.037 [debug] Replied in 128µs
+
+02:41:23.037 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser prese", "tools" => ["slow-echo"]}}
+
+02:41:23.037 [debug] Replied in 97µs
+
+02:41:23.037 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser preset", "tools" => ["slow-echo"]}}
+
+02:41:23.037 [debug] Replied in 63µs
+
+02:41:23.037 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser preset ", "tools" => ["slow-echo"]}}
+
+02:41:23.037 [debug] Replied in 55µs
+
+02:41:23.037 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser preset a", "tools" => ["slow-echo"]}}
+
+02:41:23.037 [debug] Replied in 49µs
+
+02:41:23.037 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser preset ag", "tools" => ["slow-echo"]}}
+
+02:41:23.037 [debug] Replied in 47µs
+
+02:41:23.037 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser preset age", "tools" => ["slow-echo"]}}
+
+02:41:23.037 [debug] Replied in 46µs
+
+02:41:23.038 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser preset agen", "tools" => ["slow-echo"]}}
+
+02:41:23.038 [debug] Replied in 49µs
+
+02:41:23.039 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_task" => "", "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "", "title" => "Tool runBrowser preset agent", "tools" => ["slow-echo"]}}
+
+02:41:23.039 [debug] Replied in 82µs
+
+02:41:23.373 [debug] HANDLE EVENT "reset" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"value" => ""}
+
+02:41:23.373 [debug] Replied in 116µs
+
+02:41:23.442 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.442 [debug] Replied in 178µs
+
+02:41:23.442 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<s", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.442 [debug] Replied in 112µs
+
+02:41:23.442 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<sc", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.442 [debug] Replied in 137µs
+
+02:41:23.443 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<scr", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.443 [debug] Replied in 86µs
+
+02:41:23.443 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<scri", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.443 [debug] Replied in 50µs
+
+02:41:23.443 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<scrip", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.443 [debug] Replied in 51µs
+
+02:41:23.443 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.443 [debug] Replied in 61µs
+
+02:41:23.443 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.443 [debug] Replied in 50µs
+
+02:41:23.443 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>a", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.443 [debug] Replied in 56µs
+
+02:41:23.443 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>al", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.443 [debug] Replied in 70µs
+
+02:41:23.444 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>ale", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.444 [debug] Replied in 64µs
+
+02:41:23.444 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>aler", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.444 [debug] Replied in 63µs
+
+02:41:23.444 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.444 [debug] Replied in 88µs
+
+02:41:23.447 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.447 [debug] Replied in 110µs
+
+02:41:23.448 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.448 [debug] Replied in 69µs
+
+02:41:23.448 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.448 [debug] Replied in 50µs
+
+02:41:23.448 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)<", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.448 [debug] Replied in 46µs
+
+02:41:23.448 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.448 [debug] Replied in 53µs
+
+02:41:23.448 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</s", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.448 [debug] Replied in 46µs
+
+02:41:23.448 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</sc", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.448 [debug] Replied in 76µs
+
+02:41:23.448 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</scr", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.448 [debug] Replied in 43µs
+
+02:41:23.450 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</scri", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.450 [debug] Replied in 58µs
+
+02:41:23.450 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</scrip", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.450 [debug] Replied in 50µs
+
+02:41:23.450 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.450 [debug] Replied in 41µs
+
+02:41:23.451 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script>", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.451 [debug] Replied in 49µs
+
+02:41:23.451 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> ", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.451 [debug] Replied in 70µs
+
+02:41:23.451 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> T", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.451 [debug] Replied in 90µs
+
+02:41:23.451 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TO", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.451 [debug] Replied in 71µs
+
+02:41:23.451 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOO", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.451 [debug] Replied in 77µs
+
+02:41:23.453 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOL", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.453 [debug] Replied in 113µs
+
+02:41:23.454 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.454 [debug] Replied in 87µs
+
+02:41:23.454 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS ", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.454 [debug] Replied in 55µs
+
+02:41:23.454 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS r", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.454 [debug] Replied in 63µs
+
+02:41:23.454 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS ru", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.454 [debug] Replied in 49µs
+
+02:41:23.454 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "task"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_title" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool run", "tools" => ["slow-echo"]}}
+
+02:41:23.454 [debug] Replied in 111µs
+
+02:41:23.494 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runB", "tools" => ["slow-echo"]}}
+
+02:41:23.494 [debug] Replied in 172µs
+
+02:41:23.494 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBr", "tools" => ["slow-echo"]}}
+
+02:41:23.494 [debug] Replied in 95µs
+
+02:41:23.495 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBro", "tools" => ["slow-echo"]}}
+
+02:41:23.495 [debug] Replied in 83µs
+
+02:41:23.496 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrow", "tools" => ["slow-echo"]}}
+
+02:41:23.496 [debug] Replied in 62µs
+
+02:41:23.496 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrows", "tools" => ["slow-echo"]}}
+
+02:41:23.496 [debug] Replied in 63µs
+
+02:41:23.496 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowse", "tools" => ["slow-echo"]}}
+
+02:41:23.496 [debug] Replied in 89µs
+
+02:41:23.496 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser", "tools" => ["slow-echo"]}}
+
+02:41:23.496 [debug] Replied in 63µs
+
+02:41:23.496 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser ", "tools" => ["slow-echo"]}}
+
+02:41:23.496 [debug] Replied in 73µs
+
+02:41:23.497 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser p", "tools" => ["slow-echo"]}}
+
+02:41:23.497 [debug] Replied in 57µs
+
+02:41:23.497 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser pr", "tools" => ["slow-echo"]}}
+
+02:41:23.497 [debug] Replied in 71µs
+
+02:41:23.497 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser pre", "tools" => ["slow-echo"]}}
+
+02:41:23.497 [debug] Replied in 53µs
+
+02:41:23.498 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser pres", "tools" => ["slow-echo"]}}
+
+02:41:23.498 [debug] Replied in 52µs
+
+02:41:23.498 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser prese", "tools" => ["slow-echo"]}}
+
+02:41:23.498 [debug] Replied in 53µs
+
+02:41:23.498 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser preset", "tools" => ["slow-echo"]}}
+
+02:41:23.498 [debug] Replied in 76µs
+
+02:41:23.499 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser preset ", "tools" => ["slow-echo"]}}
+
+02:41:23.499 [debug] Replied in 70µs
+
+02:41:23.499 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser preset a", "tools" => ["slow-echo"]}}
+
+02:41:23.499 [debug] Replied in 54µs
+
+02:41:23.499 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser preset ag", "tools" => ["slow-echo"]}}
+
+02:41:23.499 [debug] Replied in 55µs
+
+02:41:23.499 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser preset age", "tools" => ["slow-echo"]}}
+
+02:41:23.499 [debug] Replied in 50µs
+
+02:41:23.500 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser preset agen", "tools" => ["slow-echo"]}}
+
+02:41:23.500 [debug] Replied in 55µs
+
+02:41:23.500 [debug] HANDLE EVENT "draft" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["draft", "title"], "draft" => %{"_unused_authority" => "", "_unused_environment" => "", "_unused_model" => "", "_unused_tools" => [""], "authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser preset agent", "tools" => ["slow-echo"]}}
+
+02:41:23.500 [debug] Replied in 50µs
+
+02:41:23.572 [debug] HANDLE EVENT "create" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"draft" => %{"authority" => "local", "environment" => "workspace", "model" => "local", "preset" => "tool-run", "task" => "<script>alert(1)</script> TOOLS run", "title" => "Tool runBrowser preset agent", "tools" => ["slow-echo"]}}
+
+02:41:23.572 [debug] Replied in 193µs
+
+02:41:23.577 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X"}
+
+02:41:23.577 [debug] Replied in 92µs
+
+02:41:26.821 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => ""}
+
+02:41:26.821 [debug] Replied in 104µs
+
+02:41:26.854 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "s"}
+
+02:41:26.854 [debug] Replied in 106µs
+
+02:41:26.854 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "se"}
+
+02:41:26.854 [debug] Replied in 60µs
+
+02:41:26.854 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "sec"}
+
+02:41:26.854 [debug] Replied in 40µs
+
+02:41:26.854 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "seco"}
+
+02:41:26.854 [debug] Replied in 34µs
+
+02:41:26.854 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "secon"}
+
+02:41:26.854 [debug] Replied in 21µs
+
+02:41:26.854 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second"}
+
+02:41:26.854 [debug] Replied in 18µs
+
+02:41:26.854 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second "}
+
+02:41:26.854 [debug] Replied in 21µs
+
+02:41:26.854 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second t"}
+
+02:41:26.854 [debug] Replied in 16µs
+
+02:41:26.861 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second tu"}
+
+02:41:26.861 [debug] Replied in 84µs
+
+02:41:26.861 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second tur"}
+
+02:41:26.861 [debug] Replied in 29µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn"}
+
+02:41:26.862 [debug] Replied in 155µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn "}
+
+02:41:26.862 [debug] Replied in 22µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn f"}
+
+02:41:26.862 [debug] Replied in 22µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn fr"}
+
+02:41:26.862 [debug] Replied in 17µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn fro"}
+
+02:41:26.862 [debug] Replied in 15µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from"}
+
+02:41:26.862 [debug] Replied in 18µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from "}
+
+02:41:26.862 [debug] Replied in 26µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from t"}
+
+02:41:26.862 [debug] Replied in 18µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from th"}
+
+02:41:26.862 [debug] Replied in 19µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the"}
+
+02:41:26.862 [debug] Replied in 16µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the "}
+
+02:41:26.862 [debug] Replied in 17µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the w"}
+
+02:41:26.862 [debug] Replied in 16µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the wo"}
+
+02:41:26.862 [debug] Replied in 16µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the wor"}
+
+02:41:26.862 [debug] Replied in 24µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the work"}
+
+02:41:26.862 [debug] Replied in 19µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the workb"}
+
+02:41:26.862 [debug] Replied in 21µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the workbe"}
+
+02:41:26.862 [debug] Replied in 17µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the workben"}
+
+02:41:26.862 [debug] Replied in 23µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the workbenc"}
+
+02:41:26.862 [debug] Replied in 20µs
+
+02:41:26.862 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "second turn from the workbench"}
+
+02:41:26.862 [debug] Replied in 20µs
+
+02:41:26.919 [debug] HANDLE EVENT "input" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"text" => "second turn from the workbench"}
+
+02:41:26.919 [debug] Replied in 112µs
+
+02:41:27.007 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => ""}
+
+02:41:27.007 [debug] Replied in 110µs
+
+02:41:27.040 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "T"}
+
+02:41:27.040 [debug] Replied in 112µs
+
+02:41:27.040 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TO"}
+
+02:41:27.040 [debug] Replied in 58µs
+
+02:41:27.040 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOO"}
+
+02:41:27.040 [debug] Replied in 26µs
+
+02:41:27.041 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOOL"}
+
+02:41:27.041 [debug] Replied in 46µs
+
+02:41:27.043 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOOLS"}
+
+02:41:27.043 [debug] Replied in 30µs
+
+02:41:27.043 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOOLS "}
+
+02:41:27.043 [debug] Replied in 42µs
+
+02:41:27.043 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOOLS a"}
+
+02:41:27.043 [debug] Replied in 23µs
+
+02:41:27.043 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOOLS ag"}
+
+02:41:27.043 [debug] Replied in 24µs
+
+02:41:27.043 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOOLS aga"}
+
+02:41:27.043 [debug] Replied in 21µs
+
+02:41:27.043 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOOLS agai"}
+
+02:41:27.043 [debug] Replied in 17µs
+
+02:41:27.044 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "TOOLS again"}
+
+02:41:27.044 [debug] Replied in 59µs
+
+02:41:27.092 [debug] HANDLE EVENT "input" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"text" => "TOOLS again"}
+
+02:41:27.092 [debug] Replied in 132µs
+
+02:41:30.856 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => ""}
+
+02:41:30.856 [debug] Replied in 97µs
+
+02:41:30.867 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "t"}
+
+02:41:30.867 [debug] Replied in 107µs
+
+02:41:30.868 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "th"}
+
+02:41:30.868 [debug] Replied in 58µs
+
+02:41:30.868 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "thi"}
+
+02:41:30.868 [debug] Replied in 20µs
+
+02:41:30.868 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "thir"}
+
+02:41:30.868 [debug] Replied in 17µs
+
+02:41:30.868 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third"}
+
+02:41:30.868 [debug] Replied in 36µs
+
+02:41:30.869 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third "}
+
+02:41:30.869 [debug] Replied in 26µs
+
+02:41:30.869 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third t"}
+
+02:41:30.869 [debug] Replied in 58µs
+
+02:41:30.869 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third tu"}
+
+02:41:30.869 [debug] Replied in 36µs
+
+02:41:30.869 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third tur"}
+
+02:41:30.869 [debug] Replied in 27µs
+
+02:41:30.870 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn"}
+
+02:41:30.870 [debug] Replied in 25µs
+
+02:41:30.870 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn "}
+
+02:41:30.870 [debug] Replied in 20µs
+
+02:41:30.870 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn w"}
+
+02:41:30.870 [debug] Replied in 32µs
+
+02:41:30.870 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn wh"}
+
+02:41:30.870 [debug] Replied in 25µs
+
+02:41:30.871 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn whi"}
+
+02:41:30.871 [debug] Replied in 19µs
+
+02:41:30.871 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn whil"}
+
+02:41:30.871 [debug] Replied in 40µs
+
+02:41:30.871 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while"}
+
+02:41:30.871 [debug] Replied in 53µs
+
+02:41:30.871 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while "}
+
+02:41:30.871 [debug] Replied in 24µs
+
+02:41:30.872 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while r"}
+
+02:41:30.872 [debug] Replied in 20µs
+
+02:41:30.872 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while re"}
+
+02:41:30.872 [debug] Replied in 24µs
+
+02:41:30.872 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while rea"}
+
+02:41:30.872 [debug] Replied in 21µs
+
+02:41:30.872 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while read"}
+
+02:41:30.872 [debug] Replied in 20µs
+
+02:41:30.874 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while readi"}
+
+02:41:30.874 [debug] Replied in 54µs
+
+02:41:30.874 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while readin"}
+
+02:41:30.875 [debug] Replied in 83µs
+
+02:41:30.875 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "third turn while reading"}
+
+02:41:30.875 [debug] Replied in 49µs
+
+02:41:30.909 [debug] HANDLE EVENT "input" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"text" => "third turn while reading"}
+
+02:41:30.909 [debug] Replied in 113µs
+
+02:41:31.590 [info] GET /
+
+02:41:31.590 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:31.591 [info] Sent 200 in 771µs
+
+02:41:31.618 [info] CONNECTED TO Phoenix.LiveView.Socket in 16µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:31.620 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:31.620 [debug] Replied in 89µs
+
+02:41:31.620 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+
+02:41:31.620 [debug] Replied in 34µs
+
+02:41:31.948 [info] GET /agents/uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X
+
+02:41:31.948 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{"handle" => "uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X"}
+  Pipelines: [:browser]
+
+02:41:31.949 [info] Sent 200 in 688µs
+
+02:41:31.971 [info] CONNECTED TO Phoenix.LiveView.Socket in 18µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:31.976 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X"}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:31.976 [debug] Replied in 169µs
+
+02:41:31.976 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X"}
+
+02:41:31.976 [debug] Replied in 72µs
+
+02:41:32.307 [info] GET /agents/pDii7qOeTiJKgnaimKLUzH_JXGkxUud_
+
+02:41:32.308 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+  Pipelines: [:browser]
+
+02:41:32.308 [info] Sent 200 in 660µs
+
+02:41:32.335 [info] CONNECTED TO Phoenix.LiveView.Socket in 19µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:32.338 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:32.338 [debug] Replied in 106µs
+
+02:41:32.338 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+
+02:41:32.338 [debug] Replied in 60µs
+
+02:41:32.721 [debug] HANDLE EVENT "inspect-child" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"key" => "Turn QBBHKVhiol", "value" => ""}
+
+02:41:32.722 [debug] Replied in 123µs
+
+02:41:32.722 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "PXeAT0SEMMoGqh2V-va1knP1rQBmInKC", "observe" => "1"}
+
+02:41:32.722 [debug] Replied in 57µs
+
+02:41:32.819 [info] GET /agents/pDii7qOeTiJKgnaimKLUzH_JXGkxUud_
+
+02:41:32.819 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+  Pipelines: [:browser]
+
+02:41:32.820 [info] Sent 200 in 808µs
+
+02:41:32.841 [info] CONNECTED TO Phoenix.LiveView.Socket in 16µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:32.843 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:32.843 [debug] Replied in 105µs
+
+02:41:32.844 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+
+02:41:32.844 [debug] Replied in 34µs
+
+02:41:33.185 [debug] MOUNT Beamlet.Web.ManagementLive
+  Parameters: %{"activity" => "Turn QBBHKVhiol", "handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:33.185 [debug] Replied in 104µs
+
+02:41:33.185 [debug] HANDLE PARAMS in Beamlet.Web.ManagementLive
+  Parameters: %{"activity" => "Turn QBBHKVhiol", "handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+
+02:41:33.185 [debug] Replied in 30µs
+
+02:41:33.243 [info] GET /admin/nodes
+
+02:41:33.243 [debug] Processing with Beamlet.Web.ManagementLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:33.244 [info] Sent 200 in 681µs
+
+02:41:33.268 [info] CONNECTED TO Phoenix.LiveView.Socket in 17µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:33.271 [debug] MOUNT Beamlet.Web.ManagementLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:33.271 [debug] Replied in 94µs
+
+02:41:33.271 [debug] HANDLE PARAMS in Beamlet.Web.ManagementLive
+  Parameters: %{}
+
+02:41:33.271 [debug] Replied in 45µs
+
+02:41:33.554 [info] GET /admin/presets
+
+02:41:33.554 [debug] Processing with Beamlet.Web.ManagementLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:33.555 [info] Sent 200 in 1ms
+
+02:41:33.578 [info] CONNECTED TO Phoenix.LiveView.Socket in 18µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:33.583 [debug] MOUNT Beamlet.Web.ManagementLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:33.583 [debug] Replied in 95µs
+
+02:41:33.583 [debug] HANDLE PARAMS in Beamlet.Web.ManagementLive
+  Parameters: %{}
+
+02:41:33.583 [debug] Replied in 33µs
+
+02:41:33.875 [info] GET /admin/diagnostics
+
+02:41:33.875 [debug] Processing with Beamlet.Web.ManagementLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:33.875 [info] Sent 200 in 815µs
+
+02:41:33.899 [info] CONNECTED TO Phoenix.LiveView.Socket in 16µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:33.902 [debug] MOUNT Beamlet.Web.ManagementLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:33.902 [debug] Replied in 82µs
+
+02:41:33.902 [debug] HANDLE PARAMS in Beamlet.Web.ManagementLive
+  Parameters: %{}
+
+02:41:33.902 [debug] Replied in 23µs
+
+02:41:33.910 [info] GET /admin/diagnostics
+
+02:41:33.910 [debug] Processing with Beamlet.Web.ManagementLive.__live__/0
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+  Pipelines: [:browser]
+
+02:41:33.910 [info] Sent 200 in 538µs
+
+02:41:33.933 [info] CONNECTED TO Phoenix.LiveView.Socket in 15µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:33.936 [debug] MOUNT Beamlet.Web.ManagementLive
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:33.936 [debug] Replied in 87µs
+
+02:41:33.936 [debug] HANDLE PARAMS in Beamlet.Web.ManagementLive
+  Parameters: %{"handle" => "pDii7qOeTiJKgnaimKLUzH_JXGkxUud_"}
+
+02:41:33.936 [debug] Replied in 28µs
+
+02:41:34.288 [info] GET /admin/diagnostics
+
+02:41:34.288 [debug] Processing with Beamlet.Web.ManagementLive.__live__/0
+  Parameters: %{"handle" => "NXrhNbfkjCtUkS_Doj4a27io_sXlNMEc"}
+  Pipelines: [:browser]
+
+02:41:34.289 [info] Sent 200 in 669µs
+
+02:41:34.309 [info] CONNECTED TO Phoenix.LiveView.Socket in 16µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:34.312 [debug] MOUNT Beamlet.Web.ManagementLive
+  Parameters: %{"handle" => "NXrhNbfkjCtUkS_Doj4a27io_sXlNMEc"}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:34.312 [debug] Replied in 87µs
+
+02:41:34.312 [debug] HANDLE PARAMS in Beamlet.Web.ManagementLive
+  Parameters: %{"handle" => "NXrhNbfkjCtUkS_Doj4a27io_sXlNMEc"}
+
+02:41:34.312 [debug] Replied in 57µs
+
+02:41:34.611 [info] GET /agents/uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X
+
+02:41:34.611 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{"handle" => "uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X"}
+  Pipelines: [:browser]
+
+02:41:34.612 [info] Sent 200 in 702µs
+
+02:41:34.635 [info] CONNECTED TO Phoenix.LiveView.Socket in 17µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:34.637 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X"}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:34.637 [debug] Replied in 93µs
+
+02:41:34.637 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "uYiUzJfxD9vVboSzoMtuHZcuu4zqUe7X"}
+
+02:41:34.637 [debug] Replied in 45µs
+
+02:41:38.214 [info] GET /
+
+02:41:38.214 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:38.214 [info] Sent 200 in 607µs
+
+02:41:38.236 [info] CONNECTED TO Phoenix.LiveView.Socket in 17µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:38.240 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:38.241 [debug] Replied in 145µs
+
+02:41:38.241 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+
+02:41:38.241 [debug] Replied in 22µs
+
+02:41:38.270 [debug] MOUNT Beamlet.Web.ManagementLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:38.270 [debug] Replied in 135µs
+
+02:41:38.270 [debug] HANDLE PARAMS in Beamlet.Web.ManagementLive
+  Parameters: %{}
+
+02:41:38.270 [debug] Replied in 27µs
+
+02:41:38.525 [info] GET /
+
+02:41:38.525 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:38.526 [info] Sent 200 in 582µs
+
+02:41:38.549 [info] CONNECTED TO Phoenix.LiveView.Socket in 18µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:38.551 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:38.551 [debug] Replied in 86µs
+
+02:41:38.551 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+
+02:41:38.551 [debug] Replied in 22µs
+
+02:41:38.833 [debug] HANDLE EVENT "open" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"key" => "XRG05PyDGCIgYMDZ", "value" => ""}
+
+02:41:38.834 [debug] Replied in 106µs
+
+02:41:38.834 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{"handle" => "bAULf7ZLvSz0TFtCv8lHB9lzOa_gfgnl"}
+
+02:41:38.834 [debug] Replied in 54µs
+
+02:41:38.905 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => ""}
+
+02:41:38.905 [debug] Replied in 108µs
+
+02:41:38.915 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "H"}
+
+02:41:38.915 [debug] Replied in 68µs
+
+02:41:38.915 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HO"}
+
+02:41:38.915 [debug] Replied in 27µs
+
+02:41:38.916 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOL"}
+
+02:41:38.916 [debug] Replied in 26µs
+
+02:41:38.916 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD"}
+
+02:41:38.916 [debug] Replied in 46µs
+
+02:41:38.916 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD "}
+
+02:41:38.916 [debug] Replied in 43µs
+
+02:41:38.917 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD t"}
+
+02:41:38.917 [debug] Replied in 23µs
+
+02:41:38.917 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD th"}
+
+02:41:38.917 [debug] Replied in 50µs
+
+02:41:38.917 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD thi"}
+
+02:41:38.917 [debug] Replied in 28µs
+
+02:41:38.917 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD this"}
+
+02:41:38.917 [debug] Replied in 25µs
+
+02:41:38.918 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD this "}
+
+02:41:38.918 [debug] Replied in 24µs
+
+02:41:38.918 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD this t"}
+
+02:41:38.918 [debug] Replied in 34µs
+
+02:41:38.918 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD this tu"}
+
+02:41:38.918 [debug] Replied in 36µs
+
+02:41:38.918 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD this tur"}
+
+02:41:38.918 [debug] Replied in 21µs
+
+02:41:38.919 [debug] HANDLE EVENT "text" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"_target" => ["text"], "text" => "HOLD this turn"}
+
+02:41:38.919 [debug] Replied in 29µs
+
+02:41:38.947 [debug] HANDLE EVENT "input" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"text" => "HOLD this turn"}
+
+02:41:38.947 [debug] Replied in 119µs
+
+02:41:39.067 [debug] HANDLE EVENT "stop" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"value" => ""}
+
+02:41:39.067 [debug] Replied in 126µs
+
+02:41:39.157 [debug] HANDLE EVENT "discover" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"value" => ""}
+
+02:41:39.157 [debug] Replied in 139µs
+
+02:41:40.787 [debug] HANDLE EVENT "confirm" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"value" => ""}
+
+02:41:40.787 [debug] Replied in 95µs
+
+02:41:40.912 [debug] HANDLE EVENT "cancel" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"value" => ""}
+
+02:41:40.912 [debug] Replied in 88µs
+
+02:41:41.011 [debug] HANDLE EVENT "confirm" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"value" => ""}
+
+02:41:41.012 [debug] Replied in 162µs
+
+02:41:41.175 [debug] HANDLE EVENT "close" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"value" => ""}
+
+02:41:41.175 [debug] Replied in 171µs
+
+02:41:42.265 [debug] HANDLE EVENT "discover" in Beamlet.Web.WorkbenchLive
+  Parameters: %{"value" => ""}
+
+02:41:42.265 [debug] Replied in 120µs
+
+02:41:44.355 [info] GET /
+
+02:41:44.355 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:44.356 [info] Sent 200 in 612µs
+
+02:41:44.379 [info] CONNECTED TO Phoenix.LiveView.Socket in 17µs
+  Transport: :websocket
+  Serializer: Phoenix.Socket.V2.JSONSerializer
+  Parameters: %{"_csrf_token" => "[FILTERED]", "_live_referer" => "undefined", "_mount_attempts" => "0", "_mounts" => "0", "_track_static" => %{"0" => "http://127.0.0.1:19601/assets/css/app.css", "1" => "http://127.0.0.1:19601/assets/js/app.js"}, "vsn" => "2.0.0"}
+
+02:41:44.380 [debug] MOUNT Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+  Session: %{"_csrf_token" => "st-Hd_SnmCmvULBxrk8SDuWC"}
+
+02:41:44.380 [debug] Replied in 105µs
+
+02:41:44.380 [debug] HANDLE PARAMS in Beamlet.Web.WorkbenchLive
+  Parameters: %{}
+
+02:41:44.381 [debug] Replied in 25µs
+
+02:41:44.636 [info] GET /
+
+02:41:44.636 [debug] Processing with Beamlet.Web.WorkbenchLive.__live__/0
+  Parameters: %{}
+  Pipelines: [:browser]
+
+02:41:44.637 [info] Sent 200 in 615µs
+
+02:41:51.999 [notice] SIGTERM received - shutting down
+
+
+02:41:52.012 [notice]     :alarm_handler: {:clear, {:disk_almost_full, ~c"/mnt/windows"}}

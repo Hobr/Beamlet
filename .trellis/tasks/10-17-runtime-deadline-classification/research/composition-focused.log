@@ -1,0 +1,15 @@
+==> beamlet_runtime
+23:24:24.382 [notice]     :alarm_handler: {:set, {{:disk_almost_full, ~c"/mnt/windows"}, []}}
+Running ExUnit with seed: 631927, max_cases: 1
+Excluding tags: [:distributed]
+
+
+Beamlet.RuntimeCompositionTest [test/beamlet/composition_test.exs]
+  * test shared-only starts no execution services and remains discoverable [L#6]  * test shared-only starts no execution services and remains discoverable (20.7ms) [L#6]
+  * test explicit standalone execution subtree attaches to shared discovery [L#23]  * test explicit standalone execution subtree attaches to shared discovery (16.3ms) [L#23]
+
+Finished in 0.1 seconds (0.00s async, 0.1s sync)
+
+Result: 2 passed
+[os_mon] cpu supervisor port (cpu_sup): Erlang has closed
+[os_mon] memory supervisor port (memsup): Erlang has closed

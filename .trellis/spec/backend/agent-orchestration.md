@@ -39,7 +39,9 @@ Explicit live lookup is available below; no authority fallback, durable recovery
 ## 3. Contracts
 
 Agent options: id (1..128 UTF-8 bytes), one immutable model binding, optional tools
-map, validated catalogue and internal delegator PID. Binding has exactly provider,
+map, validated catalogue, internal delegator PID and optional safe display_metadata.
+Display option validation, source annotations and public view schema are specified
+in [Live Observation](./live-observation.md). Binding has exactly provider,
 config, optional credentials/default%{} and placement/default%{}. Placement permits
 environment/allowed_nodes/claims under existing Operation bounds. Provider ID matches
 `[a-zA-Z0-9_-]{1,64}`; common invocation config/credentials follow Native Harness limits.
@@ -110,7 +112,10 @@ precedes updates from the same sender; acknowledge every consumed sequence from
 the sink process (ack/2 identifies self()). Maximum32 subscribers,16 outstanding
 each. Slow sinks get a coalesced current snapshot after acknowledgement; sink DOWN
 removes subscription only. No event-history replay. Snapshot display limit is
-1048000 serialized bytes; excess yields snapshot_limit.
+1048000 serialized bytes; excess yields snapshot_limit for the base snapshot.
+Opt-in display overloads use the same credit path and fit/omit additions without
+invalidating a valid default snapshot. Node observation APIs are also documented
+in [Live Observation](./live-observation.md); discovery remains identity-only.
 
 Node config keys: roles, profiles, model_providers, providers, pools, limits,
 allowlist, routes, catalogue. Nonempty distinct roles are interaction/authority/executor;

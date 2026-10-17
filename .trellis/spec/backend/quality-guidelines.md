@@ -32,11 +32,13 @@ Run these from the repository root unless noted:
 | Compile | `mix compile` (`README.md`) |
 | Format/check Elixir and HEEx | `mix format` / `mix format --check-formatted` (`.formatter.exs`, child formatters, `.pre-commit-config.yaml`) |
 | All app tests | `mix test` (`README.md`, pre-commit test hook) |
-| Focused web regression | `cd apps/beamlet_web && mix test test/beamlet_web/controllers/page_controller_test.exs` (child manifest uses shared root config) |
+| Focused web regression | `mix test apps/beamlet_web/test/beamlet_web/controllers/page_controller_test.exs` from the umbrella root (child-dir form is blocked by an umbrella `:only` mismatch; see below) |
 | Static checks | `mix dialyzer`, `mix credo`, `mix sobelow` (`.pre-commit-config.yaml`, root tool deps); root alias runs `sobelow --root apps/beamlet_web --private` |
 | Repository hooks | `pre-commit run --all-files` (`README.md`, `.pre-commit-config.yaml`); this includes general file hygiene, Elixir test/format hooks, Dialyzer, Credo, Sobelow, the example benchmark and CycloneDX SBoM generation |
-| Asset changes | `cd apps/beamlet_web && mix assets.build`; `mix assets.deploy` for minified/digested output (child `mix.exs` aliases) |
+| Asset changes | `mix tailwind beamlet_web`, `mix esbuild beamlet_web`; add `--minify` for deploy output and `mix phx.digest` for digests. Run from the umbrella root: `cd apps/beamlet_web && mix assets.build` currently fails on an umbrella dependency-consistency check |
 | Benchmark setup smoke check | `mix bench` (root alias runs `bench/enum.exs` without starting apps); this compares Enum/comprehension, not Beamlet performance |
+
+Umbrella child-directory commands are unreliable: `apps/beamlet_web` and `apps/beamlet_cli` declare `beamlet_runtime` (and CLI also `beamlet_harness`) with `only: :test`, while `apps/beamlet_node` declares `beamlet_runtime` without it, so Mix aborts any task started inside those child directories ("does not match the :only option calculated"). Root-level equivalents are authoritative until that pre-existing manifest inconsistency is resolved; do not silently drop the restriction just to make a child command run.
 
 The local hooks use system `mix`; test and format hooks match Elixir files.
 Dialyzer, Credo, Sobelow, benchmark and SBoM hooks also match root `mix.lock`
@@ -71,7 +73,7 @@ From `apps/beamlet_web/test/beamlet_web/controllers/page_controller_test.exs`:
 ```elixir
 test "GET /", %{conn: conn} do
   conn = get(conn, ~p"/")
-  assert html_response(conn, 200) =~ "Peace of mind from prototype to production"
+  assert html_response(conn, 200) =~ "What would you like to do?"
 end
 ```
 
@@ -156,6 +158,31 @@ Dialyzer and rebuilt all-seven copied eval/named release combinations. No forced
 refresh occurred. Active LSP probe:5 key files,1 confirmed clean,4 timed-out inconclusive;
 zero returned diagnostics is not complete coverage. Preserve separate failed/final logs;
 overwritten original failure logs cannot establish original root-cause proof.
+
+## Deadline Classification and Observation Gates
+
+`deadline_classification_test.exs` must prove actual admission from a valid aged
+report, shorter executor budget, actual worker DOWN and execution-source deadline.
+A Coordinator deadline with no worker does not exercise that defect. Fence mailbox
+forwarding when controlling local cancel/deadline order, test both source orders,
+kill/crash/success and late tombstone messages; assert one terminal and one capacity
+release. Do not infer cross-VM ordering from an unsorted trace.
+
+The deadline repair independent gate passed25 focused plus5 temporary adversarial
+cases. Inspected broader gates passed230 ordinary/29 distributed excluded and27
+named Runtime/Node/CLI distributed/129 ordinary excluded; two Daemon distributed
+cases were not included. Existing-PLT Dialyzer passed with no refresh. The earlier
+60s-interrupted distributed run is incomplete, not a pass. Preserve it separately
+from the bounded replacement. One historical composition100ms failure remains
+unexplained; bounded current tracing shows success, not historical root cause.
+Retain that risk and collect correlated outcome/timing evidence on recurrence;
+do not increase timeouts, weaken success assertions or retry business work.
+
+Observation regression contracts are in [Live Observation](./live-observation.md).
+Reserve-pressure tests must use distinct failure keys: repeated Map.put on one key
+does not exercise many-failure overhead. Synthetic private-state pressure tests do
+not prove normal report validators accept that state. Registered-service readiness
+is not responsiveness; controlled restarts do not alone prove natural coupled loss.
 
 ## Review Before Handoff
 

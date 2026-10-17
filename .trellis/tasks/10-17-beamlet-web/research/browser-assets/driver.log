@@ -1,0 +1,23 @@
+1792262478318	geckodriver	INFO	Listening on 127.0.0.1:19602
+1792262480408	mozrunner::runner	INFO	Running command: MOZ_CRASHREPORTER="1" MOZ_CRASHREPORTER_NO_REPORT="1" MOZ_CRASHREPORTER_SHUTDOWN="1" "/home/kanade/.nix-profile/bin/firefox" "--marionette" "-headless" "-no-remote" "-profile" "/tmp/rust_mozprofiledlo46G"
+*** You are running in headless mode.
+1792262480714	Marionette	INFO	Marionette enabled
+1792262480793	Marionette	INFO	Listening on port 34869
+Read port: 34869
+1792262480891	RemoteAgent	WARN	TLS certificate errors will be ignored for this session
+[GFX1-]: RenderCompositorSWGL failed mapping default framebuffer, no dt
+console.error: "Experiment desktop-release-rollout-show-relay-to-all-browsers-next-sign-up-modal-cta has unknown featureId: email-autocomplete-relay"
+console.error: "Experiment visual-card-updates has unknown featureId: newtabRefinedCardsLayout"
+console.error: "Experiment enable-nimbus-unenrollment-synchronization has unknown featureId: nimbusStore"
+1792262482834	RemoteAgent	WARN	PollPromise timed out after 0 ms
+console.error: "Experiment private-window-visual-refresh-design-change-only has unknown featureId: feltPrivacy"
+1792262486679	RemoteAgent	WARN	PollPromise timed out after 0 ms
+1792262492776	RemoteAgent	WARN	PollPromise timed out after 0 ms
+1792262492816	RemoteAgent	WARN	PollPromise timed out after 0 ms
+1792262494229	RemoteAgent	WARN	PollPromise timed out after 0 ms
+1792262494229	RemoteAgent	WARN	PollPromise timed out after 0 ms
+1792262494276	RemoteAgent	WARN	PollPromise timed out after 0 ms
+1792262494599	RemoteAgent	WARN	PollPromise timed out after 0 ms
+1792262494609	RemoteAgent	WARN	PollPromise timed out after 0 ms
+1792262505665	Marionette	INFO	Stopped listening on port 34869
+JavaScript error: resource://gre/modules/PrivateBrowsingUtils.sys.mjs, line 50: TypeError: can't access property "QueryInterface", aWindow.docShell is null

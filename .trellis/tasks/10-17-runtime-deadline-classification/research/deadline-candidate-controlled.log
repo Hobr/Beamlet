@@ -1,0 +1,259 @@
+23:24:20.739 [notice]     :alarm_handler: {:set, {{:disk_almost_full, ~c"/mnt/windows"}, []}}
+    warning: variable "endpoint" is unused (if the variable is not meant to be used, prefix it with an underscore)
+    │
+ 12 │ endpoint = Process.whereis(Runtime.NodeEndpoint)
+    │ ~~~~~~~~
+    │
+    └─ /tmp/independent-observation/deadline_trace.exs:12:1
+
+    warning: redefining module Beamlet.Runtime.TestHandler (current version loaded from _build/test/lib/beamlet_runtime/ebin/Elixir.Beamlet.Runtime.TestHandler.beam)
+    │
+  1 │ defmodule Beamlet.Runtime.TestHandler do
+    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ apps/beamlet_runtime/test/support/fixture.ex:1: Beamlet.Runtime.TestHandler (module)
+
+    warning: redefining module Beamlet.Runtime.TestPeer (current version loaded from _build/test/lib/beamlet_runtime/ebin/Elixir.Beamlet.Runtime.TestPeer.beam)
+    │
+ 55 │ defmodule Beamlet.Runtime.TestPeer do
+    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    │
+    └─ apps/beamlet_runtime/test/support/fixture.ex:55: Beamlet.Runtime.TestPeer (module)
+
+RESULT: %Beamlet.Actions.Result{
+  operation_id: "D3715B095015FB30D0422EA773C2BCB3",
+  execution_id: "1350708277009CB023AD8534E2A67BC8",
+  status: :error,
+  reason: :worker_stopped,
+  value: nil,
+  source: :execution,
+  metadata: %{
+    attempt_id: "5B538E0F5CC9F9524542101149FEBD07",
+    sink_progress_dropped: false
+  }
+}
+{#PID<0.491.0>, :send,
+ {:"$gen_call",
+  {#PID<0.491.0>, [:alias | #Reference<0.0.62851.1173113144.214237188.253552>]},
+  :limits}, #PID<0.486.0>, -576460750431720411}
+{#PID<0.491.0>, :receive,
+ {[:alias | #Reference<0.0.62851.1173113144.214237188.253552>],
+  %{
+    operation_bytes: 262144,
+    progress_bytes: 8192,
+    report_bytes: 65536,
+    result_bytes: 1048576,
+    admission_ms: 2000,
+    attempts: 512,
+    cancel_ms: 20,
+    coordinators: 4,
+    expiry_ms: 100,
+    progress_count: 256,
+    progress_credit: 16,
+    progress_rate: 20,
+    refresh_ms: 1000,
+    retention_ms: 300
+  }}, -576460750431706723}
+{#PID<0.491.0>, :send, :dispatch, #PID<0.491.0>, -576460750431698103}
+{#PID<0.491.0>, :send, {:ack, #PID<0.491.0>, {:ok, #PID<0.491.0>}},
+ #PID<0.485.0>, -576460750431694858}
+{#PID<0.491.0>, :receive, :dispatch, -576460750431692517}
+{#PID<0.491.0>, :send,
+ {:"$gen_call",
+  {#PID<0.491.0>, [:alias | #Reference<0.0.62851.1173113144.214237188.253554>]},
+  {:select,
+   %Beamlet.Actions.Operation{
+     kind: "echo",
+     version: 1,
+     payload: %{"mode" => "hold"},
+     credentials: %{},
+     capabilities: [],
+     environment: nil,
+     allowed_nodes: nil,
+     claims: %{},
+     budget_ms: 50,
+     metadata: %{}
+   }}}, #PID<0.486.0>, -576460750431688091}
+{#PID<0.491.0>, :receive,
+ {[:alias | #Reference<0.0.62851.1173113144.214237188.253554>],
+  {:ok, #PID<0.490.0>,
+   %{
+     node: :nonode@nohost,
+     handlers: %{"echo" => true},
+     available: %{},
+     capabilities: [],
+     environments: [],
+     utilization: 0.0,
+     incarnation: #Reference<0.1173113144.214171652.253522>,
+     ready: true,
+     execution_ready: true,
+     gateway: #PID<0.489.0>,
+     lease: -576460750459
+   }}}, -576460750431643199}
+{#PID<0.491.0>, :send,
+ {:admit, #PID<0.491.0>, "D3715B095015FB30D0422EA773C2BCB3",
+  "5B538E0F5CC9F9524542101149FEBD07", #Reference<0.1173113144.214171652.253522>,
+  -576460750459,
+  %Beamlet.Actions.Operation{
+    kind: "echo",
+    version: 1,
+    payload: %{"mode" => "hold"},
+    credentials: %{},
+    capabilities: [],
+    environment: nil,
+    allowed_nodes: nil,
+    claims: %{},
+    budget_ms: 50,
+    metadata: %{}
+  }, 50}, #PID<0.490.0>, -576460750431612607}
+{#PID<0.489.0>, :receive,
+ {:admit, #PID<0.491.0>, "D3715B095015FB30D0422EA773C2BCB3",
+  "5B538E0F5CC9F9524542101149FEBD07", #Reference<0.1173113144.214171652.253522>,
+  -576460750459,
+  %Beamlet.Actions.Operation{
+    kind: "echo",
+    version: 1,
+    payload: %{"mode" => "hold"},
+    credentials: %{},
+    capabilities: [],
+    environment: nil,
+    allowed_nodes: nil,
+    claims: %{},
+    budget_ms: 50,
+    metadata: %{}
+  }, 50}, -576460750431599963}
+{#PID<0.489.0>, :send,
+ {:"$gen_call", {#PID<0.489.0>, #Reference<0.1173113144.214171652.253558>},
+  {:start_task,
+   [{:nonode@nohost, Beamlet.Runtime.ExecutorGateway, #PID<0.489.0>}, :monitor],
+   :temporary, nil}}, #PID<0.488.0>, -576460750431553749}
+{#PID<0.489.0>, :receive,
+ {#Reference<0.1173113144.214171652.253558>, {:ok, #PID<0.492.0>}},
+ -576460750431513779}
+{#PID<0.489.0>, :send,
+ {#PID<0.489.0>, #Reference<0.0.62595.1173113144.214237188.253560>,
+  #Reference<0.0.62595.1173113144.214237188.253560>, [#PID<0.489.0>],
+  {Beamlet.Runtime.Worker, :run,
+   [
+     Beamlet.Runtime.TestHandler,
+     %{"mode" => "hold"},
+     %{},
+     #PID<0.95.0>,
+     #PID<0.489.0>,
+     23,
+     %{
+       operation_bytes: 262144,
+       progress_bytes: 8192,
+       report_bytes: 65536,
+       result_bytes: 1048576,
+       admission_ms: 2000,
+       attempts: 512,
+       cancel_ms: 20,
+       coordinators: 4,
+       expiry_ms: 100,
+       progress_count: 256,
+       ...
+     },
+     ...
+   ]}}, ...}
+{#PID<0.489.0>, :send,
+ {:admitted, "5B538E0F5CC9F9524542101149FEBD07",
+  %Beamlet.Actions.ExecutionHandle{
+    id: "1350708277009CB023AD8534E2A67BC8",
+    gateway: #PID<0.489.0>,
+    incarnation: #Reference<0.1173113144.214171652.253522>
+  }}, #PID<0.491.0>, -576460750431501977}
+{#PID<0.491.0>, :receive,
+ {:admitted, "5B538E0F5CC9F9524542101149FEBD07",
+  %Beamlet.Actions.ExecutionHandle{
+    id: "1350708277009CB023AD8534E2A67BC8",
+    gateway: #PID<0.489.0>,
+    incarnation: #Reference<0.1173113144.214171652.253522>
+  }}, -576460750431484831}
+OTHER: {:worker, #PID<0.492.0>}
+{#PID<0.489.0>, :receive,
+ {:execution_deadline, {#PID<0.491.0>, "5B538E0F5CC9F9524542101149FEBD07"},
+  #PID<0.492.0>}, -576460750407943693}
+{#PID<0.489.0>, :send,
+ {:cancel, #PID<0.491.0>, "5B538E0F5CC9F9524542101149FEBD07"}, #PID<0.489.0>,
+ -576460750407929127}
+{#PID<0.489.0>, :receive,
+ {:cancel, #PID<0.491.0>, "5B538E0F5CC9F9524542101149FEBD07"},
+ -576460750407926393}
+{#PID<0.489.0>, :receive,
+ {:DOWN, #Reference<0.0.62595.1173113144.214237188.253560>, :process,
+  #PID<0.492.0>, :shutdown}, -576460750407891616}
+{#PID<0.489.0>, :send,
+ {:completed, "5B538E0F5CC9F9524542101149FEBD07",
+  %Beamlet.Actions.ExecutionHandle{
+    id: "1350708277009CB023AD8534E2A67BC8",
+    gateway: #PID<0.489.0>,
+    incarnation: #Reference<0.1173113144.214171652.253522>
+  },
+  %Beamlet.Actions.Result{
+    operation_id: "D3715B095015FB30D0422EA773C2BCB3",
+    execution_id: "1350708277009CB023AD8534E2A67BC8",
+    status: :error,
+    reason: :worker_stopped,
+    value: nil,
+    source: :execution,
+    metadata: %{}
+  }}, #PID<0.491.0>, -576460750407887379}
+{#PID<0.491.0>, :receive,
+ {:completed, "5B538E0F5CC9F9524542101149FEBD07",
+  %Beamlet.Actions.ExecutionHandle{
+    id: "1350708277009CB023AD8534E2A67BC8",
+    gateway: #PID<0.489.0>,
+    incarnation: #Reference<0.1173113144.214171652.253522>
+  },
+  %Beamlet.Actions.Result{
+    operation_id: "D3715B095015FB30D0422EA773C2BCB3",
+    execution_id: "1350708277009CB023AD8534E2A67BC8",
+    status: :error,
+    reason: :worker_stopped,
+    value: nil,
+    source: :execution,
+    metadata: %{}
+  }}, -576460750407882087}
+{#PID<0.491.0>, :send,
+ {:code_call, #PID<0.491.0>,
+  {:get_object_code_for_loading, Beamlet.Actions.Result}}, :code_server,
+ -576460750407869307}
+{#PID<0.489.0>, :receive, :timeout, -576460750407865863}
+{#PID<0.491.0>, :receive,
+ {:code_server,
+  {<<70, 79, 82, 49, 0, 0, 28, 28, 66, 69, 65, 77, 65, 116, 85, 56, 0, 0, 2, 25,
+     255, 255, 255, 206, ...>>, ...}}, ...}
+{#PID<0.491.0>, :send,
+ {:code_call, #PID<0.491.0>,
+  {:load_ok, #Reference<0.1173113144.214302724.253574>, Beamlet.Actions.Result,
+   ~c"/mnt/data/Project/Beamlet/_build/test/lib/beamlet_actions/ebin/Elixir.Beamlet.Actions.Result.beam",
+   #Reference<0.1173113144.214171652.253573>}}, :code_server,
+ -576460750407232049}
+{#PID<0.491.0>, :receive, {:code_server, {:module, Beamlet.Actions.Result}},
+ -576460750406635049}
+{#PID<0.491.0>, :send,
+ {:beamlet_operation,
+  %Beamlet.Actions.OperationRef{
+    id: "D3715B095015FB30D0422EA773C2BCB3",
+    pid: #PID<0.491.0>
+  },
+  {:result,
+   %Beamlet.Actions.Result{
+     operation_id: "D3715B095015FB30D0422EA773C2BCB3",
+     execution_id: "1350708277009CB023AD8534E2A67BC8",
+     status: :error,
+     reason: :worker_stopped,
+     value: nil,
+     source: :execution,
+     metadata: %{
+       attempt_id: "5B538E0F5CC9F9524542101149FEBD07",
+       sink_progress_dropped: false
+     }
+   }}}, #PID<0.95.0>, -576460750406583142}
+{#PID<0.489.0>, :receive,
+ {:kill, {#PID<0.491.0>, "5B538E0F5CC9F9524542101149FEBD07"}, #PID<0.492.0>},
+ -576460750386929570}
+{#PID<0.491.0>, :receive, :deadline, -576460750380948600}
+[os_mon] memory supervisor port (memsup): Erlang has closed
+[os_mon] cpu supervisor port (cpu_sup): Erlang has closed

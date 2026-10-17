@@ -1,0 +1,13 @@
+[
+  {
+    "kind": "driver",
+    "pid": 542941,
+    "result": "terminated",
+    "forced": false
+  },
+  {
+    "kind": "endpoint",
+    "pid": 542940,
+    "result": "already exited"
+  }
+]
