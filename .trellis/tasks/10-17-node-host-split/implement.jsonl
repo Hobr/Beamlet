@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/index.md","reason":"Apply index contracts for node-host-split; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Apply directory-structure contracts for node-host-split; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
+{"file":".trellis/spec/backend/agent-orchestration.md","reason":"Apply agent-orchestration contracts for node-host-split; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
+{"file":".trellis/spec/backend/operation-runtime.md","reason":"Apply operation-runtime contracts for node-host-split; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
+{"file":".trellis/spec/backend/harness-providers.md","reason":"Apply harness-providers contracts for node-host-split; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
+{"file":".trellis/spec/backend/backend-release.md","reason":"Apply backend-release contracts for node-host-split; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply quality-guidelines contracts for node-host-split; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Apply error-handling contracts for node-host-split; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
+{"file":".trellis/tasks/10-17-node-host-split/research/current-seams.md","reason":"Source-backed migration sites and existing regression evidence; not a fresh test run"}
+{"file":".trellis/tasks/10-17-node-host-split/research/planning-contracts.md","reason":"Confirmed cross-child decisions, parent design reference, ownership, identity/resource limits and explicit implementation approval gate"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"One owner for contracts/config/projections across Agent, Node and hosts"}
