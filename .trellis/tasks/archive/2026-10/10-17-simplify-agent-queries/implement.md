@@ -23,7 +23,7 @@
 从根运行。具体命令须在执行前核对现有test tags/脚本，记录实际命令/执行数量/退出码/工具失败，禁止计划冒充通过。分布式测试使用独立cookie与unique命名、低scheduler；cookie不记入文档/log；控制用standard_io，不连接已有节点。
 
 ```bash
-python3 .trellis/scripts/task.py validate .trellis/tasks/10-17-simplify-agent-queries
+python3 .trellis/scripts/task.py validate .trellis/tasks/archive/2026-10/10-17-simplify-agent-queries
 MIX_ENV=test mix compile --warnings-as-errors
 mix format --check-formatted
 mix test apps/beamlet_agent/test apps/beamlet_node/test apps/beamlet_cli/test apps/beamlet_daemon/test
