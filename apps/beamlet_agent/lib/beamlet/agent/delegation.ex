@@ -75,6 +75,7 @@ defmodule Beamlet.Agent.Delegation do
         with :ok <- startup(ticket),
              {:ok, turn} <- Beamlet.Agent.input(child, spec.input),
              :ok <- Beamlet.Agent.subscribe(child) do
+          send(parent, {:child_observed, group, id, child, turn})
           Process.send_after(self(), :expired, 60_000)
           await(parent, parent_monitor, monitor, group, id, child, turn)
         else

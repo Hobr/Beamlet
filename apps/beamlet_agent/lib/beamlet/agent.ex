@@ -39,8 +39,14 @@ defmodule Beamlet.Agent do
   def peer_take(ref, id), do: command(ref, {:peer_take, id})
   def inbox(ref), do: command(ref, :inbox)
   def snapshot(ref), do: command(ref, :snapshot)
+
+  @doc "Read a bounded replacement display of live context; see Beamlet.Agent.Display."
+  def snapshot(ref, opts), do: command(ref, {:snapshot, opts})
   def stop_turn(ref), do: command(ref, :stop)
   def subscribe(ref, sink \\ self()), do: command(ref, {:subscribe, sink})
+  @doc "Subscribe to replacement display snapshots using the existing sink-owned ack/2 credits."
+  def subscribe(ref, sink, opts), do: command(ref, {:subscribe, sink, opts})
+
   def unsubscribe(ref, sink \\ self()), do: command(ref, {:unsubscribe, sink})
   def ack(ref, sequence), do: command(ref, {:ack, self(), sequence})
 
