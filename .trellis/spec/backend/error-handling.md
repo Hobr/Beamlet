@@ -18,8 +18,17 @@ Parent validation must not require the target's provider in its own registry.
 
 ## Startup and Configuration Failures
 
-Both `apps/beamlet_node/lib/beamlet/node/application.ex` and
-`apps/beamlet_web/lib/beamlet_web/application.ex` return
+Node is a callback-free library, started explicitly with `Beamlet.Node.start_link/1`
+or its child spec. CLI defaults to an empty supervisor; enabled startup is fixed interaction.
+CLI host/config errors are static and arbitrary command errors render request_failed;
+creation options/paths/reader exceptions are never inspected. Daemon is disabled by
+default; its enabled startup validates roles/host fields before starting Node.
+Malformed host/resource configuration returns invalid_daemon_configuration without
+raw values. daemon_runtime.exs restricts trusted config to :beamlet_daemon and
+replaces reader/validation exceptions with a static error outside the rescue
+context (no raw cause). Config is trusted executable code, not a sandbox.
+Peer bootstrap failure warns by index only and keeps local service alive; no retry.
+`apps/beamlet_web/lib/beamlet_web/application.ex` returns
 `Supervisor.start_link(children, opts)` directly. The source preserves OTP's
 startup result; it does not convert a failed start into success or rescue it.
 Web's `config_change/3` forwards endpoint changes and returns `:ok`.

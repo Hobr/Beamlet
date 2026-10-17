@@ -34,7 +34,7 @@ Beamlet.Agent.inbox(ref)
 Agent commands wait only for command handling (5000 ms call timeout), never model,
 Tool or child completion. Remote start uses explicit authority and bounded erpc.
 Ref contains authority node, binary ID, incarnation and live PID; it is ephemeral.
-No global lookup, authority fallback, durable reconnect or replay exists.
+Explicit live lookup is available below; no authority fallback, durable recovery or replay exists.
 
 ## 3. Contracts
 
@@ -120,14 +120,26 @@ and be allowlisted. Legacy type:model profiles reject invalid_node_configuration
 model_providers is a trusted map<=32 of IDs to loaded modules exporting both Model
 callbacks, defaulting to built-ins. It is separate from monitored providers PIDs.
 Executor advertises `model.provider:<id>`; combined Tool/model capability union<=32
-and complete Runtime report/deployment caps are validated. Registration/readiness
+and complete Runtime report/deployment caps are validated. Node validates common
+Runtime limits through Limits.new for every role set before returning children;
+executor-specific Report checks remain conditional on the executor role. Registration/readiness
 calls no model network API and reads no model key environment. Routes (max64) and
 catalogue remain portable Tool data. Node uses one_for_all;
 executor starts Provider before Runtime, with provider monitoring. Authority adds
 AuthoritySupervisor; executor-only starts no Agents/Registry. All local work uses
-Gateway admission. Default Application boot is empty; `:beamlet_node, :boot`
-options opt into Node composition. Backend release loads them from an absolute trusted
-BEAMLET_CONFIG file; see [Backend CLI and Release](./backend-release.md).
+Gateway admission. Node has no Application callback or boot configuration reader. An embedding
+supervisor explicitly starts `{Beamlet.Node, options}`; all seven combinations
+are tested as running trees, including a three-role local model turn through Gateway.
+`Beamlet.Node.Cluster` owns trusted-name validation, a single connection attempt
+with a five-second helper budget, and connected-node allowlist filtering (at most32
+trusted ASCII names, each at most255 bytes). No CLI/daemon dependency is introduced.
+CLI owns the terminal client and bounded foreground session; its opt-in Application
+starts only interaction, and ordinary loading remains empty.
+Daemon is disabled by default, explicitly supervises Node when enabled, and accepts
+only authority/executor startup role selections. Its owned temporary task connects
+validated peers once after Node is ready, without blocking supervision or retrying
+business work. Daemon release/runtime config now replace the old Node entrypoint; see
+[Backend CLI and Release](./backend-release.md).
 
 ## 4. Validation & Error Matrix
 
@@ -183,3 +195,77 @@ Correct: nonblocking controllers interrupt linked workers, Resources retains gro
 until DOWN, and public Runtime owns guarded submission with unchanged validation.
 Local owner checks are not atomic with dispatch; subsequent loss uses monitors and
 best-effort cleanup, without guarantees of provider rollback or remote termination.
+
+## Live discovery and attachment
+
+`Agent.list(authority)` returns `{:ok, [%{authority: node, id: binary, pid: pid}]}`.
+`Agent.lookup(authority, id)` returns the present real Server Ref;
+`Agent.lookup(%{authority: node, id: id, pid: expected_pid})` rejects a replacement
+PID as `{:error, :stale_agent}`. Descriptor maps contain exactly those three keys.
+Queries never construct Ref, inspect private state, submit input or recreate an
+Agent. Explicit authority+ID chooses the currently observed instance; saved Ref
+always keeps its original PID/incarnation. ID is1..128 valid UTF-8 bytes. Static
+errors: invalid_query, not_authority, not_found, unavailable, timeout, stale_agent,
+limit. A closed descriptor with no current registration returns not_found.
+
+List enumerates Registry identities, max128, without waiting for each Server.
+Lookup asks that PID's existing `:ref` handler and verifies authority/ID/PID and
+reference incarnation. Queries have one5s local receive budget. Only already
+connected remote nodes are queried. Dependency loading starts no endpoint.
+AuthoritySupervisor owns the Agent Discovery.Endpoint last in its one_for_all
+island. Non-authority Node roles explicitly supervise the same endpoint in
+non-authority mode; all seven role combinations retain one fixed-name endpoint.
+A bare remote VM without an endpoint is unavailable/timeout, not a successful
+empty authority. Matching library/protocol builds are required.
+
+`Node.Agents.discover([trusted_node_atom, ...])` returns
+`{:ok, %{agents: descriptors, failures: %{node => static_reason}, complete: boolean}}`.
+Use Cluster.authority/2 to resolve trusted configured names; discovery uses
+Cluster.connected/1 filtering and never atomizes input or connects. Invalid or
+duplicate targets / >32 nodes return invalid_query wholly. Empty request completes.
+An alive allowlisted local node follows Cluster inclusion. Max8 requests run at
+once; queued requests share one5s receive deadline. Serialized full `{:ok, result}`
+is<=1MiB, conservatively reserving16KiB for all32 possible failure projections.
+An overflowing authority is rejected as limit, without truncating its identities;
+subsequent failures fit in the same envelope. Every failed requested node is
+explicit, including non-authority/unavailable/timeout/limit. `complete` describes
+only the requested set. Liveness is an eventual observed view, not an atomic
+cluster snapshot; subsequent commands can still lose the returned instance.
+
+Transport uses only noconnect/nosuspend sends for offers, confirms, heartbeat and
+replies, including disposable reply aliases; no remote process monitor/link,
+erpc/rex, remote group leader or remote IO. A passive5s offer must be confirmed
+before query work is admitted. Endpoint holds<=256 offers+active controllers;
+callbacks do no Registry/Server waits. Each controller owns linked local query
+work and timers outside calls: max5s lifetime and250ms heartbeat lease with50ms
+renewal interval. Caller loss kills its local task tree; remote work exits after
+lease loss (normally<=300ms plus scheduling), even while Server remains suspended.
+This is finite cleanup, not instantaneous distributed cancellation. Passive queued
+messages can be discarded after caller expiry; they cannot start work without a
+live confirmation. No credentials/options/binding/history enter discovery results.
+
+
+## Queued admission repair (new candidate)
+
+The original frozen candidate's confirmation was insufficient: it could remain
+queued past the public deadline and spawn work before a fresh requester response.
+Confirmation now creates only a passive, quota-accounted controller. Before any
+Registry/Server query, it issues a fresh nonce challenge through the disposable
+alias. The requester checks its original deadline before confirming, answering a
+challenge, or accepting a result, including messages already queued at expiry.
+The public deadline is allocated before task startup, not inside the helper.
+
+The endpoint passes a local absolute deadline to the controller, so controller
+startup cannot reset the sampled confirmation budget. Each admission/heartbeat
+response carries the requester's current remaining duration. The controller
+subtracts the entire locally measured challenge roundtrip (conservative), clamps
+to its existing deadline, and rejects responses received after that deadline or
+the250ms lease even if the response is already in its mailbox. Neither node
+compares the other's timestamps. Worker startup and the final Server call also
+check the deadline. Unanswered passive controllers retire within the lease plus
+scheduling; pending offers retain their5s expiry and the combined256 quota.
+No new endpoint, retry, connection policy, public API or dependency is introduced.
+
+Freshness is an observed exchange, not atomic remote liveness or hard real-time
+execution: ordinary scheduling and distributed death races remain possible after
+a timely response. No instantaneous remote-death detection is claimed.

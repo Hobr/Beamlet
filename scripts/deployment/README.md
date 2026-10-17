@@ -1,169 +1,266 @@
-# Backend deployment and acceptance
+# Daemon deployment and acceptance
 
-Build one compatible release for all participating hosts (same OS/architecture/OTP
-ABI). From the checkout, run `BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release
-beamlet_node`. The selector excludes Web from the umbrella build and uses a separate
-`_build/backend` tree. Without the selector, the umbrella compiles Phoenix and
-Req can acquire optional Plug from Web; that is not the deployment build. Runtime
-configuration is `config/backend_runtime.exs`; default Web production configuration
-continues to require SECRET_KEY_BASE. No dummy secret is needed.
+## One artifact, three startup configurations
 
-Run `bash scripts/deployment/check-release.sh` to inspect the shipped .rel/.app/lib
-closure and boot all seven copied role combinations outside source/deps, including
-named foreground startup, RPC and stop. Control helper VMs use ephemeral distribution
-ports so they do not collide with the service listener. The local checker needs
-Python3 and reserves ports19100/19101 while running. Run
-`bash scripts/deployment/check-local.sh` for the automated acceptance gates.
-These scripts are invoked through bash and need not be executable.
+Build from the checkout with the project OTP/Elixir toolchain:
 
-Copy `_build/backend/prod/rel/beamlet_node` to each host. Copy and edit
-[node.example.exs](node.example.exs) to an absolute, operator-owned configuration
-file outside the release. BEAMLET_CONFIG names this trusted Elixir file: it is code
-with the deployment user's privileges. Never load model-provided configuration or
-modules. Roles must be a unique nonempty subset of interaction/authority/executor.
-Use authority-only B, executor-only C, interaction-only A initially. Local combined
-roles use the same Gateway. Authority Node boot needs no user credentials or workspace root. Authority stores
-each Agent's supplied binding privately after creation. Register trusted local
-model adapters with `model_providers` on authority and executor; defaults register
-`openai-compatible` and `deterministic`. Executor Tool profiles retain the bundled
-Tool allowlist, portable IDs, bounded pools and trusted workspace roots. No model strings are converted to atoms.
-The Node application consumes `Application.get_env(:beamlet_node, :boot)`.
-
-Set RELEASE_NODE to a long name such as `authority@b.example.internal`,
-RELEASE_COOKIE securely to the same cookie on all three nodes, BEAMLET_CONFIG to
-the absolute local file and BEAMLET_DIST_PORT to a fixed local port (default 9100).
-Never paste the cookie/key into transcripts or shell tracing. Provision the cookie through a restricted service environment file. Model keys
-are supplied at Agent creation, never provisioned to executor profiles. Use the
-system CA trust for HTTPS; this adapter
-exposes no custom CA option and never disables verification. Supply model-specific
-endpoint/model values compatible with text non-streaming Chat Completions and
-standard function tools. No live provider call is needed for boot/readiness.
-
-Run `bin/beamlet_node start` under a service manager (or `start_iex` for a supervised
-interactive trial). The rel env template selects long names, two schedulers and a
-fixed distribution port. All hosts must resolve each other's names and reach EPMD
-TCP 4369 and the chosen TCP distribution ports in both directions. Use only a
-trusted private network with firewall restrictions: cookie distribution is trusted
-code execution, not an Internet authentication system. No automatic discovery,
-TLS distribution rollout or business retry is supplied.
-
-In A's release IEx, explicitly connect the static deployment allowlist:
-
-```elixir
-alias Beamlet.Node.CLI
-allowed = ["authority@b.example.internal", "executor@c.example.internal"]
-:ok = CLI.connect("authority@b.example.internal", allowed)
-:ok = CLI.connect("executor@c.example.internal", allowed)
-{:ok, b} = CLI.authority("authority@b.example.internal", allowed)
-{:ok, c} = CLI.authority("executor@c.example.internal", allowed)
-true = :erpc.call(b, Node, :connect, [c], 5000)
-{:ok, catalogue} = Beamlet.Harness.Catalogue.new([Beamlet.Harness.Tools.WorkspaceRead.descriptor()])
-# Explicit operator input on A to construct the creation binding. The adapter
-# never reads this environment variable, and C needs no provisioned user key.
-user_key = System.fetch_env!("BEAMLET_CREATION_KEY")
-opts = [id: "operator-demo",
-  model: %{provider: "openai-compatible",
-    config: %{"base_url" => "https://provider.example/v1", "model" => "operator-selected-model"},
-    credentials: %{"api_key" => user_key},
-    placement: %{claims: %{"native" => 1}, allowed_nodes: [c]}},
-  catalogue: catalogue,
-  tools: %{"workspace_read" => %{id: "tree", capability: "read-v1", environment: "tree-v1",
-    claims: %{"native" => 1}, allowed_nodes: [c]}}]
-{:ok, ref} = CLI.create(b, opts)
-{:ok, turn} = CLI.input(ref, "Read marker.txt through workspace_read")
-CLI.watch(ref, timeout: 30_000, events: 128)
-CLI.status(ref)
-CLI.snapshot(ref)
-CLI.stop(ref)
+```sh
+BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_daemon --overwrite
+bash scripts/deployment/check-release.sh
 ```
 
-Watch subscribes/acks/unsubscribes in the same sink process, prints bounded inspect
-output (4096 codepoints maximum/event), limits 256 events and a 60-second receive deadline. Agent control calls have
-separate 5-second bounds; synchronous terminal output depends on the IEx device.
-Input uses Agent's 65536-byte/context/executable-envelope checks, never truncates
-executable input. Timeout/event-limit/loss is explicit and does not establish
-cancellation. A disconnected watcher does not own Agent lifetime. A fresh watch
-gets a snapshot, without event replay. Provider requests are never retried.
+The backend selector compiles the five libraries plus daemon, excludes Web/CLI,
+uses isolated `_build/backend`, and avoids Req's optional Plug dependency from
+Web. The release has its own `config/daemon_runtime.exs`; ordinary Web production
+still fails without SECRET_KEY_BASE. No dummy Web secret is needed for daemon.
 
-Live refs are ephemeral and cannot be serialized as stable IDs for later RPC
-sessions. Release `rpc 'IO.inspect(Beamlet.Node.profile("tree"))'` on an executor and
-`rpc 'IO.inspect(Process.whereis(Beamlet.Agent.Registry) != nil)'` are suitable
-one-shot readiness checks. Keep control refs in one IEx session or use an
-operator-owned trusted script evaluated in one RPC; do not invent ID lookup APIs.
-For the raw protocol, subscribe with `Beamlet.Agent.subscribe(ref)`, receive
-`{:beamlet_agent, ^ref, sequence, {:snapshot, snapshot}}`, and call
-`Beamlet.Agent.ack(ref, sequence)` from that sink process.
-
-Delegation and peers use real refs from this same session:
+Copy `_build/backend/prod/rel/beamlet_daemon` outside the checkout, to compatible
+OS/architecture/OTP hosts. **Do not build role-specific artifacts.** Copy and edit
+[daemon.example.exs](daemon.example.exs) to an absolute operator-owned file:
 
 ```elixir
-{:ok, parent} = CLI.create(b, Keyword.put(opts, :id, "parent"))
-Beamlet.Agent.delegate(parent, [%{authority: b,
-  options: Keyword.put(opts, :id, "owned-child"), input: "Read marker.txt"}])
-CLI.watch(parent)
-{:ok, peer} = CLI.create(b, Keyword.put(opts, :id, "independent-peer"))
-{:ok, request} = Beamlet.Agent.peer_request(parent, peer, %{"question" => "ready?"})
-Beamlet.Agent.inbox(peer)
-:ok = Beamlet.Agent.peer_reply(peer, request, %{"answer" => "ready"})
-Beamlet.Agent.inbox(parent)
-Beamlet.Agent.peer_take(parent, request)
-Enum.each([ref, parent, peer], &CLI.close/1)
+import Config
+config :beamlet_daemon,
+  node: [], # default [:authority, :executor]
+  allowed_nodes: ["executor@c.example.internal"],
+  peers: ["executor@c.example.internal"]
 ```
 
-Waiting delegation parents hold no executor slot. Peer lifetimes are independent;
-TTL/loss produces observations without replay. Stop freezes advancement and requests
-best-effort cleanup. Partition/local DOWN never proves provider rollback or billing
-cessation. Teardown: close Agents, `bin/beamlet_node stop` on A/B/C, verify the
-service manager and distribution sockets stopped, remove temporary permitted
-fixtures and revoke temporary credentials. Do not automatically replay turns.
+For authority-only use `node: [roles: [:authority]]`; for executor-only use
+`node: [roles: [:executor]]`. Empty, duplicate, interaction and unknown roles
+reject before any roles start. Only these startup choices are supported; there
+is no runtime role switch/reconfiguration API. Code for both capabilities remains
+in every copy. Node remains an embedded library with all seven combinations,
+not an executable or an application boot-config reader.
 
-Workspace provisioning requires a dedicated allowed-content tree with controlled
-ancestors/backing writers, preferably OS read-only. Checks reject traversal,
-symlinks/nonregular files and bound UTF-8 reads, but are not atomic openat2 confinement.
-Hardlinks, mounts, races and hostile local writers are outside this trust boundary.
+BEAMLET_CONFIG is trusted Elixir **code with deployment-user privileges**, not a
+sandbox or model input. Restrict file ownership/permissions and never load
+model-provided paths/modules. The runtime reader accepts only :beamlet_daemon
+settings (enabled/node/allowed_nodes/peers), normalizes and validates them, then
+explicitly enables the host. Reader/validation errors are static and do not
+render raw values, paths or exception causes. Arbitrary code in a trusted file
+can itself print or leak data; sanitizing reader failures cannot prevent that.
+Ordinary umbrella startup has enabled=false and an empty daemon tree, with no
+cluster or stdin side effects. Changes to Application env after startup do not
+reconfigure the running host.
 
-For a deterministic physical trial without provider spending, copy
-`http-fixture.py` to C and run `python3 http-fixture.py --requests 16` there
-(loopback TCP18080 only, at most16 requests,30-second accept waits and10-second whole-request deadlines). On C use
-the same trusted adapter registration. On A create an Agent with config
-`%{"base_url" => "http://127.0.0.1:18080/v1", "model" => "fixture",
-"allow_local_http" => true}` and credentials `%{"api_key" => "synthetic-fixture-key"}`.
-The endpoint is loopback on the selected executor C; C receives credentials only
-in the dedicated model Operation invocation. The fixture never calls a
-provider and always requests marker.txt then reports an observation digest. Before
-acceptance, compare that digest with SHA256 of the expected Tool JSON content;
-a final fixture string alone does not prove successful workspace reading. Inspect
-wrong-environment Tool errors separately. Stop the fixture with Ctrl-C during
-teardown. The Python fixture has no production application dependency.
+Authority boot needs no user key or workspace. Register trusted model adapters
+with `model_providers` on authority/executor (defaults: openai-compatible and
+deterministic). Executor Tool profiles contain only executor-local settings and
+roots; use bounded pools and the bundled Tool allowlist. Agent creation supplies
+one immutable model/provider/config/credentials/placement binding. Never statically
+provision user model keys in executor profiles; no key_env fallback exists.
 
-The user removed physical acceptance from this MVP's completion criteria.
-Physical execution is **untested**. The following is optional deployment guidance. Operator prerequisites: two distinct
-physical hosts for B/C, optional third A, compatible release build, reachable
-long-name DNS/IPs, private firewall access to EPMD/fixed ports, securely provisioned
-shared cookie, an executor-only permitted marker tree and local compatible endpoint
-or separately authorized live endpoint/key/spending. No SSH credential discovery or
-remote deployment is authorized here. Record host identity and node role on each
-host, build hash, exact redacted commands, B authority ref, C-only marker content
-observation, concurrent controls, stop, executor disconnect/partition and explicit
-no-target/wrong-environment behavior; reconnect never replays. A future physical trial may attach evidence to the physical-acceptance.md task
-record. Same-host peers establish automation evidence only.
+## Service and cluster bootstrap
 
-Optional live smoke is not executed: obtain separate spending/endpoint approval,
-supply an Agent HTTPS binding with explicit credentials and run the input/watch example above,
-first with empty catalogue then with the permitted marker. Record only normalized
-bounded outcome, never raw requests/settings/credentials. This probes that endpoint's
-supported subset and makes no general model compatibility claim.
+Provision these variables through a restricted service environment, without shell
+tracing or printing the cookie:
 
-Model migration requires matching builds on every participating node; mixed-version
-execution is unsupported. Old `type: :model` profiles, `key_env`, top-level Agent
-`api_key`, model collections and switching options fail explicitly. Each Agent has
-one immutable provider/config/credentials/placement binding for its lifetime;
-create a separate Agent for a different binding. Tools carry empty credentials.
-Children require an explicit binding in creation options; peer messages do not
-inherit one. No automatic routing, fallback or replay exists.
+- RELEASE_NODE: long name, e.g. `authority@b.example.internal`.
+- RELEASE_COOKIE: securely shared by trusted cluster members.
+- BEAMLET_CONFIG: absolute trusted config path.
+- BEAMLET_DIST_PORT: fixed service distribution port, default **9100**.
 
-Bindings and credentials exist as plaintext in authority/executor processes and
-transient messages until ordinary cleanup. There is no persistence or secure memory
-erasure guarantee or protection from administrator inspection. Generated snapshots,
-progress and results omit binding fields; malicious providers can still echo data.
-Keep creation options and operator environment out of logs and shell tracing.
+Run `bin/beamlet_daemon start` under a service manager (or `start_iex` for a trusted
+operator session). `rel/env.sh.eex` uses long names and two schedulers. The rpc,
+remote, restart, stop and pid helper VMs use ephemeral port **0**, never the service
+port. Stop with `bin/beamlet_daemon stop`; inspect the service manager and sockets
+before treating shutdown as complete. EPMD TCP4369 and selected distribution ports
+must be reachable bidirectionally. Use resolvable long names on a trusted private
+network/firewall: cookie distribution permits trusted code execution, not Internet
+or multi-tenant authentication. TLS distribution rollout is not implemented.
+
+allowed_nodes is a trusted list of at most32 ASCII node@host names, each at
+most255 bytes. peers is a distinct subset, at most32 entries. After Node is ready,
+a host-owned temporary task connects each peer **once**, sequentially, using
+Beamlet.Node.Cluster (up to5s per attempt). Startup supervision does not wait for
+network completion; all32 failed peers can take approximately160s to exhaust.
+Logs report only peer index and connected/unavailable. Failure leaves local service
+alive. There is no background reconnect, scan, automatic discovery or business
+retry/replay. Host loss cleans task/controller/helper ownership; OTP may still
+finish an already initiated handshake later, so this is not network rollback.
+
+Trusted operators may explicitly connect again without replaying business work:
+
+```elixir
+alias Beamlet.Node.Cluster
+allowed = ["executor@c.example.internal"]
+:ok = Cluster.connect("executor@c.example.internal", allowed)
+{:ok, executor} = Cluster.authority("executor@c.example.internal", allowed)
+{:ok, nodes} = Cluster.connected(allowed) # no implicit connection
+```
+
+## Deterministic and HTTP/Tool controls
+
+From authority's IEx or one trusted RPC script (daemon ships Agent APIs, **not**
+the terminal client), wait for an eligible Directory capacity report before input:
+
+```elixir
+{:ok, ref} = Beamlet.Agent.start(node(), id: "operator-demo",
+  model: %{provider: "deterministic",
+    config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}},
+    placement: %{allowed_nodes: [executor]}})
+:ok = Beamlet.Agent.subscribe(ref)
+# Receive {:beamlet_agent, ^ref, sequence, {:snapshot, snapshot}} and acknowledge
+# every sequence from this same sink with Beamlet.Agent.ack(ref, sequence).
+{:ok, turn} = Beamlet.Agent.input(ref, "hello")
+Beamlet.Agent.snapshot(ref)
+Beamlet.Agent.stop_turn(ref)
+:ok = Beamlet.Agent.unsubscribe(ref)
+Beamlet.Agent.close(ref)
+```
+
+The initial subscribed snapshot precedes updates. Sink loss/timeout does not own
+Agent lifetime; close is explicit. Do not serialize a live Ref as a durable handle.
+Discovery/reattachment and a standalone CLI session/release are subsequent tasks,
+not hidden Node executable dependencies. Keep live refs in the same operator
+session/script. A CLI library test fixture exists but is not shipped in daemon.
+
+For a no-spending HTTP→workspace→model exercise, run the unchanged
+`python3 scripts/deployment/http-fixture.py --requests 16` on the executor: it
+listens on loopback TCP18080, bounds requests to16, accept waits to30s and whole
+requests to10s. Provision a dedicated permitted marker tree and a WorkspaceRead
+Tool profile with root/max_bytes, capability, environment and bounded native pool.
+Build the portable catalogue with WorkspaceRead.descriptor and route workspace_read
+to that profile/environment with placement restricted to the executor. Agent model
+binding uses provider openai-compatible, config
+`%{"base_url" => "http://127.0.0.1:18080/v1", "model" => "fixture", "allow_local_http" => true}`
+and explicit synthetic credentials `%{"api_key" => "synthetic-fixture-key"}`.
+Loopback resolves on the selected executor. The fixture first requests marker.txt,
+then reports the **complete Tool-observation digest**: compare it to SHA256 of the
+expected Tool JSON content. A fixture final string alone is not marker-read proof.
+The migrated named CLI integration preserves actual HTTP authorization/body
+separation, digest correlation, wrong environment without fallback, a subsequent
+turn after fresh capacity, stop during a held request, and executor loss/no replay.
+No paid provider is contacted by these tests/fixture.
+
+For authorized live calls use explicit Agent credentials and supported HTTPS text
+nonstreaming Chat Completions/function tools. System CA trust/peer verification
+remain mandatory; no custom CA/generation override or automatic retry is supplied.
+Obtain separate endpoint/spending approval first. Never log requests, settings,
+keys, roots or raw provider exceptions. Credentials are plaintext in authority and
+executor processes/transient messages until ordinary cleanup; no secure erasure or
+protection against administrator inspection/malicious provider echo is promised.
+Children require their own explicit binding; peers do not inherit credentials.
+
+Workspace checks reject traversal/symlinks/nonregular files and bound UTF-8 reads,
+but are not atomic OS confinement. Provision controlled ancestors/backing writers,
+preferably OS read-only. Hardlinks/mounts/TOCTOU/hostile writers remain outside the
+trust boundary. Waiting delegation parents hold no executor capacity. Stop freezes
+advancement and requests best-effort cleanup; DOWN/partition does not prove upstream
+rollback, termination or billing cessation. Never replay uncertain business work.
+
+## Checks, evidence and rollback
+
+check-release.sh copies one artifact outside source/deps, fingerprints its file
+manifest, checks .rel/.app/lib dependency closure (no CLI/Web/Phoenix/Plug/Bandit/
+WebSock), and exercises default/authority-only/executor-only **named start, RPC,
+pid and stop** on default service port9100. It then runs authority and executor
+copies/configurations from that same artifact on19101/19102, bootstrap-connects,
+and completes one deterministic remote Gateway turn. It checks failed-peer local
+continuation and11 malformed runtime/config rejections without sentinel leakage.
+Set BEAMLET_CHECK_LOG_DIR to retain logs in a chosen absolute directory; otherwise
+a printed temporary evidence directory is retained. **Python 3.11+** is required
+for the named-release checker (`sys.exception()` and exception `add_note()`);
+its cleanup regression suite was verified on Python 3.14. EPMD/local sockets and
+free ports9100/19101/19102 are required. The seven library combinations are tested
+separately and are not daemon role choices.
+
+`bash scripts/deployment/check-local.sh` runs the available daemon-stage gates and
+explicitly reports final two-host/CLI acceptance as deferred. It does not attest
+parent completion. Ordinary and named distributed actual counts, failure logs,
+active-LSP limitations and copied hashes belong in task evidence. Use scheduler-only
+ERL_FLAGS='+S 2:2' with an explicit securely generated parent --cookie for named Mix
+tests; never put -setcookie in inherited ERL_FLAGS (observed parent/peer mismatch).
+
+Physical multi-host execution and paid calls are **untested** and not authorized by
+these checks. No SSH/deployment is performed. Matching builds/protocols are required;
+rollback uses the retained old artifact **with its matching old config**, never a
+mixed-version cluster. Restart is not recovery of lost Agents/history. Teardown
+closes Agents explicitly, stops services/fixtures, verifies listeners, removes
+temporary permitted fixtures and revokes any temporary credentials.
+
+## Foreground interaction CLI
+
+Build both backends with `BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release
+beamlet_daemon --overwrite` and the equivalent `mix release beamlet_cli --overwrite`.
+The backend compilation selector includes both hosts; each release dependency
+closure contains only its own host and excludes Web. Ordinary umbrella loading
+starts neither host's Node and never reads stdin.
+
+Copy the CLI release directory and `cli.example.exs` outside the checkout. Set
+absolute `BEAMLET_CONFIG`, unique long `RELEASE_NODE`, trusted `RELEASE_COOKIE`
+and an available `BEAMLET_DIST_PORT` (0 selects ephemeral). Run
+`bin/beamlet_cli start` in the foreground; stdin accepts commands without IEx.
+`help` describes the grammar. Use `connect authority@host`, then `agents`,
+`attach authority@host agent-id local-alias`, `status local-alias`,
+`input local-alias text`, `watch local-alias 5000 64`, `stop local-alias`, and
+`close local-alias`. `create authority@host /absolute/agent-options.exs` reads
+`:beamlet_cli, :agent_options`; see `agent-options.example.exs` for a deterministic
+fixture. Real model bindings and Tool catalogue/routes use the same Agent options
+as the HTTP/workspace integration, with operator-selected provider configuration
+and dedicated credentials. Keep credential-bearing files accessible only to the
+operator. Config files are **trusted executable Elixir code**, never a sandbox or
+model-supplied input. The CLI has no generic eval command and sanitizes reader
+errors without showing options, exceptions or paths.
+
+Aliases are local real Refs, max128, never silently replaced. Use explicit
+authority plus ID to disambiguate duplicate IDs; detach an old alias before
+explicit reattachment. Attach reads a snapshot and submits no input. Quit, EOF,
+detach, disconnect and watch timeout do not close an Agent. Only successful close
+clears aliases. A new CLI can discover and attach the same surviving instance;
+a stale Ref remains stale after ID reuse. Discovery is an observed partial view:
+`complete` concerns requested nodes only. The terminal bounds rendering, commands
+at65536 UTF-8 bytes, watch at256 events/60s/4096 codepoints per event, and rejects
+overlong executable input as a whole. Overlong stdin ends the session. Stop is
+not an upstream cancellation/rollback promise; no automatic business replay occurs.
+
+`check-release.sh` now checks both rebuilt artifacts, including the same daemon
+copy in three modes and three independent foreground CLI stdin sessions. The
+first quits after create; the second discovers/attaches, operates and leaves via
+EOF; RPC proves identical authority/PID/incarnation before the third explicitly
+closes. `check-local.sh` runs the integrated gates and records each log separately.
+Python3.11+ and the existing six teardown diagnostic regressions remain required.
+These are same-host named peers and deterministic fixtures, not physical-host or
+paid-provider acceptance.
+
+Presentation reuses installed Owl0.13.1: help/nodes/agents/identity/status tables,
+Owl.IO output and Owl.Data display bounds. Tables preserve authority/ID columns
+regardless of terminal width; discovery shows at most8 full identities and explicit
+total/shown/completeness/failure counts. Commands and identity handling remain
+application code. The narrow raw-byte reader remains because Owl.IO.input reads an
+unbounded line, trims executable text and retries required input/EOF. No full-screen
+terminal engine or dependency/version change is needed.
+
+### CLI review repair: Unicode input and complete identity traversal
+
+Runner reads one raw byte with IO.binread/2 against65536 before retention.
+For a terminal only, the exclusive stdin reader temporarily sets device encoding
+Latin-1 to preserve original UTF-8 bytes (Unicode decoding otherwise replaces
+malformed bytes); an after block restores the original encoding before output or
+callbacks, including failure/EOF. Concurrent readers on that owned terminal are
+unsupported. Pipes and injected nonterminal devices never change options.
+LF is the delimiter; all preceding text and partial EOF are preserved. Native
+read errors, invalid UTF-8 and overlong lines terminate with status1; EOF/quit
+exit0. Executable input is never replaced or executed as a truncated prefix.
+
+`agents [authority]` replaces one retained bounded discovery result (the existing
+1MiB query bound); `agents-page N` traverses it without another query. Pages have
+at most8 rows sorted by authority string, ID bytes and PID string. Query complete
+refers only to requested targets; page/count describe display completeness.
+Discovery remains an eventual, non-atomic cluster observation. Agents may change
+or die after capture; refresh explicitly with agents, then restart traversal.
+There is no implicit requery/retry and attaching still resolves the current ID.
+
+Identity cells use `id64:` plus unpadded Base.url_encode64 UTF-8, accepted by attach
+without evaluation. Copy the whole token and supply a safe explicit alias:
+`attach host@local id64:dHdvIHdvcmRz a` attaches ID `two words`.
+Simple nonreserved ASCII IDs remain accepted literally. To address a literal ID
+starting with id64:, encode the entire ID. Decoded IDs retain the shared valid
+UTF-8 1..128-byte contract, including whitespace and terminal controls. Tokens
+are at most177 bytes; commands including encoded arguments still obey65536 bytes.
+No shell grammar/eval or shared Agent ID restriction was introduced.
+
+Installed Owl uses Ucwidth for CJK/emoji/combining terminal column measurement,
+wrapping and truncation; actual beam behavior and copied closure are checked.
+The independent4096-codepoint watch limit remains distinct from display width.

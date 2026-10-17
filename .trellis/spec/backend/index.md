@@ -1,12 +1,15 @@
 # Backend Development Guidelines
 
-Beamlet has a six-application Elixir Mix umbrella with implemented generic Actions
+Beamlet has an eight-application Elixir Mix umbrella with implemented generic Actions
 contracts, an opt-in distributed Runtime and independent native Harness providers.
 Agent implements bounded asynchronous orchestration with one immutable Agent-owned
 model binding; Harness owns neutral model/history contracts and explicit provider
 invocations. Node composes opt-in roles and trusted local model provider registries.
-Node also provides a thin CLI and isolated backend release; cross-physical-host acceptance
-was removed by user decision; no physical execution is claimed. Phoenix provides the existing web scaffold.
+Node is an explicitly supervised library; CLI owns the migrated terminal adapter.
+Daemon is an opt-in host with startup-only authority/executor selection and an
+isolated release; CLI is an opt-in fixed interaction host with a foreground standalone session. Agent discovery now provides safe live identity list/lookup and bounded trusted-connected
+aggregation. The standalone CLI release owns bounded stdin, local Ref aliases and explicit reattachment.
+Cross-physical-host acceptance was removed by user decision; no physical execution is claimed. Phoenix provides the existing web scaffold.
 These English guidelines describe checked-in behavior; source paths below are
 relative to the repository root.
 
@@ -47,6 +50,6 @@ commands for the change are identified.
 | [Logging and Telemetry](./logging-guidelines.md) | Request IDs, formatter, Phoenix/VM metrics, development diagnostics |
 
 Evidence anchors: root `mix.exs`, `apps/*/mix.exs`,
-`apps/beamlet_node/lib/beamlet/node/application.ex`, and
+`apps/beamlet_node/lib/beamlet/node.ex`, and
 `apps/beamlet_web/lib/beamlet_web/application.ex`. Consult the topic files for
 concrete source and test examples.
