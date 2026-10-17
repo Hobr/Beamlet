@@ -35,6 +35,38 @@ defmodule Beamlet.Storage.AgentRecords do
     end
   end
 
+  @doc """
+  Advances the active turn's checkpoint (model reply, decision, blocked state)
+  without consuming results or starting a turn. A supplied `command` makes the
+  advance idempotent: replaying the same command identity and params returns the
+  stored response and writes nothing.
+  """
+  def advance(repo, attrs) do
+    with {:ok, input} <- validate_advance(attrs) do
+      Records.transact(repo, fn -> write_advance(repo, input) end)
+    end
+  end
+
+  @doc """
+  Creates the paused instance's generation: CAS on `generation`+`lock_version`
+  bumps the Agent generation, moves the head to the restored checkpoint, records
+  the event and the restore command in one transaction. Concurrent restores and
+  late writes from a previous generation lose the CAS.
+  """
+  def restore(repo, attrs) do
+    with {:ok, input} <- validate_restore(attrs) do
+      Records.transact(repo, fn -> write_restore(repo, input) end)
+    end
+  end
+
+  @doc "Validates one next-checkpoint input for a batch transaction owned elsewhere."
+  def checkpoint(attrs), do: next_checkpoint(attrs)
+
+  @doc "Insert one checkpoint inside the caller's open transaction."
+  def insert_checkpoint(repo, checkpoint, agent_id, turn_id) do
+    Records.insert(repo, checkpoint_changeset(checkpoint, agent_id, turn_id))
+  end
+
   def fetch(repo, agent_id) do
     with {:ok, id} <- Records.uuid(agent_id) do
       Transaction.read(fn ->
@@ -532,6 +564,177 @@ defmodule Beamlet.Storage.AgentRecords do
     end
   end
 
+  defp validate_advance(attrs) do
+    with {:ok, _} <-
+           Records.fields(
+             attrs,
+             [:agent_id, :expected_version, :expected_generation, :turn_id, :checkpoint, :event],
+             [:command]
+           ),
+         {:ok, agent_id} <- Records.uuid(attrs[:agent_id]),
+         {:ok, version} <- Records.count(attrs[:expected_version]),
+         {:ok, generation} <- Records.count(attrs[:expected_generation]),
+         {:ok, turn_id} <- Records.uuid(attrs[:turn_id]),
+         {:ok, checkpoint} <- next_checkpoint(attrs[:checkpoint]),
+         {:ok, event} <- Records.event_input(attrs[:event]),
+         {:ok, command} <- optional_command(attrs[:command]) do
+      {:ok,
+       %{
+         agent_id: agent_id,
+         expected_version: version,
+         expected_generation: generation,
+         turn_id: turn_id,
+         checkpoint: checkpoint,
+         event: event,
+         command: command
+       }}
+    end
+  end
+
+  defp optional_command(nil), do: {:ok, nil}
+  defp optional_command(command), do: command(command)
+
+  defp write_advance(repo, %{command: nil} = input), do: insert_advance(repo, input, nil)
+
+  defp write_advance(repo, input) do
+    case replay(repo, input.command) do
+      {:ok, {:stored, response}} -> {:ok, response}
+      {:ok, :new} -> insert_advance(repo, input, input.command)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp insert_advance(repo, input, command) do
+    with {:ok, agent} <- Records.get(repo, Agent, input.agent_id),
+         :ok <- current_generation(agent, input.expected_generation),
+         seq = agent.history_seq + 1,
+         {:ok, _checkpoint} <-
+           Records.insert(
+             repo,
+             checkpoint_changeset(input.checkpoint, agent.id, input.turn_id)
+           ),
+         {:ok, version} <-
+           Records.cas_agent(
+             repo,
+             agent,
+             input.expected_version,
+             input.expected_generation,
+             head_checkpoint_id: input.checkpoint.id,
+             history_seq: seq
+           ),
+         {:ok, _event} <-
+           Records.insert(
+             repo,
+             event_changeset(input.event, agent.id, seq, %{turn_id: input.turn_id})
+           ) do
+      response = %{
+        "agent_id" => agent.id,
+        "checkpoint_id" => input.checkpoint.id,
+        "turn_id" => input.turn_id,
+        "history_seq" => seq,
+        "lock_version" => version
+      }
+
+      with {:ok, _command} <- insert_command(repo, command, response), do: {:ok, response}
+    end
+  end
+
+  defp validate_restore(attrs) do
+    with {:ok, _} <-
+           Records.fields(
+             attrs,
+             [
+               :command,
+               :agent_id,
+               :expected_version,
+               :expected_generation,
+               :checkpoint,
+               :event
+             ],
+             [:turn_id]
+           ),
+         {:ok, command} <- command(attrs[:command]),
+         {:ok, agent_id} <- Records.uuid(attrs[:agent_id]),
+         {:ok, version} <- Records.count(attrs[:expected_version]),
+         {:ok, generation} <- Records.count(attrs[:expected_generation]),
+         {:ok, turn_id} <- Records.optional_uuid(attrs[:turn_id]),
+         {:ok, checkpoint} <- next_checkpoint(attrs[:checkpoint]),
+         {:ok, event} <- Records.event_input(attrs[:event]) do
+      {:ok,
+       %{
+         command: command,
+         agent_id: agent_id,
+         expected_version: version,
+         expected_generation: generation,
+         turn_id: turn_id,
+         checkpoint: checkpoint,
+         event: event
+       }}
+    end
+  end
+
+  defp write_restore(repo, input) do
+    case replay(repo, input.command) do
+      {:ok, {:stored, response}} ->
+        {:ok, response}
+
+      {:ok, :new} ->
+        with {:ok, agent} <- Records.get(repo, Agent, input.agent_id),
+             :ok <- current_generation(agent, input.expected_generation),
+             seq = agent.history_seq + 1,
+             {:ok, _checkpoint} <-
+               insert_checkpoint(repo, input.checkpoint, agent.id, input.turn_id),
+             {:ok, version} <-
+               bump_generation(
+                 repo,
+                 agent,
+                 input.expected_version,
+                 input.expected_generation,
+                 input.checkpoint.id,
+                 seq
+               ),
+             {:ok, _event} <-
+               Records.insert(repo, event_changeset(input.event, agent.id, seq, %{})),
+             response = %{
+               "agent_id" => agent.id,
+               "checkpoint_id" => input.checkpoint.id,
+               "generation" => input.expected_generation + 1,
+               "history_seq" => seq,
+               "lock_version" => version
+             },
+             {:ok, _command} <- insert_command(repo, input.command, response) do
+          {:ok, response}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # The generation bump is the cross-request serializer: a second restore and any
+  # late write from the previous generation fail the same CAS and write nothing.
+  defp bump_generation(repo, agent, expected_version, expected_generation, checkpoint_id, seq) do
+    query =
+      from(a in Agent,
+        where:
+          a.id == ^agent.id and a.generation == ^expected_generation and
+            a.lock_version == ^expected_version,
+        update: [
+          set: [
+            generation: ^(expected_generation + 1),
+            lock_version: ^(expected_version + 1),
+            head_checkpoint_id: ^checkpoint_id,
+            history_seq: ^seq
+          ]
+        ]
+      )
+
+    case repo.update_all(query, [], log: false) do
+      {1, _} -> {:ok, expected_version + 1}
+      {0, _} -> {:error, :conflict}
+    end
+  end
+
   defp current_generation(agent, expected) do
     if agent.generation == expected, do: :ok, else: {:error, :stale_generation}
   end
@@ -584,6 +787,8 @@ defmodule Beamlet.Storage.AgentRecords do
           else: {:error, :conflict}
     end
   end
+
+  defp insert_command(_repo, nil, _response), do: {:ok, nil}
 
   defp insert_command(repo, command, response) do
     Records.insert(

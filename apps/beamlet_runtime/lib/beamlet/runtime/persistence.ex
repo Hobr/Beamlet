@@ -9,6 +9,11 @@ defmodule Beamlet.Runtime.Persistence do
   Without it Runtime stays ephemeral. The struct carries only opaque Repo handles
   and stable identities; PIDs, references, monitors, timers and worker handles
   stay in memory.
+
+  An `owner` names the Agent/turn an accepted Result belongs to and carries
+  exactly one Agent position: `expected_version` for the strict version CAS of a
+  single owned Operation, or `accept_seq` for the position a whole batch reserved
+  for that Operation's Result (siblings of one batch accept concurrently).
   """
   alias Beamlet.Actions.{Operation, Result}
   alias Beamlet.Storage.Codec
@@ -26,8 +31,9 @@ defmodule Beamlet.Runtime.Persistence do
   @type owner :: %{
           agent_id: binary(),
           turn_id: binary(),
-          expected_version: non_neg_integer(),
-          expected_generation: non_neg_integer()
+          expected_version: non_neg_integer() | nil,
+          expected_generation: non_neg_integer(),
+          accept_seq: non_neg_integer() | nil
         }
   @type t :: %__MODULE__{
           authority_repo: term(),
@@ -140,15 +146,23 @@ defmodule Beamlet.Runtime.Persistence do
       "execution_id" => result.execution_id,
       "status" => Atom.to_string(result.status),
       "reason" => value(result.reason),
-      "value" => result.value,
+      "value" => value(result.value),
       "source" => Atom.to_string(result.source),
       "metadata" => Map.new(result.metadata, fn {key, item} -> {to_string(key), value(item)} end)
     }
   end
 
   @doc false
+  # A durable Result is plain JSON data: labels the handler carried as atoms are
+  # stored as strings, so a receipt always has a stable digest.
   def value(nil), do: nil
   def value(item) when is_atom(item), do: Atom.to_string(item)
+  def value(item) when is_list(item), do: Enum.map(item, &value/1)
+
+  def value(item) when is_map(item) and not is_struct(item) do
+    Map.new(item, fn {key, child} -> {value(key), value(child)} end)
+  end
+
   def value(item), do: item
 
   defp owner_fields(nil), do: %{}
@@ -175,9 +189,15 @@ defmodule Beamlet.Runtime.Persistence do
 
   defp owner?(owner) do
     is_map(owner) and not is_struct(owner) and
-      Map.keys(owner) -- [:agent_id, :turn_id, :expected_version, :expected_generation] == [] and
+      Map.keys(owner) --
+        [:agent_id, :turn_id, :expected_version, :expected_generation, :accept_seq] == [] and
       Codec.uuid?(owner[:agent_id]) and Codec.uuid?(owner[:turn_id]) and
-      is_integer(owner[:expected_version]) and owner[:expected_version] >= 0 and
+      position?(owner[:expected_version], owner[:accept_seq]) and
       is_integer(owner[:expected_generation]) and owner[:expected_generation] >= 0
+  end
+
+  defp position?(version, accept_seq) do
+    (is_integer(version) and version >= 0 and is_nil(accept_seq)) or
+      (is_nil(version) and is_integer(accept_seq) and accept_seq > 0)
   end
 end

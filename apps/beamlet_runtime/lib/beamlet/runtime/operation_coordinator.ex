@@ -379,15 +379,23 @@ defmodule Beamlet.Runtime.OperationCoordinator do
           attrs
 
         owner ->
-          Map.put(attrs, :agent, %{
-            expected_version: owner.expected_version,
-            expected_generation: owner.expected_generation
-          })
+          Map.put(attrs, :agent, accept_identity(owner))
       end
 
     case Beamlet.Storage.OperationRecords.accept_result(persistence.authority_repo, attrs) do
       {:ok, accepted} -> {:ok, accepted}
       {:error, _reason} -> {:error, :durable_unavailable}
+    end
+  end
+
+  # An owner carries exactly one Agent position: the strict version CAS or the
+  # position a whole batch reserved for this Operation's accepted Result.
+  defp accept_identity(owner) do
+    agent = %{expected_generation: owner.expected_generation}
+
+    case owner[:accept_seq] do
+      nil -> Map.put(agent, :expected_version, owner.expected_version)
+      seq -> Map.put(agent, :accept_seq, seq)
     end
   end
 

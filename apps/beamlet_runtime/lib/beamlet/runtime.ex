@@ -43,6 +43,12 @@ defmodule Beamlet.Runtime do
   :unavailable}` having dispatched nothing. Without it the operation stays
   ephemeral and in-memory. The struct is authoritative input, so an invalid one
   raises instead of returning a tuple.
+
+  Optional `prepared:` dispatches an attempt another authority transaction already
+  committed (a whole Tool batch prepares its Operations together). The map is the
+  committed `operation_id`, `attempt_id`, `attempt_version`, `description_digest`
+  and `lock_version`; this call then writes no Operation row of its own and no
+  unrelated id can appear in the caller's batch.
   """
   def submit(operation, opts \\ []) do
     with :ok <- Operation.validate(operation),
@@ -53,7 +59,7 @@ defmodule Beamlet.Runtime do
          true <- valid_owner_guard?(opts),
          :ok <- coordinators_available(Keyword.get(opts, :persistence)),
          persistence <- Persistence.new(Keyword.get(opts, :persistence)),
-         {:ok, prepared} <- prepare(persistence, operation) do
+         {:ok, prepared} <- prepare(persistence, operation, Keyword.get(opts, :prepared)) do
       {id, durable} =
         case prepared do
           nil -> {Base.encode16(:crypto.strong_rand_bytes(16)), nil}
@@ -109,11 +115,32 @@ defmodule Beamlet.Runtime do
     end
   end
 
-  defp prepare(nil, _operation), do: {:ok, nil}
+  defp prepare(nil, _operation, nil), do: {:ok, nil}
 
-  defp prepare(%Persistence{} = persistence, operation) do
+  defp prepare(%Persistence{} = persistence, operation, nil) do
     Persistence.prepare(persistence, operation)
   end
+
+  # An attempt committed with its Operation is dispatched as it stands: preparing
+  # again would mint an unrelated Operation and leave the caller's row unaccepted.
+  defp prepare(%Persistence{}, _operation, prepared), do: prepared(prepared)
+
+  defp prepare(nil, _operation, _prepared), do: {:error, :invalid_operation}
+
+  defp prepared(prepared) when is_map(prepared) and not is_struct(prepared) do
+    valid =
+      Beamlet.Storage.Codec.uuid?(prepared["operation_id"]) and
+        Beamlet.Storage.Codec.uuid?(prepared["attempt_id"]) and
+        is_binary(prepared["description_digest"]) and
+        non_negative?(prepared["attempt_version"]) and
+        non_negative?(prepared["lock_version"])
+
+    if valid, do: {:ok, prepared}, else: {:error, :invalid_operation}
+  end
+
+  defp prepared(_), do: {:error, :invalid_operation}
+
+  defp non_negative?(value), do: is_integer(value) and value >= 0
 
   # A durable submit commits an Operation and a prepared attempt, so refuse before
   # writing when no coordinator can ever pick it up: an orphan prepared attempt has

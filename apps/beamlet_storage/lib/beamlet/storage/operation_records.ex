@@ -8,7 +8,7 @@ defmodule Beamlet.Storage.OperationRecords do
   evidence/resolution, never a second accepted Result.
   """
   import Ecto.Query
-  alias Beamlet.Storage.{Artifacts, Codec, Records}
+  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, Records}
   alias Beamlet.Storage.Schema.{Agent, Execution, ExecutionEvidence, Operation}
 
   @description_keys ~w(kind protocol_version payload refs budget claims safety)
@@ -297,6 +297,247 @@ defmodule Beamlet.Storage.OperationRecords do
     }
   end
 
+  ## Whole-batch preparation
+
+  @doc """
+  Commits every Operation of one legal Tool batch, its one prepared attempt, its
+  event and the batch checkpoint in a single transaction. Either the whole batch
+  is stored or nothing is; dispatch is the caller's later, separate step.
+
+  A batch dispatches its Operations concurrently, so each member reserves two
+  Agent history positions: the `operation.prepared` event and the position its
+  own accepted Result will write (`accept_seq` in the response). An accept then
+  never contends on the Agent version with a sibling of the same batch.
+  """
+  def prepare_batch(repo, attrs) do
+    with {:ok, input} <- validate_batch(attrs) do
+      Records.transact(repo, fn -> write_batch(repo, input) end)
+    end
+  end
+
+  defp validate_batch(attrs) do
+    with {:ok, _} <- Records.fields(attrs, [:operations, :agent, :checkpoint, :events], []),
+         {:ok, operations} <- batch_operations(attrs[:operations]),
+         {:ok, events} <- batch_events(attrs[:events], length(operations)),
+         {:ok, agent} <- agent(attrs[:agent]),
+         {:ok, checkpoint} <- AgentRecords.checkpoint(attrs[:checkpoint]),
+         :ok <- single_owner(operations, agent) do
+      {:ok, %{operations: operations, events: events, agent: agent, checkpoint: checkpoint}}
+    end
+  end
+
+  defp batch_operations(list) when is_list(list) and length(list) in 1..8 do
+    Enum.reduce_while(list, {:ok, []}, fn requested, {:ok, acc} ->
+      with {:ok, attempt} <- batch_attempt(requested),
+           {:ok, operation} <- operation(Map.delete(requested, :attempt)) do
+        if owned_batch_member?(operation) and
+             not Enum.any?(
+               acc,
+               &(&1.operation.id == operation.id or
+                   &1.operation.ordinal == operation.ordinal)
+             ),
+           do: {:cont, {:ok, [%{operation: operation, attempt: attempt} | acc]}},
+           else: {:halt, {:error, :invalid_data}}
+      else
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      error -> error
+    end
+  end
+
+  defp batch_operations(list) when is_list(list), do: {:error, :limit}
+  defp batch_operations(_), do: {:error, :invalid_data}
+
+  # Every batch member is dispatchable on its own: exactly one prepared attempt.
+  defp batch_attempt(requested) when is_map(requested) and not is_struct(requested) do
+    case Map.get(requested, :attempt) do
+      nil -> {:error, :invalid_data}
+      attempt -> attempt(attempt)
+    end
+  end
+
+  defp batch_attempt(_), do: {:error, :invalid_data}
+
+  defp owned_batch_member?(operation) do
+    not is_nil(operation.owner_agent_id) and not is_nil(operation.turn_id) and
+      not is_nil(operation.tool_call_id) and not is_nil(operation.ordinal)
+  end
+
+  defp batch_events(events, count) when is_list(events) and length(events) == count do
+    Enum.reduce_while(events, {:ok, []}, fn event, {:ok, acc} ->
+      case Records.event_input(event) do
+        {:ok, normalized} -> {:cont, {:ok, [normalized | acc]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      error -> error
+    end
+  end
+
+  defp batch_events(_, _), do: {:error, :invalid_data}
+
+  defp single_owner([%{operation: %{owner_agent_id: owner, turn_id: turn}} | rest], agent) do
+    if not is_nil(agent) and
+         Enum.all?(rest, &(&1.operation.owner_agent_id == owner and &1.operation.turn_id == turn)),
+       do: :ok,
+       else: {:error, :invalid_data}
+  end
+
+  defp write_batch(repo, input) do
+    case stored_batch(repo, input.operations) do
+      {:ok, :new} -> insert_batch(repo, input)
+      {:ok, {:stored, stored}} -> batch_replay(repo, stored)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # A replayed batch returns the same members (attempt identity included) as the
+  # original commit, so a caller that reuses it still gets a usable version.
+  defp stored_batch(repo, operations) do
+    Enum.reduce_while(operations, {:ok, []}, fn %{operation: operation}, {:ok, acc} ->
+      case repo.get(Operation, operation.id, log: false) do
+        nil ->
+          {:cont, {:ok, [{nil, operation} | acc]}}
+
+        %Operation{description_digest: digest} = stored
+        when digest == operation.description_digest ->
+          {:cont, {:ok, [{stored, operation} | acc]}}
+
+        %Operation{} ->
+          {:halt, {:error, :conflict}}
+      end
+    end)
+    |> case do
+      {:ok, pairs} ->
+        stored = Enum.reject(pairs, fn {stored, _requested} -> is_nil(stored) end)
+
+        cond do
+          stored == [] -> {:ok, :new}
+          length(stored) == length(pairs) -> {:ok, {:stored, Enum.reverse(stored)}}
+          true -> {:error, :conflict}
+        end
+
+      error ->
+        error
+    end
+  end
+
+  defp batch_replay(repo, [{first, _requested} | _] = stored) do
+    case Records.get(repo, Agent, first.owner_agent_id) do
+      {:ok, agent} ->
+        case replay_members(repo, stored) do
+          {:ok, members} ->
+            {:ok,
+             %{
+               "agent_id" => agent.id,
+               "checkpoint_id" => agent.head_checkpoint_id,
+               "history_seq" => agent.history_seq,
+               "lock_version" => agent.lock_version,
+               "operations" => members
+             }}
+
+          error ->
+            error
+        end
+
+      error ->
+        error
+    end
+  end
+
+  defp replay_members(repo, stored) do
+    Enum.reduce_while(stored, {:ok, []}, fn {operation, _requested}, {:ok, acc} ->
+      case attempt_for(repo, operation.id) do
+        nil -> {:halt, {:error, :conflict}}
+        attempt -> {:cont, {:ok, [batch_member(operation, attempt, operation.history_seq) | acc]}}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      error -> error
+    end
+  end
+
+  defp insert_batch(repo, input) do
+    owner = hd(input.operations).operation.owner_agent_id
+    count = length(input.operations)
+    reserved = 2 * count
+
+    with {:ok, agent} <- Records.get(repo, Agent, owner),
+         base = agent.history_seq,
+         {:ok, _checkpoint} <-
+           AgentRecords.insert_checkpoint(repo, input.checkpoint, owner, batch_turn(input)),
+         {:ok, version} <-
+           Records.cas_agent(
+             repo,
+             agent,
+             input.agent.expected_version,
+             input.agent.expected_generation,
+             head_checkpoint_id: input.checkpoint.id,
+             history_seq: base + reserved
+           ),
+         {:ok, stored} <- insert_batch_operations(repo, input, base) do
+      {:ok,
+       %{
+         "agent_id" => owner,
+         "checkpoint_id" => input.checkpoint.id,
+         "history_seq" => base + reserved,
+         "lock_version" => version,
+         "operations" => stored
+       }}
+    end
+  end
+
+  defp batch_turn(input),
+    do: input.operations |> hd() |> Map.fetch!(:operation) |> Map.fetch!(:turn_id)
+
+  defp insert_batch_operations(repo, input, base) do
+    Enum.reduce_while(Enum.with_index(input.operations), {:ok, []}, fn
+      {%{operation: operation, attempt: attempt}, index}, {:ok, acc} ->
+        seq = base + 2 * index + 1
+        event = Enum.at(input.events, index)
+
+        with {:ok, _operation} <- Records.insert(repo, operation_changeset(operation, seq)),
+             {:ok, attempt} <- insert_attempt(repo, operation, attempt),
+             {:ok, _event} <-
+               Records.insert(
+                 repo,
+                 event_changeset(event, operation.owner_agent_id, seq, %{
+                   operation_id: operation.id,
+                   turn_id: operation.turn_id
+                 })
+               ) do
+          {:cont, {:ok, [batch_member(operation, attempt, seq) | acc]}}
+        else
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      error -> error
+    end
+  end
+
+  defp batch_member(operation, attempt, seq) do
+    %{
+      "operation_id" => operation.id,
+      "tool_call_id" => operation.tool_call_id,
+      "ordinal" => operation.ordinal,
+      "description_digest" => operation.description_digest,
+      "lock_version" => Map.get(operation, :lock_version, 0),
+      "history_seq" => seq,
+      "accept_seq" => seq + 1,
+      "attempt_id" => attempt.attempt_id,
+      "attempt_version" => attempt.lock_version,
+      "dispatch_state" => attempt.dispatch_state
+    }
+  end
+
   ## Dispatch claim
 
   defp write_claim(repo, input) do
@@ -449,7 +690,7 @@ defmodule Beamlet.Storage.OperationRecords do
          {:ok, result} <- Records.json(attrs[:result], :result),
          {:ok, evidence_id} <- Records.optional_uuid(attrs[:evidence_id]),
          {:ok, artifact_ids} <- artifact_ids(attrs[:artifact_ids]),
-         {:ok, agent} <- agent(attrs[:agent]),
+         {:ok, agent} <- accept_agent(attrs[:agent]),
          {:ok, event} <- Records.event_input(attrs[:event]) do
       {:ok,
        %{
@@ -554,19 +795,58 @@ defmodule Beamlet.Storage.OperationRecords do
   end
 
   defp accept_history(repo, operation, input) do
-    with %{expected_version: version, expected_generation: generation} <- input.agent,
-         {:ok, seq} <-
-           Records.advance_agent_history(
-             repo,
-             operation.owner_agent_id,
-             version,
-             generation
-           ) do
-      {:ok, seq, operation.owner_agent_id}
+    with %{expected_generation: generation} <- input.agent,
+         {:ok, agent} <- Records.get(repo, Agent, operation.owner_agent_id),
+         :ok <- generation_only(agent, generation) do
+      case input.agent do
+        # A batch member writes the position its preparation reserved; several
+        # accepts of one batch must not contend on the Agent version.
+        %{accept_seq: seq} when is_integer(seq) ->
+          # The position was reserved by this batch's prepare; anything beyond the
+          # Agent's committed history sequence is forged or stale.
+          if seq > 0 and seq <= agent.history_seq,
+            do: {:ok, seq, operation.owner_agent_id},
+            else: {:error, :conflict}
+
+        %{expected_version: version} ->
+          with {:ok, seq} <-
+                 Records.advance_agent_history(
+                   repo,
+                   operation.owner_agent_id,
+                   version,
+                   generation
+                 ) do
+            {:ok, seq, operation.owner_agent_id}
+          end
+      end
     else
       nil -> {:error, :invalid_data}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # The accepting Agent identity is either a strict version CAS for one owned
+  # Operation or the batch-preallocated position when siblings accept at once.
+  defp accept_agent(nil), do: {:ok, nil}
+
+  defp accept_agent(agent) do
+    with {:ok, _} <-
+           Records.fields(agent, [:expected_generation], [:expected_version, :accept_seq]),
+         {:ok, generation} <- Records.count(agent[:expected_generation]),
+         {:ok, version} <- optional_count(agent[:expected_version]),
+         {:ok, accept_seq} <- optional_count(agent[:accept_seq]),
+         :ok <- one_position(version, accept_seq) do
+      {:ok, %{expected_version: version, expected_generation: generation, accept_seq: accept_seq}}
+    end
+  end
+
+  defp one_position(nil, nil), do: {:error, :invalid_data}
+  defp one_position(nil, _accept_seq), do: :ok
+  defp one_position(_version, nil), do: :ok
+  defp one_position(_version, _accept_seq), do: {:error, :invalid_data}
+
+  defp generation_only(agent, generation) do
+    if agent.generation == generation, do: :ok, else: {:error, :stale_generation}
   end
 
   defp replay_accept(repo, operation, input) do

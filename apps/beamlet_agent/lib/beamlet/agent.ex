@@ -30,6 +30,9 @@ defmodule Beamlet.Agent do
 
   def close(ref), do: command(ref, :close)
   def input(ref, text), do: command(ref, {:input, text})
+
+  @doc "Durable input: the command identity makes a repeated submission replay instead of re-dispatch."
+  def input(ref, text, command_id), do: command(ref, {:input, text, command_id})
   def delegate(ref, children, opts \\ []), do: command(ref, {:delegate, children, opts})
 
   def peer_request(ref, target, payload, ttl \\ 30_000),
@@ -49,6 +52,62 @@ defmodule Beamlet.Agent do
 
   def unsubscribe(ref, sink \\ self()), do: command(ref, {:unsubscribe, sink})
   def ack(ref, sequence), do: command(ref, {:ack, self(), sequence})
+
+  @doc """
+  Loads a paused instance from a durable locator (`%{repo:, agent_id:, model:,
+  tools:, catalogue:, environment:, runtime:}`) plus `expected_version` and
+  `command_id`; `runtime` is the optional live Tool dispatch wiring.
+  Performs no model, Tool or network work; a missing dependency returns
+  `{:error, {:blocked, reason}}` before any instance exists. An id that is still
+  live returns `{:error, :already_active}` before the restore transaction, so a
+  rejected duplicate never bumps the generation of the running instance.
+  """
+  def restore(locator, expected_version, command_id) do
+    with :ok <- inactive(locator),
+         {:ok, restored} <- Beamlet.Agent.Durable.restore(locator, expected_version, command_id) do
+      start_restored(locator, restored)
+    end
+  end
+
+  defp inactive(%{repo: repo, agent_id: agent_id}) do
+    case Beamlet.Storage.AgentRecords.fetch(repo, agent_id) do
+      {:ok, %{"agent" => %{"alias" => alias_name} = agent}} ->
+        if Registry.lookup(Beamlet.Agent.Registry, alias_name || agent["id"]) == [],
+          do: :ok,
+          else: {:error, :already_active}
+
+      # An unknown Agent is the restore transaction's error to report.
+      _ ->
+        :ok
+    end
+  end
+
+  defp inactive(_), do: :ok
+
+  defp start_restored(locator, restored) do
+    opts = [
+      id: restored.alias || restored.durable.agent_id,
+      model: locator[:model],
+      tools: Map.get(locator, :tools, %{}),
+      catalogue: Map.get(locator, :catalogue, %{}),
+      durable: restored.durable,
+      restored: %{checkpoint: restored.checkpoint, durable: restored.durable}
+    ]
+
+    case start_local(opts) do
+      {:ok, ref} -> {:ok, ref}
+      {:error, {:already_started, _pid}} -> {:error, :already_active}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Explicitly continues a paused durable instance: validates the expected version,
+  records the decision and advances the stored continuation. Uncertain external
+  effects stay blocked until `decisions` carries `%{"resolution" => "confirmed_failed" | "confirmed_executed"}`.
+  """
+  def continue(ref, expected_version, decisions, command_id),
+    do: command(ref, {:continue, expected_version, decisions, command_id})
 
   def command(%Ref{} = ref, command) do
     GenServer.call(ref.pid, {ref.incarnation, command}, 5000)
