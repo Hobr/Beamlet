@@ -1,6 +1,6 @@
 # 本机 OTP 查询执行路径核查
 
-> 留存状态（2026-10-17）：用户已接受后续 simplify-agent-queries 实现，按约定清理本任务的 results/、experiments/ 及专用 .gitignore。原始记录、失败日志、源快照和实验脚本不再随仓库提供，不能按原命令复现。本文保留历史结论及来源，不冒充仍可读取的原始证据；涉及“当前/现有”的描述均指研究时基线9657d2a。后续实现与验收见 ../10-17-simplify-agent-queries/（research/ 下文档对应 ../../10-17-simplify-agent-queries/）。
+> 留存状态（2026-10-17）：用户已接受后续 simplify-agent-queries 实现，按约定清理本任务的 results/、experiments/ 及专用 .gitignore。原始记录、失败日志、源快照和实验脚本不再随仓库提供，不能按原命令复现。本文保留历史结论及来源，不冒充仍可读取的原始证据；涉及“当前/现有”的描述均指研究时基线9657d2a。后续实现与验收见[已归档实现任务](../../archive/2026-10/10-17-simplify-agent-queries/prd.md)。
 
 核查日期：2026-10-17。本文仅覆盖实验用本机 OTP/Elixir 一手源码，不是生态选型最终报告。基线 `9657d2a`，产品模块未修改。
 

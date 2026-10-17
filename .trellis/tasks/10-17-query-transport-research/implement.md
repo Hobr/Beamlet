@@ -18,7 +18,7 @@
 
 ## 保留结论与验证边界
 
-最终结论见[research/report.md](research/report.md)，独立历史复核摘要见[research/quality-review.md](research/quality-review.md)。官方来源及源码语义分别见ecosystem.md、otp-paths.md。后续产品行为与实际产品回归见[新任务验收](../10-17-simplify-agent-queries/acceptance.md)，不得用历史98场景代替产品验证。
+最终结论见[research/report.md](research/report.md)，独立历史复核摘要见[research/quality-review.md](research/quality-review.md)。官方来源及源码语义分别见ecosystem.md、otp-paths.md。后续产品行为与实际产品回归见[新任务验收](../archive/2026-10/10-17-simplify-agent-queries/acceptance.md)，不得用历史98场景代替产品验证。
 
 历史研究期执行过脚本显式format、warnings-as-errors compile、既有Discovery9 passed/seed631927、JSONL语义/Python语法/空白链接/范围审计。独立review只重跑一次full，不另跑产品测试。原逐命令日志已清理，目前不能按原入口复现。
 

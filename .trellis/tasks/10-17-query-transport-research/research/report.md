@@ -1,6 +1,6 @@
 # 只读 Agent 查询传输：实验与生态综合报告
 
-> 留存状态（2026-10-17）：用户已接受后续 simplify-agent-queries 实现，按约定清理本任务的 results/、experiments/ 及专用 .gitignore。原始记录、失败日志、源快照和实验脚本不再随仓库提供，不能按原命令复现。本文保留历史结论及来源，不冒充仍可读取的原始证据；涉及“当前/现有”的描述均指研究时基线9657d2a。后续实现与验收见 ../10-17-simplify-agent-queries/（research/ 下文档对应 ../../10-17-simplify-agent-queries/）。
+> 留存状态（2026-10-17）：用户已接受后续 simplify-agent-queries 实现，按约定清理本任务的 results/、experiments/ 及专用 .gitignore。原始记录、失败日志、源快照和实验脚本不再随仓库提供，不能按原命令复现。本文保留历史结论及来源，不冒充仍可读取的原始证据；涉及“当前/现有”的描述均指研究时基线9657d2a。后续实现与验收见[已归档实现任务](../../archive/2026-10/10-17-simplify-agent-queries/prd.md)。
 
 ## 1. 执行结论
 
@@ -138,7 +138,7 @@ Syn/Horde默认冲突exit的具体reason并非都不可捕获kill，也不能因
 历史launcher使用私有epmd、standard_io控制、低scheduler、随机cookie和有限进程组watchdog；不接触生产集群。原既有Discovery测试曾9 passed/seed631927，这与98场景及96次批次调用分开计数，不表示新实现测试。
 全局result*忽略曾妨碍证据持久化，任务专用例外在研究交付时生效；本次随目录一并删除，不改root或全局忽略规则。
 
-产品已在后续任务迁移为有限local/erpc读取；当前产品验收使用apps下的长期回归，详见[新实现验收](../../10-17-simplify-agent-queries/acceptance.md)和[验证报告](../../10-17-simplify-agent-queries/verification.md)，不依赖本研究的已删目录。
+产品已在后续任务迁移为有限local/erpc读取；当前产品验收使用apps下的长期回归，详见[新实现验收](../../archive/2026-10/10-17-simplify-agent-queries/acceptance.md)和[验证报告](../../archive/2026-10/10-17-simplify-agent-queries/verification.md)，不依赖本研究的已删目录。
 
 ## 8. 失败、恢复及未验证项
 
