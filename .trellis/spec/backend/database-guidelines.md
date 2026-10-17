@@ -23,6 +23,22 @@ task-level contract rather than an invented Ecto convention. Runtime refs addres
 live coordinators; status is unavailable after expiry or shared infrastructure loss.
 Do not turn retained Results/tombstones into replay or durable deduplication promises.
 
+## Proposed Next Architecture (Not Implemented)
+
+The documentation-only [Agent / Operation persistence proposal](../../../docs/architecture/agent-operation-persistence.md)
+extends the archived distributed architecture with Ecto, authority-owned SQLite or
+PostgreSQL, an executor-local SQLite evidence journal, paused recovery, history,
+trace export, and rewind by copying a safe checkpoint's effective context into a
+new Agent. The user accepted its core direction and the removal of standalone
+branches. These decisions remain design material, not a checked-in storage
+convention. The [mechanism study](../../../docs/architecture/research/durable-agent-mechanisms.md)
+compares pinned pi durable source with LangGraph, Agents SDK and Temporal, and
+limits durable primitives to history records and checkpoints. Fork returns a new
+Agent identity with materialized context and provenance; it does not introduce
+branch tables, active-branch switching or recursive parent-history loading. Consult its [delivery and acceptance plan](../../../docs/architecture/persistence-delivery.md)
+when scoping future implementation; the current no-database description above
+continues to apply until implementation lands.
+
 ## Existing State Boundaries
 
 `apps/beamlet_web/lib/beamlet_web/endpoint.ex` configures a cookie session:
