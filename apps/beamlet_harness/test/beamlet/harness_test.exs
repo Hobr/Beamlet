@@ -1,14 +1,27 @@
 defmodule Beamlet.HarnessTest do
   use ExUnit.Case, async: true
-  alias Beamlet.Harness.{Arguments, Catalogue, Context}
+  alias Beamlet.Harness.{Arguments, Catalogue, Context, Model}
   alias Beamlet.Harness.Models.{Deterministic, OpenAICompatible}
   alias Beamlet.Harness.Tools.WorkspaceRead
 
   def call(id, path \\ "a"),
     do: %{
       "id" => id,
+      "name" => "workspace_read",
+      "arguments" => %{"path" => path}
+    }
+
+  defp wire_call(id),
+    do: %{
+      "id" => id,
       "type" => "function",
-      "function" => %{"name" => "workspace_read", "arguments" => Jason.encode!(%{"path" => path})}
+      "function" => %{"name" => "workspace_read", "arguments" => ~s({"path":"a"})}
+    }
+
+  defp fixture,
+    do: %{
+      config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}},
+      credentials: %{}
     }
 
   def reply(message, finish \\ "stop"),
@@ -32,7 +45,7 @@ defmodule Beamlet.HarnessTest do
           [call("a"), call("a")],
           [call("ok"), %{}],
           List.duplicate(call("a"), 9),
-          [put_in(call("a"), ["function", "arguments"], "{}")]
+          [put_in(call("a"), ["arguments"], %{})]
         ] do
       assert {:error, :invalid_tool_batch} = Catalogue.batch(calls, catalogue)
     end
@@ -43,10 +56,9 @@ defmodule Beamlet.HarnessTest do
 
   test "complete replies reject refusals, incomplete and unsupported actions" do
     {:ok, catalogue} = Catalogue.new([WorkspaceRead.descriptor()])
-    message = %{"content" => nil, "tool_calls" => [call("original")]}
-    message_with_role = Map.put(message, "role", "assistant")
+    message = %{"content" => nil, "tool_calls" => [wire_call("original")]}
 
-    assert {:ok, %{calls: [%{id: "original"}], assistant: ^message_with_role}} =
+    assert {:ok, %{calls: [%{id: "original"}]}} =
              normalize_bind(message, catalogue)
 
     for bad <- [
@@ -75,14 +87,14 @@ defmodule Beamlet.HarnessTest do
     request = %{messages: [%{"role" => "user", "content" => "hi"}], catalogue: %{}}
 
     assert {:error, :cancelled} =
-             Deterministic.complete(request, %{reply: reply(%{"content" => "ok"})}, %Context{
+             Deterministic.complete(request, fixture(), %Context{
                cancelled?: fn -> true end
              })
 
     parent = self()
 
     assert {:ok, %{content: "ok"}} =
-             Deterministic.complete(request, %{reply: reply(%{"content" => "ok"})}, %Context{
+             Deterministic.complete(request, fixture(), %Context{
                progress: &send(parent, &1)
              })
 
@@ -162,10 +174,10 @@ defmodule Beamlet.HarnessTest do
   end
 
   test "deterministic provider enforces the same complete history and request contract" do
-    settings = %{reply: reply(%{"content" => "ok"})}
+    settings = fixture()
     {:ok, catalogue} = Catalogue.new([WorkspaceRead.descriptor()])
     base = %{messages: [%{"role" => "user", "content" => "hi"}], catalogue: catalogue}
-    assistant = %{"role" => "assistant", "content" => nil, "tool_calls" => [call("one")]}
+    assistant = %{"role" => "assistant", "content" => nil, "calls" => [call("one")]}
 
     for {request, error} <- [
           {%{}, :invalid_request},
@@ -174,7 +186,7 @@ defmodule Beamlet.HarnessTest do
           {%{base | catalogue: %{"wrong" => WorkspaceRead.descriptor()}}, :invalid_catalogue},
           {%{base | messages: nil}, :context_limit}
         ] do
-      assert {:error, ^error} = OpenAICompatible.validate_request(request)
+      assert {:error, ^error} = Model.validate_request(request)
       assert {:error, ^error} = Deterministic.complete(request, settings, %Context{})
     end
 
@@ -197,9 +209,9 @@ defmodule Beamlet.HarnessTest do
       catalogue: catalogue
     }
 
-    assert {:error, :request_limit} = OpenAICompatible.validate_request(request)
+    assert {:error, :request_limit} = Model.validate_request(request)
 
     assert {:error, :request_limit} =
-             Deterministic.complete(request, %{reply: reply(%{"content" => "ok"})}, %Context{})
+             Deterministic.complete(request, fixture(), %Context{})
   end
 end

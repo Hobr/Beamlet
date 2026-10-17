@@ -1,15 +1,16 @@
 defmodule Beamlet.Harness.Models.OpenAICompatible do
-  @moduledoc "Executor-local, nonstreaming text Chat Completions subset. Never retries."
+  @moduledoc "Nonstreaming text Chat Completions adapter using Agent-owned invocation config and credentials. Never retries."
   @behaviour Beamlet.Harness.Model
-  alias Beamlet.Harness.{Catalogue, Context}
+  alias Beamlet.Harness.{Catalogue, Context, Model}
   @limit 1_048_576
 
   @impl true
   def complete(request, settings, context \\ %Context{}) do
     with false <- Context.cancelled?(context),
+         :ok <- validate_invocation(settings),
          {:ok, url, key} <- profile(settings),
-         {:ok, payload} <- payload(request, settings),
-         {:ok, response} <- transport(url, key, payload, settings) do
+         {:ok, payload} <- payload(request, settings.config),
+         {:ok, response} <- transport(url, key, payload, settings.config) do
       decode(response, request.catalogue)
     else
       true -> {:error, :cancelled}
@@ -20,14 +21,26 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     _ -> {:error, :provider_failure}
   end
 
-  defp profile(%{base_url: base, model: model, key_env: env} = settings)
-       when is_binary(base) and is_binary(model) and is_binary(env) do
+  @impl true
+  def validate_invocation(invocation) do
+    with :ok <- Model.validate_invocation(invocation), {:ok, _, _} <- profile(invocation) do
+      :ok
+    else
+      _ -> {:error, :invalid_profile}
+    end
+  rescue
+    _ -> {:error, :invalid_profile}
+  end
+
+  defp profile(%{
+         config: %{"base_url" => base, "model" => model} = config,
+         credentials: %{"api_key" => key} = credentials
+       })
+       when is_binary(base) and is_binary(model) do
     uri = URI.parse(base)
 
-    key = System.get_env(env)
-
-    if safe_settings?(settings) and safe_base?(base) and
-         safe_uri?(uri, settings) and safe_key?(key) and byte_size(model) in 1..256 and
+    if map_size(credentials) == 1 and safe_settings?(config) and safe_base?(base) and
+         safe_uri?(uri, config) and safe_key?(key) and byte_size(model) in 1..256 and
          String.valid?(model) do
       {:ok, String.trim_trailing(base, "/") <> "/chat/completions", key}
     else
@@ -38,10 +51,10 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
   defp profile(_), do: {:error, :invalid_profile}
 
   defp safe_settings?(settings) do
-    Map.keys(settings) -- [:base_url, :model, :key_env, :timeout_ms, :allow_local_http] == [] and
-      is_boolean(Map.get(settings, :allow_local_http, false)) and
-      is_integer(Map.get(settings, :timeout_ms, 5000)) and
-      Map.get(settings, :timeout_ms, 5000) in 1..60_000
+    Map.keys(settings) -- ~w(base_url model timeout_ms allow_local_http) == [] and
+      is_boolean(Map.get(settings, "allow_local_http", false)) and
+      is_integer(Map.get(settings, "timeout_ms", 5000)) and
+      Map.get(settings, "timeout_ms", 5000) in 1..60_000
   end
 
   defp safe_base?(base) do
@@ -51,7 +64,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
   defp safe_uri?(uri, settings) do
     local_http =
       uri.scheme == "http" and uri.host in ["127.0.0.1", "localhost", "::1"] and
-        Map.get(settings, :allow_local_http, false)
+        Map.get(settings, "allow_local_http", false)
 
     (uri.scheme == "https" or local_http) and safe_host?(uri) and
       uri.userinfo == nil and uri.query == nil and uri.fragment == nil
@@ -61,33 +74,24 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     do: is_binary(uri.host) and uri.host != "" and uri.port in 1..65_535
 
   defp safe_key?(key),
-    do: is_binary(key) and byte_size(key) in 1..4096 and not String.contains?(key, ["\r", "\n"])
-
-  def validate_request(%{messages: messages, catalogue: catalogue} = request) do
-    with true <- Map.keys(request) -- [:messages, :catalogue] == [],
-         :ok <- Catalogue.validate(catalogue),
-         {:ok, _} <- Context.append([], messages),
-         :ok <- messages_valid(messages, catalogue) do
-      case Jason.encode(request) do
-        {:ok, json} when byte_size(json) <= @limit -> :ok
-        _ -> {:error, :request_limit}
-      end
-    else
-      false -> {:error, :invalid_request}
-      error -> error
-    end
-  end
-
-  def validate_request(_), do: {:error, :invalid_request}
+    do:
+      is_binary(key) and byte_size(key) in 1..4096 and String.valid?(key) and
+        not String.contains?(key, ["\r", "\n"])
 
   defp payload(%{messages: messages, catalogue: catalogue} = request, settings) do
-    with :ok <- validate_request(request) do
+    with :ok <- Model.validate_request(request) do
       tools =
         Enum.map(Enum.sort_by(catalogue, &elem(&1, 0)), fn {_, d} ->
           %{"type" => "function", "function" => d}
         end)
 
-      body = %{model: settings.model, messages: messages, stream: false, n: 1}
+      body = %{
+        model: settings["model"],
+        messages: Enum.map(messages, &encode_message/1),
+        stream: false,
+        n: 1
+      }
+
       body = if tools == [], do: body, else: Map.put(body, :tools, tools)
 
       with {:ok, json} <- Jason.encode(body),
@@ -99,47 +103,51 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   defp payload(_, _), do: {:error, :invalid_request}
 
-  defp messages_valid(messages, catalogue) do
-    Enum.reduce_while(messages, {:ok, []}, fn m, {:ok, pending} ->
-      case message_pending(m, pending, catalogue) do
-        {:ok, next} -> {:cont, {:ok, next}}
-        _ -> {:halt, :invalid}
+  defp encode_message(%{"role" => "assistant", "calls" => calls} = message) do
+    message
+    |> Map.delete("calls")
+    |> Map.put(
+      "tool_calls",
+      Enum.map(calls, fn call ->
+        %{
+          "id" => call["id"],
+          "type" => "function",
+          "function" => %{"name" => call["name"], "arguments" => Jason.encode!(call["arguments"])}
+        }
+      end)
+    )
+  end
+
+  defp encode_message(%{"role" => "tool", "call_id" => id} = message),
+    do: message |> Map.delete("call_id") |> Map.put("tool_call_id", id)
+
+  defp encode_message(message), do: message
+
+  defp decode_calls(calls) when is_list(calls) do
+    Enum.reduce_while(calls, {:ok, []}, fn call, {:ok, acc} ->
+      with %{
+             "id" => id,
+             "type" => "function",
+             "function" => %{"name" => name, "arguments" => raw} = function
+           } <- call,
+           true <- map_size(call) == 3 and map_size(function) == 2,
+           true <- is_binary(raw) and byte_size(raw) <= 16_384,
+           {:ok, args} <- Jason.decode(raw) do
+        {:cont, {:ok, [%{"id" => id, "name" => name, "arguments" => args} | acc]}}
+      else
+        _ -> {:halt, {:error, :invalid_tool_batch}}
       end
     end)
     |> case do
-      {:ok, []} -> :ok
-      _ -> {:error, :invalid_messages}
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      error -> error
     end
   end
 
-  defp message_pending(
-         %{"role" => "tool", "tool_call_id" => id, "content" => text} = m,
-         [id | rest],
-         _
-       )
-       when is_binary(text) do
-    if Map.keys(m) -- ~w(role tool_call_id content) == [], do: {:ok, rest}, else: :invalid
-  end
-
-  defp message_pending(%{"role" => "assistant", "tool_calls" => _} = m, [], catalogue) do
-    case normalize(
-           %{"choices" => [%{"finish_reason" => "tool_calls", "message" => m}]},
-           catalogue
-         ) do
-      {:ok, %{calls: valid}} -> {:ok, Enum.map(valid, & &1.id)}
-      _ -> :invalid
-    end
-  end
-
-  defp message_pending(%{"role" => role, "content" => text} = m, [], _)
-       when role in ["system", "user", "assistant"] and is_binary(text) do
-    if Map.keys(m) -- ~w(role content) == [], do: {:ok, []}, else: :invalid
-  end
-
-  defp message_pending(_, _, _), do: :invalid
+  defp decode_calls(_), do: {:error, :invalid_tool_batch}
 
   defp transport(url, key, body, settings) do
-    timeout = Map.get(settings, :timeout_ms, 5000)
+    timeout = Map.get(settings, "timeout_ms", 5000)
 
     if not is_integer(timeout) or timeout not in 1..60_000 do
       {:error, :invalid_profile}
@@ -227,7 +235,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   def normalize(reply, catalogue) do
     with :ok <- Catalogue.validate(catalogue),
-         {:ok, json} <- Jason.encode(reply),
+         {:ok, json} <- encode_reply(reply),
          true <- byte_size(json) <= @limit do
       normalize_reply(reply, catalogue)
     else
@@ -235,6 +243,13 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
       {:error, reason} when is_atom(reason) -> {:error, reason}
       _ -> {:error, :invalid_reply}
     end
+  end
+
+  # Direct callers can supply terms that cannot occur in decoded JSON.
+  defp encode_reply(reply) do
+    Jason.encode(reply)
+  rescue
+    FunctionClauseError -> {:error, :invalid_reply}
   end
 
   defp safe_message(message) do
@@ -260,13 +275,14 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   defp finish("stop", %{"content" => text} = message, _) when is_binary(text) do
     if message["tool_calls"] in [nil, []],
-      do: {:ok, %{kind: :text, content: text, calls: [], assistant: message}},
+      do: {:ok, %{kind: :text, content: text, calls: []}},
       else: {:error, :unsupported_reply}
   end
 
   defp finish("tool_calls", message, catalogue) do
-    with {:ok, calls} <- Catalogue.batch(message["tool_calls"], catalogue) do
-      {:ok, %{kind: :tool_calls, content: message["content"], calls: calls, assistant: message}}
+    with {:ok, decoded} <- decode_calls(message["tool_calls"]),
+         {:ok, calls} <- Catalogue.batch(decoded, catalogue) do
+      {:ok, %{kind: :tool_calls, content: message["content"], calls: calls}}
     end
   end
 

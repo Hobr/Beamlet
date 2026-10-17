@@ -1,10 +1,5 @@
 defmodule Beamlet.Harness do
-  @moduledoc "Independent native model and Tool contracts. Settings and callbacks remain executor-local."
-end
-
-defmodule Beamlet.Harness.Model do
-  @moduledoc "A model returns one complete validated reply; no runtime identities are required."
-  @callback complete(map(), map(), Beamlet.Harness.Context.t()) :: {:ok, map()} | {:error, atom()}
+  @moduledoc "Independent neutral model and Tool contracts. Invocation data is explicit; hooks and Tool settings are local."
 end
 
 defmodule Beamlet.Harness.Tool do

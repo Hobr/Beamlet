@@ -27,6 +27,8 @@ defmodule Beamlet.Harness.Context do
     else
       _ -> {:error, :context_limit}
     end
+  rescue
+    _ -> {:error, :context_limit}
   end
 
   def append(_, _), do: {:error, :context_limit}

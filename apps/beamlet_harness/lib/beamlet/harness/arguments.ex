@@ -4,7 +4,7 @@ defmodule Beamlet.Harness.Arguments do
   def schema?(%{"type" => "object", "properties" => properties} = schema)
       when is_map(properties) do
     Map.keys(schema) -- ~w(type properties required additionalProperties) == [] and
-      is_list(Map.get(schema, "required", [])) and
+      proper_list?(Map.get(schema, "required", [])) and
       Enum.all?(Map.get(schema, "required", []), &Map.has_key?(properties, &1)) and
       is_boolean(Map.get(schema, "additionalProperties", false)) and
       Enum.all?(properties, fn {key, value} ->
@@ -13,6 +13,10 @@ defmodule Beamlet.Harness.Arguments do
   end
 
   def schema?(_), do: false
+
+  defp proper_list?([]), do: true
+  defp proper_list?([_ | tail]), do: proper_list?(tail)
+  defp proper_list?(_), do: false
 
   defp primitive?(%{"type" => type} = s) do
     allowed =
@@ -30,7 +34,7 @@ defmodule Beamlet.Harness.Arguments do
   defp primitive?(_), do: false
 
   defp constraint_schema?({"enum", values}, type),
-    do: is_list(values) and values != [] and Enum.all?(values, &typed?(&1, type))
+    do: proper_list?(values) and values != [] and Enum.all?(values, &typed?(&1, type))
 
   defp constraint_schema?({k, v}, _) when k in ["minLength", "maxLength"],
     do: is_integer(v) and v >= 0 and v <= 16_384

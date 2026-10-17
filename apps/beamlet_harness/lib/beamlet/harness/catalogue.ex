@@ -40,19 +40,14 @@ defmodule Beamlet.Harness.Catalogue do
 
   defp validate_batch(calls, catalogue) do
     Enum.reduce_while(calls, {:ok, [], MapSet.new()}, fn call, {:ok, acc, ids} ->
-      with %{
-             "id" => id,
-             "type" => "function",
-             "function" => %{"name" => name, "arguments" => raw}
-           } <- call,
-           true <- Map.keys(call) -- ~w(id type function) == [],
-           true <- Map.keys(call["function"]) -- ~w(name arguments) == [],
+      with %{"id" => id, "name" => name, "arguments" => args} <- call,
+           true <- Map.keys(call) -- ~w(id name arguments) == [],
            true <- is_binary(id) and byte_size(id) in 1..128 and String.valid?(id),
            false <- MapSet.member?(ids, id),
            {:ok, descriptor} <- Map.fetch(catalogue, name),
-           true <- is_binary(raw) and byte_size(raw) <= 16_384,
-           {:ok, args} <- Jason.decode(raw),
-           :ok <- Arguments.validate(args, descriptor["parameters"]) do
+           :ok <- Arguments.validate(args, descriptor["parameters"]),
+           {:ok, encoded} <- Jason.encode(args),
+           true <- byte_size(encoded) <= 16_384 do
         {:cont, {:ok, [%{id: id, name: name, arguments: args} | acc], MapSet.put(ids, id)}}
       else
         _ -> {:halt, {:error, :invalid_tool_batch}}

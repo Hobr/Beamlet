@@ -4,6 +4,17 @@ defmodule Beamlet.Harness.HTTPTest do
   alias Beamlet.Harness.Models.OpenAICompatible, as: Model
   alias Beamlet.Harness.Tools.WorkspaceRead
 
+  defp complete(request, settings, context \\ %Context{}) do
+    config =
+      Map.new(settings, fn {key, value} -> {Atom.to_string(key), value} end)
+
+    Model.complete(
+      request,
+      %{config: config, credentials: %{"api_key" => "fixture-only-key"}},
+      context
+    )
+  end
+
   defp call(id),
     do: %{
       "id" => id,
@@ -19,7 +30,7 @@ defmodule Beamlet.Harness.HTTPTest do
     }
 
   setup do
-    System.put_env("HARNESS_FIXTURE_KEY", "fixture-only-key")
+    System.put_env("HARNESS_FIXTURE_KEY", "must-not-be-used")
     on_exit(fn -> System.delete_env("HARNESS_FIXTURE_KEY") end)
     {:ok, catalogue} = Catalogue.new([WorkspaceRead.descriptor()])
 
@@ -47,7 +58,6 @@ defmodule Beamlet.Harness.HTTPTest do
     %{
       base_url: "http://127.0.0.1:#{port}/v1",
       model: "fixture",
-      key_env: "HARNESS_FIXTURE_KEY",
       allow_local_http: true,
       timeout_ms: 150
     }
@@ -120,7 +130,7 @@ defmodule Beamlet.Harness.HTTPTest do
       )
 
     assert {:ok, %{calls: [%{id: "opaque-id", arguments: %{"path" => "a"}}]}} =
-             Model.complete(request, settings, %Context{})
+             complete(request, settings, %Context{})
 
     assert_receive {:wire, headers, body}
     assert headers =~ "POST /v1/chat/completions HTTP/1.1"
@@ -144,7 +154,7 @@ defmodule Beamlet.Harness.HTTPTest do
       settings =
         fixture(response("error body secret", unquote(status), "location: /elsewhere\r\n"))
 
-      assert {:error, :http_status} = Model.complete(request, settings)
+      assert {:error, :http_status} = complete(request, settings)
       assert_receive :fixture_done, 1000
       refute_received :second_request
     end
@@ -152,7 +162,7 @@ defmodule Beamlet.Harness.HTTPTest do
 
   test "timeout makes only one attempt", %{request: request} do
     settings = fixture("", timeout: true)
-    assert {:error, _} = Model.complete(request, settings)
+    assert {:error, _} = complete(request, settings)
     assert_receive :fixture_done, 1500
     refute_received :second_request
   end
@@ -175,14 +185,14 @@ defmodule Beamlet.Harness.HTTPTest do
           {response(<<255>>), :invalid_json},
           {response("{}", 200, "content-encoding: gzip\r\n"), :unsupported_encoding}
         ] do
-      assert {:error, ^error} = Model.complete(request, fixture(wire))
+      assert {:error, ^error} = complete(request, fixture(wire))
       assert_receive :fixture_done, 1000
       refute_received :second_request
     end
   end
 
   test "TLS handshake failure never falls back to HTTP", %{request: request} do
-    settings = %{base_url: "", model: "fixture", key_env: "HARNESS_FIXTURE_KEY", timeout_ms: 150}
+    settings = %{base_url: "", model: "fixture", timeout_ms: 150}
     # Use a dedicated TCP listener that closes during TLS handshake.
     {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
     {:ok, {_, port}} = :inet.sockname(listener)
@@ -198,7 +208,7 @@ defmodule Beamlet.Harness.HTTPTest do
       end)
 
     assert {:error, _} =
-             Model.complete(request, %{settings | base_url: "https://127.0.0.1:#{port}"})
+             complete(request, %{settings | base_url: "https://127.0.0.1:#{port}"})
 
     assert {:error, :timeout} = Task.await(task, 2000)
   end
@@ -209,19 +219,21 @@ defmodule Beamlet.Harness.HTTPTest do
     assistant = %{
       "role" => "assistant",
       "content" => nil,
-      "tool_calls" => [call("one"), call("two")]
+      "calls" => [
+        %{"id" => "one", "name" => "workspace_read", "arguments" => %{"path" => "a"}},
+        %{"id" => "two", "name" => "workspace_read", "arguments" => %{"path" => "a"}}
+      ]
     }
 
     result = fn id ->
-      %{"role" => "tool", "tool_call_id" => id, "content" => "bounded observation"}
+      %{"role" => "tool", "call_id" => id, "content" => "bounded observation"}
     end
 
     for tail <- [[assistant], [assistant, result.("two"), result.("one")], [result.("one")]] do
       assert {:error, :invalid_messages} =
-               Model.complete(%{request | messages: request.messages ++ tail}, %{
+               complete(%{request | messages: request.messages ++ tail}, %{
                  base_url: "http://localhost:1",
                  model: "fixture",
-                 key_env: "HARNESS_FIXTURE_KEY",
                  allow_local_http: true
                })
     end
@@ -229,7 +241,7 @@ defmodule Beamlet.Harness.HTTPTest do
     settings = fixture(response(Jason.encode!(reply(%{"content" => "joined"}, "stop"))))
 
     assert {:ok, %{content: "joined"}} =
-             Model.complete(
+             complete(
                %{
                  request
                  | messages: request.messages ++ [assistant, result.("one"), result.("two")]
@@ -237,6 +249,23 @@ defmodule Beamlet.Harness.HTTPTest do
                settings
              )
 
+    assert_receive {:wire, _, body}
+
+    assert %{
+             "messages" => [
+               _,
+               %{
+                 "tool_calls" => [
+                   %{"id" => "one", "function" => %{"arguments" => raw}},
+                   %{"id" => "two"}
+                 ]
+               },
+               %{"tool_call_id" => "one"},
+               %{"tool_call_id" => "two"}
+             ]
+           } = Jason.decode!(body)
+
+    assert Jason.decode!(raw) == %{"path" => "a"}
     assert_receive :fixture_done, 1000
   end
 
@@ -248,10 +277,9 @@ defmodule Beamlet.Harness.HTTPTest do
           "https://example.com#fragment"
         ] do
       assert {:error, :invalid_profile} =
-               Model.complete(request, %{
+               complete(request, %{
                  base_url: base,
-                 model: "fixture",
-                 key_env: "HARNESS_FIXTURE_KEY"
+                 model: "fixture"
                })
     end
   end
@@ -309,11 +337,10 @@ defmodule Beamlet.Harness.HTTPTest do
     settings = %{
       base_url: "https://localhost:#{port}/v1",
       model: "fixture",
-      key_env: "HARNESS_FIXTURE_KEY",
       timeout_ms: 1000
     }
 
-    assert {:error, :transport} = Model.complete(request, settings)
+    assert {:error, :transport} = complete(request, settings)
     assert {{:error, _}, {:error, :timeout}} = Task.await(server, 3000)
   end
 
@@ -327,7 +354,7 @@ defmodule Beamlet.Harness.HTTPTest do
           reply(%{"content" => nil, "tool_calls" => [call("a"), %{}]}, "tool_calls"),
           %{"choices" => []}
         ] do
-      assert {:error, _} = Model.complete(request, fixture(response(Jason.encode!(wire))))
+      assert {:error, _} = complete(request, fixture(response(Jason.encode!(wire))))
       assert_receive :fixture_done, 1000
       refute_received :second_request
     end
@@ -339,7 +366,6 @@ defmodule Beamlet.Harness.HTTPTest do
     settings = %{
       base_url: "http://localhost:1",
       model: "fixture",
-      key_env: "HARNESS_FIXTURE_KEY",
       allow_local_http: true
     }
 
@@ -349,10 +375,10 @@ defmodule Beamlet.Harness.HTTPTest do
           %{verify: :verify_none},
           %{timeout_ms: 0}
         ] do
-      assert {:error, :invalid_profile} = Model.complete(request, Map.merge(settings, extra))
+      assert {:error, :invalid_profile} = complete(request, Map.merge(settings, extra))
     end
 
-    assert {:error, :invalid_request} = Model.complete(Map.put(request, :actions, []), settings)
+    assert {:error, :invalid_request} = complete(Map.put(request, :actions, []), settings)
 
     for url <- [
           "https://",
@@ -360,8 +386,42 @@ defmodule Beamlet.Harness.HTTPTest do
           "https://example.com/a b",
           "https://example.com/" <> <<0>>
         ] do
-      assert {:error, :invalid_profile} = Model.complete(request, %{settings | base_url: url})
+      assert {:error, :invalid_profile} = complete(request, %{settings | base_url: url})
     end
+  end
+
+  test "concurrent direct invocations keep configuration and credentials isolated", %{
+    request: request
+  } do
+    tasks =
+      for label <- ["first", "second"] do
+        settings = fixture(response(Jason.encode!(reply(%{"content" => label}, "stop"))))
+
+        config =
+          settings |> Map.put(:model, label) |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
+
+        Task.async(fn ->
+          Model.complete(request, %{config: config, credentials: %{"api_key" => "key-" <> label}})
+        end)
+      end
+
+    assert Enum.map(tasks, &Task.await/1) == [
+             {:ok, %{kind: :text, content: "first", calls: []}},
+             {:ok, %{kind: :text, content: "second", calls: []}}
+           ]
+
+    observed =
+      for _ <- 1..2 do
+        assert_receive {:wire, headers, body}
+        model = Jason.decode!(body)["model"]
+        assert String.downcase(headers) =~ "authorization: bearer key-" <> model
+        refute body =~ "key-"
+        model
+      end
+
+    assert Enum.sort(observed) == ["first", "second"]
+    for _ <- 1..2, do: assert_receive(:fixture_done, 1000)
+    refute_received :second_request
   end
 
   test "global Req defaults cannot inject plugins, parameters or adapters", %{request: request} do
@@ -380,7 +440,7 @@ defmodule Beamlet.Harness.HTTPTest do
     end)
 
     assert {:ok, %{content: "controlled"}} =
-             Model.complete(
+             complete(
                request,
                fixture(response(Jason.encode!(reply(%{"content" => "controlled"}, "stop"))))
              )
