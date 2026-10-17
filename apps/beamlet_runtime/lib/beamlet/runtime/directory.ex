@@ -104,6 +104,48 @@ defmodule Beamlet.Runtime.Directory do
   def handle_call(:limits, _from, s), do: {:reply, s.limits, s}
   def handle_call(:snapshots, _from, s), do: {:reply, fresh(s), s}
 
+  def handle_call(:observation, _from, s) do
+    members = :pg.get_members(Groups, :nodes) |> Enum.uniq() |> Enum.sort()
+    time = now()
+
+    reports =
+      for pid <- Enum.take(members, 256) do
+        case s.reports[pid] do
+          nil ->
+            %{node: node(pid), status: :not_reported, age_ms: :unknown}
+
+          {received, report} ->
+            age = max(0, time - received)
+
+            Map.take(report, [
+              :node,
+              :ready,
+              :execution_ready,
+              :capabilities,
+              :environments,
+              :available
+            ])
+            |> Map.merge(%{
+              age_ms: age,
+              status: if(age <= s.limits.expiry_ms, do: :fresh, else: :stale)
+            })
+        end
+      end
+
+    result =
+      {:ok,
+       %{
+         version: 1,
+         source: node(),
+         expiry_ms: s.limits.expiry_ms,
+         reports: reports,
+         complete: length(members) <= 256
+       }}
+
+    reply = if :erlang.external_size(result) <= 1_000_000, do: result, else: {:error, :limit}
+    {:reply, reply, s}
+  end
+
   def handle_call({:select, op}, _from, s) do
     target =
       fresh(s)
