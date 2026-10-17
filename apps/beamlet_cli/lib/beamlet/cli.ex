@@ -1,18 +1,18 @@
 defmodule Beamlet.CLI do
-  @moduledoc """
-  Documentation for `Beamlet.CLI`.
-  """
+  @moduledoc "Opt-in interaction host. No stdin or Node startup on ordinary loading."
+  alias Beamlet.Node.Cluster
 
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Beamlet.CLI.hello()
-      :world
-
-  """
-  def hello do
-    :world
+  def configuration(settings) do
+    with true <- is_list(settings) and Keyword.keyword?(settings),
+         keys = Keyword.keys(settings),
+         true <- keys -- [:enabled, :allowed_nodes] == [] and keys == Enum.uniq(keys),
+         enabled = Keyword.get(settings, :enabled, false),
+         true <- is_boolean(enabled),
+         allowed = Keyword.get(settings, :allowed_nodes, []),
+         {:ok, _} <- Cluster.connected(allowed) do
+      {:ok, [enabled: enabled, allowed_nodes: allowed]}
+    else
+      _ -> {:error, :invalid_configuration}
+    end
   end
 end

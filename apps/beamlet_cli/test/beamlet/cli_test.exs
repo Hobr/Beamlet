@@ -1,8 +1,8 @@
 defmodule Beamlet.CLITest do
   use ExUnit.Case
-  doctest Beamlet.CLI
 
-  test "greets the world" do
-    assert Beamlet.CLI.hello() == :world
+  test "ordinary CLI application has no terminal or Node child" do
+    assert Supervisor.which_children(Beamlet.CLI.Supervisor) == []
+    assert Process.whereis(Beamlet.Node) == nil
   end
 end

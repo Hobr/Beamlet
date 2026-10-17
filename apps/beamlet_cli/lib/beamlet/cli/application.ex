@@ -1,20 +1,12 @@
 defmodule Beamlet.CLI.Application do
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
   @moduledoc false
-
   use Application
 
   @impl true
   def start(_type, _args) do
-    children = [
-      # Starts a worker by calling: Beamlet.CLI.Worker.start_link(arg)
-      # {Beamlet.CLI.Worker, arg}
-    ]
-
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Beamlet.CLI.Supervisor]
-    Supervisor.start_link(children, opts)
+    with {:ok, settings} <- Beamlet.CLI.configuration(Application.get_all_env(:beamlet_cli)) do
+      children = if settings[:enabled], do: [{Beamlet.Node, roles: [:interaction]}], else: []
+      Supervisor.start_link(children, strategy: :one_for_one, name: Beamlet.CLI.Supervisor)
+    end
   end
 end
