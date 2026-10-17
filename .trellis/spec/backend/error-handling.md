@@ -9,6 +9,12 @@ Harness returns safe native errors without raw credentials, paths or provider
 bodies; see [Native Harness](./harness-providers.md). Agent/Node expose explicit
 command/startup/terminal errors; see [Agent and Node](./agent-orchestration.md).
 Stopped generations reject late replies; infrastructure loss never replays work.
+Direct neutral/OpenAI malformed reply data (including improper lists) returns safe
+invalid_reply; malformed required/enum catalogue lists return invalid_catalogue.
+Normalize encoder failures narrowly without collapsing response_limit or supported
+semantic errors. Delegation rejects common-invalid options before helper spawn;
+target-only adapter rejection uses correlated authority_unavailable after one dispatch.
+Parent validation must not require the target's provider in its own registry.
 
 ## Startup and Configuration Failures
 

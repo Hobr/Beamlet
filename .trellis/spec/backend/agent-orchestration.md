@@ -5,13 +5,17 @@
 Use when wrapping Agent APIs, adding integration handlers, or composing Node roles.
 Agent depends on Actions/Runtime/Harness; Node composes those libraries. Runtime
 imports no Agent/Harness code. Sources are `apps/beamlet_agent/lib/beamlet/agent/`
-and `apps/beamlet_node/lib/beamlet/node/`. These contracts passed independent child3
-review; release boot and physical-host acceptance remain separate gates.
+and `apps/beamlet_node/lib/beamlet/node/`. Provider-migration source passed fresh
+independent repair recheck and rebuilt release gates. Physical-host acceptance was
+removed by user decision; no physical or paid/live execution is claimed.
 
 ## 2. Signatures
 
 ```elixir
-{:ok, ref} = Beamlet.Agent.start(authority_node, id: "example", model: route)
+binding = %{provider: "openai-compatible",
+  config: %{"base_url" => "https://example.test/v1", "model" => "model-name"},
+  credentials: %{"api_key" => supplied_key}, placement: %{claims: %{"requests" => 1}}}
+{:ok, ref} = Beamlet.Agent.start(authority_node, id: "example", model: binding)
 {:ok, turn} = Beamlet.Agent.input(ref, "hello")
 {:ok, snapshot} = Beamlet.Agent.snapshot(ref)
 :ok = Beamlet.Agent.subscribe(ref)
@@ -34,10 +38,29 @@ No global lookup, authority fallback, durable reconnect or replay exists.
 
 ## 3. Contracts
 
-Agent options: id (1..128 UTF-8 bytes), model portable route, optional tools map,
-validated catalogue and internal delegator PID. Routes contain allowlisted portable
-profile/environment/capability/claim data; credentials and absolute roots remain
-executor-local. Native catalogue inspection requires no credentials or provider IO.
+Agent options: id (1..128 UTF-8 bytes), one immutable model binding, optional tools
+map, validated catalogue and internal delegator PID. Binding has exactly provider,
+config, optional credentials/default%{} and placement/default%{}. Placement permits
+environment/allowed_nodes/claims under existing Operation bounds. Provider ID matches
+`[a-zA-Z0-9_-]{1,64}`; common invocation config/credentials follow Native Harness limits.
+Actual creation validates the installed authority adapter; unknown providers, legacy
+model routes, top-level api_key, collections/switching and extra fields reject as
+invalid_agent_options. Binding stays fixed across steps/turns in private Server state.
+Tool routes retain portable profile/environment/capability/claim data and executor-local
+workspace settings. Native catalogue inspection requires no credentials or provider IO.
+
+AuthoritySupervisor accepts model_providers (same built-in defaults as Harness.Model)
+and stores trusted immutable registration in local Registry metadata. Agent never
+depends on Node. Caller model payload has exactly type/provider/config/request
+(`%{"type" => "model", "provider" => id, "config" => config, "request" => request}`),
+requires `model.provider:<id>` capability and puts credentials only in Operation.credentials.
+Tool payload retains profile/request and empty credentials. Handler settings contain
+profiles/model_providers; it resolves only local implementations and revalidates common
+invocation, neutral request and selected adapter. Tool Handler rejects nonempty
+credentials and gives Tools only native progress/cancelled? Context hooks. No model
+config/credentials enter normal history, snapshots, progress, Results or diagnostics.
+Transient plaintext copies remain until ordinary cleanup; no secure erasure or
+protection from malicious provider echo/admin inspection is promised.
 Caller constructs bounded Operations; OperationOwner calls public Runtime.submit
 with its local lifecycle controller as owner/sink and require_live_owner:true.
 Runtime owns admission validation, current byte caps, allocation and normalization.
@@ -47,7 +70,9 @@ One active turn per Agent. Context append rejects overflow rather than evicting
 assistant/tool pairs (128 messages, 1 MiB native JSON). Input is at most65536 UTF-8
 bytes. Model steps are bounded at16; Tool batches at8. Validate the complete native
 reply and sibling batch before dispatch. Independent Tools run concurrently; join
-by call ID, append original assistant plus observations in original order. Captured
+by call ID, construct canonical assistant history via Model.assistant_message/1
+and append call_id observations in original order. Generic Server/Handler use
+Model validators and never reconstruct OpenAI envelopes. Captured
 Operation byte limit is pure callback validation; public submit also checks current
 Directory limits. Absent Directory permits standalone default262144; a present but
 unavailable Directory fails rather than widening the ceiling.
@@ -65,7 +90,14 @@ persistent_term stores no business messages/results or replay state. Authority
 Agents/Delegations supervisors have1000ms shutdown caps.
 
 Delegation accepts1..8 explicit authority/options/input specs, with startup
-parent authorization before child input. Helpers/children are owned through links,
+parent authorization before child input. Parent checks portable child options,
+catalogue/Tool routes and common binding bounds through ModelBinding.portable?/1,
+without consulting its registry or invoking an adapter. Actual child authority
+resolves its own registry and validates the adapter via ModelBinding.valid?/1.
+Registries may differ: a target-only provider must be delegatable. Target creation
+rejection yields the existing correlated safe authority_unavailable child error,
+with one dispatch and no retry. Common-invalid specs reject before helper spawn.
+No child or peer binding/credential inheritance occurs. Helpers/children are owned through links,
 monitors and resource groups; stop/loss requests cleanup even across nested work.
 A waiting parent holds no executor capacity. Late replies cannot advance an old
 turn. Peers have independent lifetimes; requests are API mailbox data, never
@@ -80,11 +112,17 @@ each. Slow sinks get a coalesced current snapshot after acknowledgement; sink DO
 removes subscription only. No event-history replay. Snapshot display limit is
 1048000 serialized bytes; excess yields snapshot_limit.
 
-Node config keys: roles, profiles, providers, pools, limits, allowlist, routes,
-catalogue. Nonempty distinct roles are interaction/authority/executor; all seven
-subsets are supported. Profiles (max32) are executor-local maps with type/module/
-settings/capability and optional environment; module callbacks must exist and be
-allowlisted. Routes (max64) and catalogue are portable. Node uses one_for_all;
+Node config keys: roles, profiles, model_providers, providers, pools, limits,
+allowlist, routes, catalogue. Nonempty distinct roles are interaction/authority/executor;
+all seven subsets are supported. Profiles (max32) are Tool-only executor-local maps
+with type/module/settings/capability and optional environment; callbacks must exist
+and be allowlisted. Legacy type:model profiles reject invalid_node_configuration.
+model_providers is a trusted map<=32 of IDs to loaded modules exporting both Model
+callbacks, defaulting to built-ins. It is separate from monitored providers PIDs.
+Executor advertises `model.provider:<id>`; combined Tool/model capability union<=32
+and complete Runtime report/deployment caps are validated. Registration/readiness
+calls no model network API and reads no model key environment. Routes (max64) and
+catalogue remain portable Tool data. Node uses one_for_all;
 executor starts Provider before Runtime, with provider monitoring. Authority adds
 AuthoritySupervisor; executor-only starts no Agents/Registry. All local work uses
 Gateway admission. Default Application boot is empty; `:beamlet_node, :boot`
@@ -111,7 +149,8 @@ BEAMLET_CONFIG file; see [Backend CLI and Release](./backend-release.md).
 
 Good: subscribe, consume snapshot, ack from sink, dispatch independent valid Tools,
 join by identity and stop by freezing the turn before requesting cleanup.
-Base: authority-only Node owns Agents without model keys/workspace roots.
+Base: authority-only Node starts with trusted adapters and no provisioned user key
+or workspace root; each Agent receives its own explicit model invocation binding.
 Bad: infer owner retirement from a Result, retry uncertain work, or synchronously
 wait for admission inside an Agent callback.
 
@@ -126,7 +165,13 @@ invalid sibling means zero dispatch, reversed completion retains original order,
 concurrent Agents, progress attempt/sequence/turn identity and full peer envelopes.
 Snapshot must be first; slow/down sinks stay bounded and cannot stop Agent. Cover
 all role subsets, executor-only no Registry, local Gateway, provider/Registry loss,
-remote authority disconnect and no capability/environment fallback. Same-host
+remote authority disconnect and no capability/environment fallback. Cover immutable
+binding across turns, distinct keys/configs on one executor, alternate protocol provider,
+normal output/Tool credential absence and explicit child/independent peer options.
+`delegation_binding_test.exs` must keep distinct authority registries and prove direct
+and delegated target-only provider input completion, target rejection with one dispatch,
+no parent adapter callback, and malformed/oversize portable rejection with zero helper
+spawn. Never fix this regression by giving parent and target identical registries. Same-host
 peers prove automation only; LSP unavailable/timeout remains inconclusive.
 
 ## 7. Wrong vs Correct

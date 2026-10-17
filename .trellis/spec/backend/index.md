@@ -2,7 +2,9 @@
 
 Beamlet has a six-application Elixir Mix umbrella with implemented generic Actions
 contracts, an opt-in distributed Runtime and independent native Harness providers.
-Agent implements bounded asynchronous orchestration; Node composes opt-in roles.
+Agent implements bounded asynchronous orchestration with one immutable Agent-owned
+model binding; Harness owns neutral model/history contracts and explicit provider
+invocations. Node composes opt-in roles and trusted local model provider registries.
 Node also provides a thin CLI and isolated backend release; cross-physical-host acceptance
 was removed by user decision; no physical execution is claimed. Phoenix provides the existing web scaffold.
 These English guidelines describe checked-in behavior; source paths below are

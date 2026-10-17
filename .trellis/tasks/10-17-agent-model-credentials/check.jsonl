@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/index.md","reason":"Owning umbrella boundaries and spec routing"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"App ownership and opt-in process composition"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Full-scope checks, real VM fixtures and lifecycle regressions"}
+{"file":".trellis/spec/backend/operation-runtime.md","reason":"Generic contracts, full envelopes and guarded public admission; revised task adds bounded generic invocation credentials"}
+{"file":".trellis/spec/backend/harness-providers.md","reason":"Baseline native and transport limits; revised task separates neutral model contracts from OpenAI wire codecs"}
+{"file":".trellis/spec/backend/agent-orchestration.md","reason":"Async loop, authority ownership, delegation and subscriptions"}
+{"file":".trellis/spec/backend/backend-release.md","reason":"Copied release and role/configuration verification"}
+{"file":".trellis/tasks/10-17-agent-model-credentials/research/credential-flow.md","reason":"Original credential source inspection; key-only proposals superseded by provider-abstraction.md"}
+{"file":".trellis/tasks/10-17-agent-model-credentials/research/provider-abstraction.md","reason":"Provider coupling findings, neutral seam and accepted single-binding first-release scope"}

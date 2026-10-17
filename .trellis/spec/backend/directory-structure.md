@@ -18,7 +18,10 @@ lockfile, and configuration paths.
 
 Runtime declares `{:beamlet_actions, in_umbrella: true}` and OTP `:crypto`.
 Harness declares exact Req 0.7.5 and direct Jason; it has no sibling dependencies.
-Actions declares no siblings. Agent declares Actions/Runtime/Harness; Node declares
+Actions declares no siblings; dedicated credentials use OTP JSON and generic Runtime
+forwarding. Harness.Model owns independent neutral validation/registration; Agent's
+ModelBinding separates portable child validation from authority adapter validation.
+Agent declares Actions/Runtime/Harness; Node declares
 Actions/Runtime/Harness/Agent. Neither core closure includes Phoenix. Actions, Agent,
 Harness and Runtime have no Application callback. Node and Web declare callbacks in their own `mix.exs`.
 Root dependencies are development/analysis tools, not child runtime dependencies;

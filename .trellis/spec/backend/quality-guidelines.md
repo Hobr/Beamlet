@@ -131,8 +131,26 @@ and lease both from the executor clock; wait deadlines remain local. Exercise an
 occupied cached report explicitly rather than rely on scheduler timing. Never add
 business retries or weaken success assertions to mask missing synchronization.
 The controlled probe established stale capacity → no_target; historical uncaptured
-failure reasons remain unknown. Independent final gates:123 ordinary tests and7
-actual distributed tests at two seeds; same-host evidence is not physical acceptance.
+failure reasons remain unknown. Historical MVP gates passed123 ordinary/7 distributed
+at two seeds. Provider-migration final independent recheck passed161 ordinary/12
+actual named distributed tests at seed631927 (Harness35,Actions28,Runtime30,Agent4,
+Node57,Web7; distributed Runtime6+Node6). Same-host evidence is not physical acceptance.
+
+## Provider Contract Regression Gates
+
+Preserve direct malformed reply/catalogue safe errors, exact1MiB/one-byte-over envelopes,
+Actions/Harness matching recursive credential root-label and JSON/depth/count/name/byte
+vectors, and two independent authorities with different provider registries. Parent
+validates portable child shape/common limits; target validates its actual adapter.
+Tests must observe successful direct and delegated child input, correlated target
+rejection with exactly one dispatch/no parent adapter callback, and malformed local
+options producing no helper. Ordinary sibling dependencies must remain independent.
+
+Final provider checks passed format/warning-fatal compile/strict Credo/full existing-PLT
+Dialyzer and rebuilt all-seven copied eval/named release combinations. No forced PLT
+refresh occurred. Active LSP probe:5 key files,1 confirmed clean,4 timed-out inconclusive;
+zero returned diagnostics is not complete coverage. Preserve separate failed/final logs;
+overwritten original failure logs cannot establish original root-cause proof.
 
 ## Review Before Handoff
 

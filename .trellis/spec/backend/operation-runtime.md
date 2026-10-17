@@ -7,7 +7,8 @@
 Use this contract when adding Runtime consumers, local handlers or Node composition.
 Actions owns data validation and Handler; Runtime depends only on Actions and OTP.
 No Agent, Harness or Phoenix dependency belongs in either application. Sources are
-under `apps/beamlet_{actions,runtime}/lib/beamlet/`; behavioral tests mirror them.
+under `apps/beamlet_actions/lib/beamlet/` and `apps/beamlet_runtime/lib/beamlet/`;
+behavioral tests mirror them.
 
 ### 2. Signatures
 
@@ -30,19 +31,34 @@ Consumers must not construct private coordinator specs to duplicate this guard.
 
 Handlers implement `Beamlet.Actions.Handler.run(payload, context)` returning
 `{:ok, value}` or `{:error, safe_reason}`. Context contains executor-local
-`settings`, `remaining_ms`, `progress` and `cancelled?` callbacks. Use callbacks
+`settings`, unchanged invocation `credentials` (default `%{}`), `remaining_ms`,
+`progress` and `cancelled?` callbacks. Use callbacks
 for neutral progress/cancellation; provider authors need not know coordinator IDs.
 
 ### 3. Contracts
 
 Operation fields: `kind` (1..128 UTF-8 bytes), `version: 1`, `payload: %{}`,
-`metadata: %{}`, `capabilities: []`, `environment: nil`, `allowed_nodes: nil`,
+`metadata: %{}`, `credentials: %{}`, `capabilities: []`, `environment: nil`, `allowed_nodes: nil`,
 `claims: %{}`, `budget_ms: 60_000` (1..3_600_000). Capabilities/claims are bounded
 at 32 entries; allowed nodes are at most 64 existing node atoms. Never atomize
 untrusted text. Nested values are bounded data, not PIDs, references, functions,
 ports, tuples or arbitrary structs. Maximum nesting depth is 24. Conventional
 secret/root keys are rejected recursively; producers must still redact secrets
 and roots embedded in ordinary text. Executable arguments are never truncated.
+
+Only dedicated credentials bypass ordinary secret-label rejection. They must be a
+plain string-key JSON object: <=32 top-level entries, top-level names1..128 UTF-8
+bytes, depth<=24, complete encoded JSON<=16384 bytes. Nested maps/proper lists and
+JSON scalars are accepted; structs, arbitrary atoms, tuples and executable/live
+values are not. Reject root/workspace_root recursively, case-insensitively, including
+maps inside lists. `Actions.credentials?/1` uses OTP JSON with no Harness dependency.
+Validate the remaining Operation with unchanged ordinary policy and count the full
+credential-inclusive struct with `:erlang.external_size/1` under262144 and current
+deployment caps at public submit and Gateway. JSON credential and Erlang envelope
+sizes are separate limits. Worker forwards credentials separately from local
+settings; Runtime never interprets providers or merges credentials into settings.
+Generated status/progress/Results/reports/errors omit credentials. Transient copies
+may remain until ordinary cleanup; there is no secure-erasure guarantee.
 
 OperationRef contains opaque ID and live coordinator PID. Execution is distinct:
 operation ID, preallocated attempt ID, endpoint/incarnation, optional admitted
@@ -128,6 +144,12 @@ whole-envelope byte limits, all-pool capacity, task-start failures, live auxilia
 progress/helper cleanup, membership leave invalidation, malformed reports,
 idempotent cancellation and unrelated-crash distinction, terminal identity/races,
 tombstone expiry/rejection watermark, provider/gateway/scope loss and retention.
+Assert strict credential JSON/count/name/depth/UTF-8/exact-byte boundaries, recursive
+mixed-case root-label rejection and unchanged ordinary secret policy. Observe local
+and actual remote credential forwarding through a test handler while normal
+progress/status/Result/report/error projections omit credentials. Assert complete
+credential-inclusive protocol and reduced deployment boundaries at public submit
+and direct remote Gateway admission.
 Assert public/consumer admission parity, malformed budget, current reduced cap,
 missing infrastructure, capacity normalization and ignored guarded startup. Observe
 owner DOWN before resuming suspended public limits/supervisor/init limits/selection,

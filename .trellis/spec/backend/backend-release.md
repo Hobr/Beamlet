@@ -47,7 +47,13 @@ verified backend deployment build.
 Backend runtime config requires absolute `BEAMLET_CONFIG`, read with
 `Config.Reader.read!`. This is trusted local Elixir code with operator privileges;
 never accept its path/content from model output. `:beamlet_node, :boot` selects
-validated roles/profiles/routes/pools. Authority needs no key or workspace root.
+validated roles/Tool profiles/routes/pools and trusted model_providers. Authority
+startup needs no provisioned user key/workspace root; each created Agent receives
+its own immutable provider/config/credentials/placement binding. The executor needs
+installed adapter implementations but no user keys or static model profiles. Reject
+key_env/legacy type:model profiles and deploy matching builds. The runbook may read
+BEAMLET_CREATION_KEY on the interaction node to supply explicit creation input; this
+is not executor/provider environment fallback.
 The ordinary `config/runtime.exs` production Web secret check is preserved.
 
 Release environment requires `RELEASE_NODE`, `RELEASE_COOKIE`, `BEAMLET_CONFIG`;
@@ -55,7 +61,9 @@ selects long names and two schedulers. `BEAMLET_DIST_PORT` defaults to9100 for t
 service. Control helpers rpc/remote/restart/stop/pid use ephemeral port0: reusing
 the service port causes eaddrinuse before RPC. Static connection is explicit;
 trusted hosts need reachable names, EPMD4369 and bidirectional distribution ports.
-Securely provision cookies/keys locally; never include them in evidence.
+Provision distribution cookies locally; supply user keys only as explicit creation
+input and keep secrets out of evidence. Plaintext transient Agent/worker/message
+copies are expected; no secure-erasure guarantee.
 
 CLI authority accepts a matching name from a trusted list of at most32 entries;
 name at most255 bytes with the declared ASCII node@host syntax. Only deployment
@@ -72,7 +80,7 @@ without replay promises; subscriber loss does not own the Agent lifetime.
 
 Deployment runbook contains combined/isolated role examples and teardown.
 `http-fixture.py` is a bounded local socket fixture, not an upstream provider:
-at most16 requests,30s accept waits,10s whole-request deadlines including headers,
+default16 requests (CLI ceiling64),30s accept waits,10s whole-request deadlines including headers,
 malformed-length rejection, joined deadline timers. Its final observation digest
 must match expected Tool JSON to establish a successful marker read. Workspace
 trust and provider uncertainty remain as specified in [Native Harness](./harness-providers.md).
@@ -105,9 +113,14 @@ Preserve CLI malformed-option, subscription cleanup/event-limit, dead-ref and
 authority-loss tests. Preserve three-role real HTTP→workspace→model correlation,
 wrong environment/no fallback, stop during held request, executor loss/no replay.
 Run named distributed tests explicitly, not only ordinary ExUnit exclusions.
-`check-release.sh` checks required dependency closure and copied eval role boot;
-`check-named-release.py` additionally exercises foreground long-name start, RPC
-role assertions, fixed service port and stop with bounded process cleanup.
+`check-release.sh` checks required dependency closure and all seven copied eval
+role combinations; `check-named-release.py` exercises all seven combinations with
+foreground long-name start, RPC role assertions, fixed service port and stop with
+bounded process cleanup. After source changes rebuild the backend before checking
+copied artifacts. Final provider-migration acceptance passed161 ordinary/12 actual
+named distributed tests (seed631927), full format/warning-fatal compile/strict Credo/
+existing-PLT Dialyzer and rebuilt copied closure/eval/named release gates. Web7 ran
+CSP; unchanged missing-secret and Python4 fixture evidence was independently inspected.
 Keep default production missing-secret and Web CSP checks. Fixture tests include
 complete tool_calls/stop POSTs, malformed length and slow/incomplete headers.
 Report LSP coverage and existing-PLT analysis separately from PLT refresh.

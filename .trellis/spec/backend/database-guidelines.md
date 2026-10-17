@@ -9,7 +9,11 @@ optional Ecto integrations, but those are not selected as resolved packages.
 Runtime owns ephemeral process state: Directory snapshots, coordinator terminal
 retention, and gateway admission accounting/tombstones. None survives infrastructure
 restart. Node composes configured roles (empty by default). Agent retains bounded
-context/turn/subscriber/peer state; Resources retains infrastructure PID inventories
+context/turn/subscriber/peer state and one immutable model binding in private Server
+memory. Binding config/credentials are explicit creation inputs; model Operations
+carry transient invocation copies. Registry metadata stores trusted local adapter
+registrations, not user bindings/keys. No credential persistence, recovery or
+secure-erasure guarantee exists. Resources retains infrastructure PID inventories
 until DOWN, with VM-local restart fencing and no business replay state. There is no
 durable Agent/Operation history. See [Agent and Node](./agent-orchestration.md). See [Operation Runtime](./operation-runtime.md).
 
