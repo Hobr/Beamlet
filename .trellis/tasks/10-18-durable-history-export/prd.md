@@ -1,6 +1,6 @@
 # 持久历史查询与轨迹导出
 
-状态：planning。仅创建规划；用户尚未授权激活或实施，不运行 `task.py start`，不安装依赖、不修改应用代码。
+状态：in_progress。用户于 2026-10-18 授权 A–F 连续实施；先决 A/B/C 已验收并提交（3aefa85、11577fb、f7be001）。
 
 ## Goal
 
@@ -21,11 +21,11 @@
 
 ## Acceptance Criteria
 
-- [ ] Agent/Coordinator 退出且超过 retention 后仍能查询；display 截断不影响业务历史。
-- [ ] 导出期间追加事件不改变已固定范围，JSONL 可逐条验证，artifact digest 和缺失项明确。
-- [ ] 在预置合法继承上下文数据上验证来源路径未包含、外部关系未包含和继承 usage 不重复计费；E 落地后再验真实 fork 链路。
-- [ ] 长历史/慢导出受限内存、keyset 分页，不持有长期 SQLite 读事务；无凭据/活对象。
-- [ ] 导出包可支持故障复盘、用量/本地耗时、路径比较及离线样本；只读验证不等于可执行导入。
+- [x] Agent/Coordinator 退出且超过 retention 后仍能查询；display 截断不影响业务历史。
+- [x] 导出期间追加事件不改变已固定范围，JSONL 可逐条验证，artifact digest 和缺失项明确。
+- [x] 在预置合法继承上下文数据上验证来源路径未包含、外部关系未包含和继承 usage 不重复计费；E 落地后再验真实 fork 链路。
+- [x] 长历史/慢导出受限内存、keyset 分页，不持有长期 SQLite 读事务；无凭据/活对象。
+- [~] 导出包支持故障复盘、按 recorded_at 的本地耗时、路径比较及离线样本；usage/cost 不在持久契约内（部分满足），只读验证不等于可执行导入。
 
 ## Scope Limits
 

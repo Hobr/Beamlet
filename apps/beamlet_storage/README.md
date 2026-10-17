@@ -174,6 +174,26 @@ authority transaction. Artifacts never bypass existing legal Result/wire limits.
 Authority attachment transfer is a different database transaction, not cross-DB
 atomicity.
 
+## Read-only history queries
+
+`Beamlet.Storage.History` answers history questions from committed facts only; it
+never starts an Agent, coordinator or Runtime retention window. Pages are keyset
+paginated as one bounded statement each, with no enclosing read transaction. Event
+and checkpoint pages are bounded by rows plus a byte budget, the turn and operation
+views by rows only (`:limit` 1..500, `:max_bytes` 4096..4 MiB). A page never splits a record: a
+record larger than the byte budget is returned alone with `over_budget: true` and
+stays bounded by its own codec limit.
+
+- `event_page(repo, scope_id, after_seq:, through_seq:, limit:, max_bytes:, type:, types:, turn_id:, operation_id:, origin:)` returns `%{"events", "next_cursor", "over_budget", "through_seq"}` with `origin` = `performed` | `inherited` per entry (an entry whose `source_agent_id` names another Agent is inherited, never this scope's work).
+- `event(repo, scope_id, seq)`, `checkpoint_at(repo, agent_id, seq)`, `checkpoint_page(repo, agent_id, after:, through_recorded_at:, limit:, max_bytes:)`.
+- `turns(repo, agent_id, after_first_seq:, limit:)`, `operations(repo, agent_id, after_history_seq:, limit:)`, `operation(repo, operation_id)`, `evidence(repo, operation_id)`.
+
+Checkpoints carry no history sequence. `checkpoint_at/3` therefore maps an event
+cursor to the newest checkpoint committed at or before that event and returns
+`derived_by: "commit_order"`; a checkpoint written in the same transaction as its
+event is visible at that sequence. Checkpoints are immutable, so later evidence
+never rewrites an earlier `as_of_seq` answer.
+
 ## Focused checks
 
 ```sh

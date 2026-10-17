@@ -102,6 +102,24 @@ defmodule Beamlet.Agent do
   end
 
   @doc """
+  Read-only durable history of a locator (`%{repo:, agent_id:}`) without starting
+  or contacting an Agent: `view: :turns | :facts | :context | :steps | :tools |
+  :evidence | :decisions | :provenance`. Current runtime observation is not part
+  of history and stays with `Beamlet.Runtime.status/1`.
+  """
+  def history(locator, filters \\ %{}, cursor \\ nil),
+    do: Beamlet.Agent.History.query(locator, filters, cursor)
+
+  @doc """
+  Bounded trace export of one committed scope: fixes a high-water mark first, then
+  streams a versioned manifest, JSONL events/checkpoints and referenced artifacts
+  into `policy.dir`. Read-only; the package never grants import/execution.
+  """
+  def export(locator, scope, policy) when is_map(locator) do
+    Beamlet.Agent.TraceExport.export(locator[:repo], scope || locator, policy)
+  end
+
+  @doc """
   Explicitly continues a paused durable instance: validates the expected version,
   records the decision and advances the stored continuation. Uncertain external
   effects stay blocked until `decisions` carries `%{"resolution" => "confirmed_failed" | "confirmed_executed"}`.
