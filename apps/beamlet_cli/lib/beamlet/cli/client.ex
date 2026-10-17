@@ -1,25 +1,10 @@
-defmodule Beamlet.Node.CLI do
+defmodule Beamlet.CLI.Client do
   @moduledoc """
   Small IEx/release client over live Agent refs. Watch runs in the subscriber
   process, acknowledges consumed snapshots and never retries business work.
   """
   alias Beamlet.Agent
-
-  @doc "Resolve an explicit node from a trusted, bounded deployment allowlist."
-  def authority(name, allowed) when is_binary(name) and is_list(allowed) do
-    if length(allowed) <= 32 and name in allowed and byte_size(name) <= 255 and
-         Regex.match?(~r/\A[a-zA-Z0-9_-]+@[a-zA-Z0-9_.-]+\z/, name),
-       do: {:ok, String.to_atom(name)},
-       else: {:error, :invalid_authority}
-  end
-
-  def authority(_, _), do: {:error, :invalid_authority}
-
-  def connect(name, allowed) do
-    with {:ok, target} <- authority(name, allowed) do
-      if Node.connect(target), do: :ok, else: {:error, :unavailable}
-    end
-  end
+  alias Beamlet.CLI.Renderer
 
   def create(authority, options), do: Agent.start(authority, options)
   def input(ref, text), do: Agent.input(ref, text)
@@ -32,7 +17,8 @@ defmodule Beamlet.Node.CLI do
   def watch(ref, opts \\ [])
 
   def watch(ref, opts) when is_list(opts) do
-    if Keyword.keyword?(opts) and Enum.all?(Keyword.keys(opts), &(&1 in [:timeout, :events])) do
+    if Keyword.keyword?(opts) and
+         Enum.all?(Keyword.keys(opts), &(&1 in [:timeout, :events, :output])) do
       do_watch(ref, opts)
     else
       {:error, :invalid_watch_options}
@@ -46,10 +32,15 @@ defmodule Beamlet.Node.CLI do
     events = Keyword.get(opts, :events, 64)
 
     if is_integer(timeout) and timeout in 1..60_000 and is_integer(events) and
-         events in 1..256 do
+         events in 1..256 and is_function(Keyword.get(opts, :output, &Owl.IO.puts/1), 1) do
       with :ok <- Agent.subscribe(ref) do
         try do
-          watch_events(ref, System.monotonic_time(:millisecond) + timeout, events)
+          watch_events(
+            ref,
+            System.monotonic_time(:millisecond) + timeout,
+            events,
+            Keyword.get(opts, :output, &Owl.IO.puts/1)
+          )
         after
           Agent.unsubscribe(ref)
         end
@@ -59,22 +50,31 @@ defmodule Beamlet.Node.CLI do
     end
   end
 
-  defp watch_events(_ref, _deadline, 0), do: {:error, :event_limit}
+  defp watch_events(_ref, _deadline, 0, _output), do: {:error, :event_limit}
 
-  defp watch_events(ref, deadline, remaining) do
+  defp watch_events(ref, deadline, remaining, output) do
     wait = max(deadline - System.monotonic_time(:millisecond), 0)
 
     receive do
       {:beamlet_agent, ^ref, sequence, {:snapshot, snapshot}} ->
-        # inspect limits nested collections and strings; printed codepoints are capped.
-        display = inspect(snapshot, limit: 40, printable_limit: 2048, pretty: false)
-        IO.puts(String.slice(display, 0, 4096))
+        # Same safe domain projection as status; Owl bounds per-event display.
+        display = Renderer.render(snapshot)
+
+        output.(
+          display
+          |> Owl.Data.truncate(4096)
+          |> Owl.Data.to_chardata()
+          |> IO.chardata_to_string()
+          |> String.to_charlist()
+          |> Enum.take(4096)
+          |> List.to_string()
+        )
 
         case Agent.ack(ref, sequence) do
           :ok ->
             if snapshot.status in [:done, :error, :stopped],
               do: {:ok, snapshot},
-              else: watch_events(ref, deadline, remaining - 1)
+              else: watch_events(ref, deadline, remaining - 1, output)
 
           error ->
             error

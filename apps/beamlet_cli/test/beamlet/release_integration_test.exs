@@ -1,8 +1,8 @@
-defmodule Beamlet.Node.ReleaseIntegrationTest do
+defmodule Beamlet.CLI.ReleaseIntegrationTest do
   use ExUnit.Case
+  alias Beamlet.CLI.Client, as: CLI
   alias Beamlet.Harness.Catalogue
   alias Beamlet.Harness.Tools.WorkspaceRead
-  alias Beamlet.Node.CLI
   @moduletag :distributed
 
   test "three independent role VMs use real HTTP adapter and executor workspace" do
@@ -73,14 +73,14 @@ defmodule Beamlet.Node.ReleaseIntegrationTest do
               ],
           else: opts
 
-      assert :ok = :peer.call(peer, Beamlet.Node.TestBoot, :boot, [opts])
+      assert :ok = :peer.call(peer, Beamlet.CLI.TestBoot, :boot, [opts])
     end
 
     {ap, _} = peers.interaction
     {bp, authority} = peers.authority
 
     assert :ok =
-             :peer.call(bp, Beamlet.Node.TestBoot, :barrier, ["model.provider:openai-compatible"])
+             :peer.call(bp, Beamlet.CLI.TestBoot, :barrier, ["model.provider:openai-compatible"])
 
     assert nil == :peer.call(cp, Process, :whereis, [Beamlet.Agent.Registry])
     assert nil == :peer.call(bp, Process, :whereis, [Beamlet.Runtime.ExecutorGateway])
@@ -121,16 +121,16 @@ defmodule Beamlet.Node.ReleaseIntegrationTest do
     [tool] = Enum.filter(second["messages"], &(&1["role"] == "tool"))
     assert tool["tool_call_id"] == "marker-call"
     assert tool["content"] =~ "executor-marker"
-    fence = :peer.call(cp, Beamlet.Node.TestBoot, :capacity_fence, [])
-    assert :ok = :peer.call(bp, Beamlet.Node.TestBoot, :fresh_capacity, [executor, fence])
+    fence = :peer.call(cp, Beamlet.CLI.TestBoot, :capacity_fence, [])
+    assert :ok = :peer.call(bp, Beamlet.CLI.TestBoot, :fresh_capacity, [executor, fence])
     later_server = spawn_link(fn -> serve(listener, owner, 1) end)
     on_exit(fn -> Process.exit(later_server, :kill) end)
     {:ok, _} = CLI.input(ref, "later turn")
     assert {:ok, %{status: :done, final: "verified"}} = CLI.watch(ref, timeout: 10_000)
     assert_receive {:http_request, 1, later}, 1000
     assert later["model"] == "fixture"
-    fence = :peer.call(cp, Beamlet.Node.TestBoot, :capacity_fence, [])
-    assert :ok = :peer.call(bp, Beamlet.Node.TestBoot, :fresh_capacity, [executor, fence])
+    fence = :peer.call(cp, Beamlet.CLI.TestBoot, :capacity_fence, [])
+    assert :ok = :peer.call(bp, Beamlet.CLI.TestBoot, :fresh_capacity, [executor, fence])
     assert :ok = CLI.close(ref)
 
     # Same adapter, but no eligible workspace: the model sees an explicit failure,

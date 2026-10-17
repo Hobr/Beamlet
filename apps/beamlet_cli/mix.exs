@@ -11,6 +11,7 @@ defmodule Beamlet.CLI.MixProject do
       lockfile: "../../mix.lock",
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
       deps: deps()
     ]
   end
@@ -26,6 +27,11 @@ defmodule Beamlet.CLI.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:beamlet_node, in_umbrella: true},
+      {:beamlet_agent, in_umbrella: true},
+      {:beamlet_runtime, in_umbrella: true, only: :test},
+      {:beamlet_harness, in_umbrella: true, only: :test},
+      {:jason, "~> 1.4", only: :test},
       {:owl, "~> 0.13"},
       {:ucwidth, "~> 0.2"}
     ]

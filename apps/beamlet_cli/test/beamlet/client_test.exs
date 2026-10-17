@@ -1,14 +1,6 @@
-defmodule Beamlet.Node.CLITest do
+defmodule Beamlet.CLI.ClientTest do
   use ExUnit.Case
-  alias Beamlet.Node.CLI
-
-  test "authority is explicit and restricted to trusted deployment names" do
-    assert {:ok, :authority@localhost} =
-             CLI.authority("authority@localhost", ["authority@localhost"])
-
-    assert {:error, :invalid_authority} = CLI.authority("other@localhost", [])
-    assert {:error, :invalid_authority} = CLI.authority("invalid", ["invalid"])
-  end
+  alias Beamlet.CLI.Client, as: CLI
 
   test "malformed watch options reject before subscription" do
     for opts <- [nil, %{}, [:timeout], [{"timeout", 1}], [unknown: 1], [timeout: 0], [events: 0]] do
