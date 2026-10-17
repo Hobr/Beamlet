@@ -67,6 +67,13 @@ defmodule Beamlet.Node.TestBoot do
   alias Beamlet.Runtime.Directory
 
   def authority do
+    # This fixture adds a separate authority island after interaction startup.
+    # Remove the non-authority query responder to avoid two fixed-name owners.
+    if Process.whereis(Beamlet.Node) do
+      Supervisor.terminate_child(Beamlet.Node, Beamlet.Agent.Discovery.Endpoint)
+      Supervisor.delete_child(Beamlet.Node, Beamlet.Agent.Discovery.Endpoint)
+    end
+
     {:ok, pid} =
       AuthoritySupervisor.start_link(
         model_providers: %{"held" => Beamlet.Node.TestModel, "model" => Beamlet.Node.TestModel}

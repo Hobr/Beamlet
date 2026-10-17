@@ -4,7 +4,31 @@ defmodule Beamlet.NodeTest do
   alias Beamlet.Runtime.Directory
   use ExUnit.Case
 
-  test "role validation and opt-in executor composition" do
+  test "authority-only limits reject at preflight without starting children" do
+    for limits <- [
+          [refresh_ms: 0],
+          [refresh_ms: 3_600_001],
+          [operation_bytes: 1023],
+          [operation_bytes: 262_145],
+          [unknown: 1],
+          :bad,
+          nil,
+          {:refresh_ms, 20},
+          %{"refresh_ms" => 20},
+          [refresh_ms: "bad"],
+          "PRIVATE_LIMIT_SENTINEL",
+          [1],
+          [{:refresh_ms, 20} | :bad]
+        ] do
+      options = [roles: [:authority], limits: limits]
+      assert {:error, :invalid_node_configuration} = Beamlet.Node.configuration(options)
+      assert Process.whereis(Beamlet.Node.Routes) == nil
+      assert Process.whereis(Beamlet.Runtime.Directory) == nil
+      assert Process.whereis(Beamlet.Agent.Registry) == nil
+    end
+  end
+
+  test "an embedding supervisor starts and stops all seven role combinations" do
     for roles <- [
           [:interaction],
           [:authority],
@@ -23,6 +47,18 @@ defmodule Beamlet.NodeTest do
 
       assert Enum.any?(children, &match?({Beamlet.Agent.AuthoritySupervisor, _}, &1)) ==
                :authority in roles
+
+      pid = start_supervised!({Beamlet.Node, roles: roles})
+      assert Process.alive?(pid)
+      assert is_pid(Process.whereis(Beamlet.Runtime.Directory))
+      assert is_pid(Process.whereis(Beamlet.Node.Routes))
+      assert is_pid(Process.whereis(Beamlet.Agent.Registry)) == :authority in roles
+      assert is_pid(Process.whereis(Beamlet.Runtime.ExecutorGateway)) == :executor in roles
+      assert is_pid(Process.whereis(Beamlet.Node.Provider)) == :executor in roles
+      assert :ok = stop_supervised(Beamlet.Node)
+      assert Process.whereis(Beamlet.Node) == nil
+      assert Process.whereis(Beamlet.Agent.Registry) == nil
+      assert Process.whereis(Beamlet.Runtime.ExecutorGateway) == nil
     end
 
     assert {:error, :invalid_node_configuration} = Beamlet.Node.configuration(roles: [:unknown])
@@ -72,7 +108,7 @@ defmodule Beamlet.NodeTest do
 
     start_supervised!(
       {Beamlet.Node,
-       roles: [:authority, :executor],
+       roles: [:interaction, :authority, :executor],
        profiles: profiles,
        model_providers: %{"fixture" => Beamlet.Harness.Models.Deterministic}}
     )

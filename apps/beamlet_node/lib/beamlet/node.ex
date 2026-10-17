@@ -2,7 +2,7 @@ defmodule Beamlet.Node do
   alias Beamlet.Harness.Model
   alias Beamlet.Runtime.Limits
   alias Beamlet.Runtime.Report
-  @moduledoc "Trusted opt-in role composition. Default umbrella boot starts no roles."
+  @moduledoc "Trusted role composition, started explicitly by an embedding supervisor."
   use Supervisor
   alias Beamlet.Agent.Integration.{Caller, Handler}
   alias Beamlet.Harness.Catalogue
@@ -66,11 +66,13 @@ defmodule Beamlet.Node do
           runtime
         end
 
+      limits = Limits.new(runtime)
+
       if execution,
         do:
           Report.validate_configuration!(
             runtime,
-            Limits.new(runtime)
+            limits
           )
 
       children =
@@ -87,7 +89,7 @@ defmodule Beamlet.Node do
       {:ok,
        if(:authority in roles,
          do: children ++ [{Beamlet.Agent.AuthoritySupervisor, model_providers: models}],
-         else: children
+         else: children ++ [{Beamlet.Agent.Discovery.Endpoint, authority: false}]
        )}
     else
       _ -> {:error, :invalid_node_configuration}
