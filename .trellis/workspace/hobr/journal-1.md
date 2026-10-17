@@ -173,3 +173,49 @@ Delivered immutable Agent-owned provider/config/credentials/placement bindings, 
 ### Next Steps
 
 - 前置query-transport-research及node-host-split相关任务本次未归档。
+
+
+## Session 6: 归档Node宿主拆分与查询研究任务
+<!-- trellis-session: v=2 fp=9bd078f68562e4f7 -->
+
+**Date**: 2026-10-17
+**Task**: 归档Node宿主拆分与查询研究任务
+**Branch**: `dev`
+
+### Summary
+
+用户确认后归档四个Node宿主拆分子任务、父任务及查询传输研究，共六项；补齐最终收尾说明与daemon集成勾选，保留历史验收和父子关联，修复归档文档与上下文引用。无活动任务，未推送。
+
+### Main Changes
+
+- 归档node-library、daemon-host、agent-discovery、cli-host、node-host-split及query-transport-research，均为completed。
+- 保留全部任务文档，更新task提交锚点；旧阶段的阻塞/待提交描述由归档说明及最终验收明确限定为历史记录。
+- 同步已归档simplify-agent-queries的研究引用与backend-release规范中的任务路径。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ee16a0b` | feat(agent): add bounded live discovery and lookup |
+| `5556375` | refactor(node): expose explicit library composition and cluster APIs |
+| `c21e3c8` | refactor(cli): migrate client adapter and reuse Owl presentation |
+| `830b361` | feat(daemon): add opt-in authority and executor host |
+| `29ce823` | feat(cli): add bounded interaction sessions and terminal runner |
+| `4ed6531` | build(release): replace node executable with daemon and cli |
+| `77b212f` | test(deployment): verify copied hosts and terminal workflows |
+| `0b41d19` | docs(backend): document library hosts and discovery contracts |
+| `9657d2a` | chore(trellis): record split planning and reviewed acceptance |
+| `2735879` | refactor(agent): simplify discovery queries with erpc |
+
+### Testing
+
+- [OK] 七个归档任务的14份JSONL清单共113条引用全部通过；42个本地Markdown链接、任务路径、父子关系、commit祖先及空白检查通过。
+- [OK] 仅归档和文档变动，产品源码及依赖未改动，未重跑产品测试。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 全部已完成任务均已归档，活动任务列表为空。
