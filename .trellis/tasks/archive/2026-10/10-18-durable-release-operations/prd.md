@@ -8,7 +8,7 @@
 
 ## 来源与依赖
 
-父任务：[Agent / Operation 持久化与恢复](../10-18-agent-operation-persistence/prd.md)；来源需求：R1、R3、R4、R6、R7、R8；对应交付阶段 F。
+父任务：[Agent / Operation 持久化与恢复](../../../10-18-agent-operation-persistence/prd.md)；来源需求：R1、R3、R4、R6、R7、R8；对应交付阶段 F。
 
 先决：[持久数据契约与存储基础](../10-18-durable-storage/prd.md)、[Runtime 权威记录与执行日志](../10-18-durable-runtime/prd.md)、[Agent 历史、检查点与暂停恢复](../10-18-durable-agent/prd.md)、[持久历史查询与轨迹导出](../10-18-durable-history-export/prd.md)、[安全 fork 与恢复决定](../10-18-durable-fork-resolution/prd.md) 验收通过后才能实施。
 

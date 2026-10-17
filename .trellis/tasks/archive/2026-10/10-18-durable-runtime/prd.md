@@ -8,7 +8,7 @@
 
 ## 来源与依赖
 
-父任务：[Agent / Operation 持久化与恢复](../10-18-agent-operation-persistence/prd.md)；来源需求：R1、R3、R4、R8；对应交付阶段 B。
+父任务：[Agent / Operation 持久化与恢复](../../../10-18-agent-operation-persistence/prd.md)；来源需求：R1、R3、R4、R8；对应交付阶段 B。
 
 先决：[持久数据契约与存储基础](../10-18-durable-storage/prd.md) 验收通过后才能实施。
 

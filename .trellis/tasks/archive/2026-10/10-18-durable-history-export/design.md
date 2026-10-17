@@ -4,9 +4,9 @@
 
 ## 设计依据
 
-- [主设计](../../../docs/architecture/agent-operation-persistence.md)
-- [实施与验收计划](../../../docs/architecture/persistence-delivery.md)
-- [术语](../../../GLOSSARY.md)
+- [主设计](../../../../../docs/architecture/agent-operation-persistence.md)
+- [实施与验收计划](../../../../../docs/architecture/persistence-delivery.md)
+- [术语](../../../../../GLOSSARY.md)
 
 以上文档是契约来源；本文只收敛本任务范围，不另建相互竞争的设计。代码兼容性核对基线为 `a078aa3`，开工前重新核对后续变化。
 
@@ -22,7 +22,7 @@ Agent.history(locator, filters, cursor) 与有界流式 Agent.export(locator, sc
 
 先决：[Agent 历史、检查点与暂停恢复](../10-18-durable-agent/prd.md) 验收通过后才能实施。
 
-遵循[父设计](../10-18-agent-operation-persistence/design.md)的跨阶段契约、单权威部署与回退限制。具体源码位置开工前重新核对；这里只记录 seam 和职责，不以基线函数签名冻结未来实现细节。现有临时模式不能被持久失败静默接管。
+遵循[父设计](../../../10-18-agent-operation-persistence/design.md)的跨阶段契约、单权威部署与回退限制。具体源码位置开工前重新核对；这里只记录 seam 和职责，不以基线函数签名冻结未来实现细节。现有临时模式不能被持久失败静默接管。
 
 ## 验证边界
 

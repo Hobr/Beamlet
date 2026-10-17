@@ -17,7 +17,7 @@
 
 ## 验证与收尾
 
-- [x] 逐项取得自身 PRD 验收及[主交付计划](../../../docs/architecture/persistence-delivery.md)阶段 B 的真实证据；纯存储阶段不声称已验证业务恢复。
+- [x] 逐项取得自身 PRD 验收及[主交付计划](../../../../../docs/architecture/persistence-delivery.md)阶段 B 的真实证据；纯存储阶段不声称已验证业务恢复。
 - [x] 按 backend/quality-guidelines 选择受影响代码的格式、warning-fatal compile、针对性/完整 ExUnit、显式 named distributed suite、静态检查和必要 release 验证，记录环境限制；涉及两库契约的用例必须两库运行。
 - [x] 更新已实现的 spec、接口和操作说明，不把下游规划写成现状；将证据及交接契约交给父任务和下游评审。
 - [x] 依父设计暂停点检查范围，阶段回退只关闭新持久入口/保持兼容读，不删除已提交事实或回退成内存权威。

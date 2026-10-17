@@ -8,7 +8,7 @@
 
 ## 来源与依赖
 
-父任务：[Agent / Operation 持久化与恢复](../10-18-agent-operation-persistence/prd.md)；来源需求：R1、R2、R3、R8；对应交付阶段 A。
+父任务：[Agent / Operation 持久化与恢复](../../../10-18-agent-operation-persistence/prd.md)；来源需求：R1、R2、R3、R8；对应交付阶段 A。
 
 先决：无上游实现任务；本子任务已获用户评审批准。
 
