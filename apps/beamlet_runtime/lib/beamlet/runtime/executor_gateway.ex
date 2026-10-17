@@ -2,7 +2,8 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   @moduledoc false
   use GenServer
   alias Beamlet.Actions.{ExecutionHandle, Operation, Result}
-  alias Beamlet.Runtime.{NodeEndpoint, Report, Worker, Workers}
+  alias Beamlet.Runtime.{NodeEndpoint, Persistence, Report, Worker, Workers}
+  alias Beamlet.Storage.ExecutorJournal
   def start_link(args), do: GenServer.start_link(__MODULE__, args, name: __MODULE__)
 
   def eligible?(op, r) do
@@ -25,6 +26,8 @@ defmodule Beamlet.Runtime.ExecutorGateway do
 
     providers = Keyword.get(opts, :providers, [])
     monitors = Map.new(providers, fn pid -> {Process.monitor(pid), pid} end)
+    persistence = Keyword.get(opts, :persistence)
+    journal_ready = mark_restarted_attempts(persistence)
     if endpoint = Process.whereis(NodeEndpoint), do: send(endpoint, {:gateway_ready, self()})
 
     {:ok,
@@ -41,8 +44,39 @@ defmodule Beamlet.Runtime.ExecutorGateway do
        tasks: %{},
        owners: %{},
        providers: monitors,
-       ready: true
+       persistence: persistence,
+       journal_ready: journal_ready,
+       ready: journal_ready
      }}
+  end
+
+  # A new executor boot never rebuilds a worker: prior start intents become
+  # unknown_after_restart and stay non-terminal, and no capacity is restored.
+  # At boot this gateway owns no live worker: `:one_for_all` has already killed any
+  # previous ones, so every remaining start intent is orphaned regardless of which
+  # boot id wrote it. Leaving a same-boot row at start_intent would make it
+  # unreachable for both terminal and restart classification.
+  defp mark_restarted_attempts(nil), do: true
+
+  defp mark_restarted_attempts(%Persistence{} = persistence) do
+    case safe_journal(fn ->
+           ExecutorJournal.mark_unknown_after_restart(persistence.journal_repo, %{
+             authority_id: persistence.authority_id,
+             executor_id: persistence.executor_id
+           })
+         end) do
+      {:ok, %{"marked" => _count}} -> true
+      _ -> false
+    end
+  end
+
+  # Facade errors stay safe atoms; an unavailable Repo must never crash admission.
+  defp safe_journal(fun) do
+    fun.()
+  rescue
+    _ -> {:error, :durable_unavailable}
+  catch
+    :exit, _ -> {:error, :durable_unavailable}
   end
 
   @impl true
@@ -65,11 +99,8 @@ defmodule Beamlet.Runtime.ExecutorGateway do
     {:noreply, s}
   end
 
-  def handle_info({:admit, coordinator, id, attempt, incarnation, lease, op, remaining}, s)
-      when is_pid(coordinator) and is_binary(id) and byte_size(id) in 1..128 and
-             is_binary(attempt) and byte_size(attempt) in 1..128 do
-    admission(s, coordinator, id, attempt, incarnation, lease, op, remaining)
-  end
+  def handle_info({:admit, _, _, _, _, _, _, _} = message, s), do: admit_message(message, s)
+  def handle_info({:admit, _, _, _, _, _, _, _, _} = message, s), do: admit_message(message, s)
 
   def handle_info({:cancel, coordinator, attempt}, s) do
     {:noreply, stop_worker(s, {coordinator, attempt}, :cancelled)}
@@ -113,8 +144,7 @@ defmodule Beamlet.Runtime.ExecutorGateway do
                  metadata: %{}
              }
 
-        send(elem(key, 0), {:completed, elem(key, 1), entry.handle, result})
-        {:noreply, release(s, key)}
+        complete(s, key, entry, result, %{"kind" => "returned"})
     end
   end
 
@@ -138,8 +168,7 @@ defmodule Beamlet.Runtime.ExecutorGateway do
           source: :execution
         }
 
-        send(elem(key, 0), {:completed, elem(key, 1), entry.handle, result})
-        {:noreply, release(s, key)}
+        complete(s, key, entry, result, termination(reason))
 
       Map.has_key?(s.owners, ref) ->
         key = s.owners[ref]
@@ -180,20 +209,65 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   # The first trigger processed here owns provenance, including kill escalation.
   defp stop_worker(s, key, source) do
     case s.attempts[key] do
-      %{task: task, cancellation: cancellation, stop_source: nil} ->
-        if :atomics.exchange(cancellation, 1, 1) == 0 do
-          Process.exit(task.pid, :shutdown)
-          Process.send_after(self(), {:kill, key, task.pid}, s.limits.cancel_ms)
-        end
+      %{task: task, cancellation: cancellation, stop_source: nil} = entry ->
+        entry =
+          if :atomics.exchange(cancellation, 1, 1) == 0 do
+            entry = journal_stop(s, entry, source)
+            Process.exit(task.pid, :shutdown)
+            Process.send_after(self(), {:kill, key, task.pid}, s.limits.cancel_ms)
+            entry
+          else
+            entry
+          end
 
-        put_in(s, [:attempts, key, :stop_source], source)
+        put_in(s, [:attempts, key], %{entry | stop_source: source})
 
       _ ->
         s
     end
   end
 
-  defp admission(s, coordinator, id, attempt, incarnation, lease, op, remaining) do
+  # The first durable stop cause is recorded before the worker can terminate; a
+  # later competing trigger cannot replace it. A failed write never blocks stop.
+  defp journal_stop(_s, %{journal: nil} = entry, _source), do: entry
+
+  defp journal_stop(s, entry, source) do
+    journal = entry.journal
+
+    case safe_journal(fn ->
+           ExecutorJournal.record_stop(s.persistence.journal_repo, %{
+             authority_id: journal.authority_id,
+             attempt_id: journal.attempt_id,
+             stop_reason: source,
+             expected_version: journal.lock_version
+           })
+         end) do
+      {:ok, %{"state" => "start_intent", "lock_version" => version}} ->
+        %{entry | journal: %{journal | lock_version: version}}
+
+      _ ->
+        entry
+    end
+  end
+
+  defp admit_message({:admit, coordinator, id, attempt, incarnation, lease, op, remaining}, s)
+       when is_pid(coordinator) and is_binary(id) and byte_size(id) in 1..128 and
+              is_binary(attempt) and byte_size(attempt) in 1..128 do
+    admission(s, coordinator, id, attempt, incarnation, lease, op, remaining, nil)
+  end
+
+  defp admit_message(
+         {:admit, coordinator, id, attempt, incarnation, lease, op, remaining, durable},
+         s
+       )
+       when is_pid(coordinator) and is_binary(id) and byte_size(id) in 1..128 and
+              is_binary(attempt) and byte_size(attempt) in 1..128 do
+    admission(s, coordinator, id, attempt, incarnation, lease, op, remaining, durable)
+  end
+
+  defp admit_message(_, s), do: {:noreply, s}
+
+  defp admission(s, coordinator, id, attempt, incarnation, lease, op, remaining, durable) do
     key = {coordinator, attempt}
     remaining = remaining_budget(remaining, lease)
 
@@ -211,7 +285,110 @@ defmodule Beamlet.Runtime.ExecutorGateway do
         {:noreply, remember(s, key, :rejected)}
 
       true ->
-        admit(s, key, id, op, remaining)
+        case claim_start(s, attempt, durable, op) do
+          {:ok, journal} ->
+            admit(s, key, id, op, remaining, journal)
+
+          {:error, reason} ->
+            # No journal start intent means no worker: capacity was never charged.
+            send(coordinator, {:rejected, attempt, reason})
+            {:noreply, remember(s, key, :rejected)}
+        end
+    end
+  end
+
+  defp claim_start(%{persistence: nil}, _attempt, nil, _op), do: {:ok, nil}
+
+  defp claim_start(%{persistence: nil}, _attempt, _durable, _op),
+    do: {:error, :durable_unavailable}
+
+  defp claim_start(%{journal_ready: false}, _attempt, _durable, _op),
+    do: {:error, :durable_unavailable}
+
+  defp claim_start(_s, _attempt, nil, _op), do: {:error, :durable_unavailable}
+
+  defp claim_start(s, attempt, durable, op) do
+    persistence = s.persistence
+
+    cond do
+      not valid_durable?(durable, attempt, persistence, op) ->
+        {:error, :durable_unavailable}
+
+      true ->
+        case safe_journal(fn ->
+               ExecutorJournal.fetch(
+                 persistence.journal_repo,
+                 persistence.authority_id,
+                 durable.attempt_id
+               )
+             end) do
+          {:ok, _stored} ->
+            {:error, :duplicate_admission}
+
+          {:error, _reason} ->
+            start_intent(s, durable)
+        end
+    end
+  end
+
+  defp valid_durable?(durable, attempt, persistence, op) do
+    is_map(durable) and not is_struct(durable) and
+      durable[:attempt_id] == attempt and
+      durable[:authority_id] == persistence.authority_id and
+      durable[:executor_id] == persistence.executor_id and
+      durable[:executor_boot_id] == persistence.executor_boot_id and
+      is_binary(durable[:operation_id]) and is_binary(durable[:description_digest]) and
+      digest_matches?(durable, op)
+  end
+
+  # The journal must describe the work actually executed, not whatever digest the
+  # admit message claimed.
+  defp digest_matches?(durable, %Operation{} = op) do
+    with description = Persistence.description(op),
+         {:ok, digest} <- Beamlet.Storage.Codec.digest(description, :operation) do
+      digest == durable[:description_digest]
+    else
+      _ -> false
+    end
+  rescue
+    _ -> false
+  end
+
+  defp start_intent(s, durable) do
+    persistence = s.persistence
+
+    case safe_journal(fn ->
+           ExecutorJournal.claim_start(persistence.journal_repo, %{
+             id: Persistence.uuid(),
+             authority_id: persistence.authority_id,
+             operation_id: durable.operation_id,
+             attempt_id: durable.attempt_id,
+             description_digest: durable.description_digest,
+             executor_id: persistence.executor_id,
+             executor_boot_id: persistence.executor_boot_id
+           })
+         end) do
+      {:ok, %{"state" => "start_intent", "lock_version" => version}} ->
+        {:ok,
+         %{
+           authority_id: persistence.authority_id,
+           operation_id: durable.operation_id,
+           attempt_id: durable.attempt_id,
+           description_digest: durable.description_digest,
+           executor_id: persistence.executor_id,
+           executor_boot_id: persistence.executor_boot_id,
+           lock_version: version,
+           receipt_id: Persistence.uuid()
+         }}
+
+      {:ok, _stored} ->
+        {:error, :duplicate_admission}
+
+      {:error, :conflict} ->
+        {:error, :duplicate_admission}
+
+      {:error, _reason} ->
+        {:error, :durable_unavailable}
     end
   end
 
@@ -220,7 +397,7 @@ defmodule Beamlet.Runtime.ExecutorGateway do
 
   defp remaining_budget(_, _), do: 0
 
-  defp admit(s, {coordinator, attempt} = key, id, op, remaining) do
+  defp admit(s, {coordinator, attempt} = key, id, op, remaining, journal) do
     {module, settings} = Map.fetch!(s.handlers, op.kind)
 
     handle = %ExecutionHandle{
@@ -231,6 +408,8 @@ defmodule Beamlet.Runtime.ExecutorGateway do
 
     cancellation = :atomics.new(1, [])
 
+    # The start intent must be durable before the worker exists; claim_start above
+    # already committed it, so only local supervision happens here.
     task =
       Task.Supervisor.async_nolink(Workers, Worker, :run, [
         module,
@@ -255,7 +434,8 @@ defmodule Beamlet.Runtime.ExecutorGateway do
       kill_requested: false,
       stop_source: nil,
       progress_dropped: false,
-      cancellation: cancellation
+      cancellation: cancellation,
+      journal: journal
     }
 
     send(coordinator, {:admitted, attempt, handle})
@@ -277,6 +457,56 @@ defmodule Beamlet.Runtime.ExecutorGateway do
       send(coordinator, {:rejected, attempt, :capacity})
       {:noreply, remember(s, key, :rejected)}
   end
+
+  # Exactly one durable terminal observation exists per attempt and it commits
+  # before the coordinator may hear a completion. If it cannot commit, nothing is
+  # reported as durably complete.
+  defp complete(s, key, entry, result, termination) do
+    case record_terminal(s, entry, result, termination) do
+      {:ok, receipt} ->
+        message =
+          if receipt,
+            do: {:completed, elem(key, 1), entry.handle, result, receipt},
+            else: {:completed, elem(key, 1), entry.handle, result}
+
+        send(elem(key, 0), message)
+        {:noreply, release(s, key)}
+
+      {:error, _reason} ->
+        # The handler may have run: report an unrecorded outcome, never a rejection.
+        send(elem(key, 0), {:unrecorded, elem(key, 1), :durable_unavailable})
+        {:noreply, release(s, key)}
+    end
+  end
+
+  defp record_terminal(_s, %{journal: nil}, _result, _termination), do: {:ok, nil}
+
+  defp record_terminal(s, entry, result, termination) do
+    journal = entry.journal
+
+    with {:ok, receipt} <- Persistence.receipt(journal, result, termination),
+         {:ok, _stored} <-
+           safe_journal(fn ->
+             ExecutorJournal.record_terminal(s.persistence.journal_repo, %{
+               authority_id: journal.authority_id,
+               attempt_id: journal.attempt_id,
+               expected_version: journal.lock_version,
+               termination: termination,
+               terminal_result: receipt.content["result"],
+               terminal_artifacts: %{"version" => 1, "items" => %{}},
+               receipt_id: receipt.id,
+               receipt_digest: receipt.digest,
+               receipt: receipt.content
+             })
+           end) do
+      {:ok, receipt}
+    end
+  end
+
+  defp termination(:normal), do: %{"kind" => "exit", "reason" => "normal"}
+  defp termination(:shutdown), do: %{"kind" => "exit", "reason" => "shutdown"}
+  defp termination(:killed), do: %{"kind" => "exit", "reason" => "killed"}
+  defp termination(_reason), do: %{"kind" => "exit", "reason" => "other"}
 
   defp normalize({:worker_result, result, metadata}, e) do
     result = normalize(result, e)

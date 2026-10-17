@@ -223,6 +223,11 @@ defmodule Beamlet.Runtime.NodeEndpoint do
     {:noreply, state}
   end
 
+  def handle_info({:admit, coordinator, _, attempt, _, _, _, _, _}, %{gateway: nil} = state) do
+    send(coordinator, {:rejected, attempt, :ineligible})
+    {:noreply, state}
+  end
+
   def handle_info(message, %{gateway: gateway} = state) when is_pid(gateway) do
     send(gateway, message)
     {:noreply, state}

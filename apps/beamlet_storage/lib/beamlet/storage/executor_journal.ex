@@ -360,26 +360,34 @@ defmodule Beamlet.Storage.ExecutorJournal do
 
   ## Restart
 
+  # `keep_executor_boot_id` excludes still-live boots of a shared journal. A caller
+  # that owns no live worker (for example a gateway boot, where supervision already
+  # killed its workers) omits it and every start intent for that executor is marked.
   defp validate_restart(attrs) do
     with {:ok, _} <-
-           Records.fields(attrs, [:authority_id, :executor_id, :keep_executor_boot_id], []),
+           Records.fields(attrs, [:authority_id, :executor_id], [:keep_executor_boot_id]),
          {:ok, authority_id} <- Records.uuid(attrs[:authority_id]),
          {:ok, executor_id} <- Records.uuid(attrs[:executor_id]),
-         {:ok, boot_id} <- Records.uuid(attrs[:keep_executor_boot_id]) do
+         {:ok, boot_id} <- Records.optional_uuid(attrs[:keep_executor_boot_id]) do
       {:ok, %{authority_id: authority_id, executor_id: executor_id, keep_boot_id: boot_id}}
     end
   end
 
   defp write_restart(repo, input) do
-    query =
+    base =
       from(j in JournalAttempt,
         where:
           j.authority_id == ^input.authority_id and j.executor_id == ^input.executor_id and
-            j.executor_boot_id != ^input.keep_boot_id and j.state == "start_intent",
+            j.state == "start_intent",
         update: [
           set: [state: "unknown_after_restart", lock_version: j.lock_version + 1]
         ]
       )
+
+    query =
+      if input.keep_boot_id,
+        do: from(j in base, where: j.executor_boot_id != ^input.keep_boot_id),
+        else: base
 
     case repo.update_all(query, [], log: false) do
       {count, _} -> {:ok, %{"marked" => count}}

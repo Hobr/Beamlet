@@ -1,6 +1,6 @@
 # Runtime 权威记录与执行日志
 
-状态：planning。仅创建规划；用户尚未授权激活或实施，不运行 `task.py start`，不安装依赖、不修改应用代码。
+状态：in_progress。用户于 2026-10-18 授权 A–F 连续实施：每阶段完成并提交后自动进入下一阶段；B–F 不再逐段请求确认。
 
 ## Goal
 
@@ -21,11 +21,11 @@
 
 ## Acceptance Criteria
 
-- [ ] 逐个崩溃切点验证持久 handler 调用计数不因重启/证据传输而增加；本地执行也走同一日志路径。
-- [ ] journal 写失败时零 worker 启动，终态写失败时不上报 durable completion；提交结果未知可按稳定 ID 核对。
-- [ ] 相同 receipt 重传返回同证据；不同 digest 冲突安全拒绝；终态接受只成功一次。
-- [ ] 竞争 deadline/cancel、kill escalation、无关崩溃、正常返回及迟到消息的分类与 e9bd6b4 一致；重启不由停止请求伪造已停。
-- [ ] Coordinator 终态未提交不通知 sink；进程仍注册但 DB/journal 不可写时相应持久准入被阻止。
+- [x] 逐个崩溃切点验证持久 handler 调用计数不因重启/证据传输而增加；本地执行也走同一日志路径。
+- [x] journal 写失败时零 worker 启动，终态写失败时不上报 durable completion；提交结果未知可按稳定 ID 核对。
+- [x] 相同 receipt 重传返回同证据；不同 digest 冲突安全拒绝；终态接受只成功一次。
+- [x] 竞争 deadline/cancel、kill escalation、无关崩溃、正常返回及迟到消息的分类与 e9bd6b4 一致；重启不由停止请求伪造已停。
+- [x] Coordinator 终态未提交不通知 sink；进程仍注册但 DB/journal 不可写时相应持久准入被阻止。
 
 ## Scope Limits
 

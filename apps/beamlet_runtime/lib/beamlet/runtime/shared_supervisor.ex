@@ -8,13 +8,15 @@ defmodule Beamlet.Runtime.SharedSupervisor do
     ExecutionSupervisor,
     Groups,
     Limits,
-    NodeEndpoint
+    NodeEndpoint,
+    Persistence
   }
 
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   @impl true
   def init(opts) do
     limits = Limits.new(opts)
+    opts = Keyword.put(opts, :persistence, Persistence.new(Keyword.get(opts, :persistence)))
 
     execution = Keyword.get(opts, :execution, false)
     unless is_boolean(execution), do: raise(ArgumentError, "execution must be boolean")

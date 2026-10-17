@@ -1,7 +1,14 @@
 defmodule Beamlet.Runtime do
-  @moduledoc "Opt-in, ephemeral, one-attempt distributed operations. See task handoff for wire events."
+  @moduledoc """
+  Opt-in, one-attempt distributed operations, ephemeral by default.
+
+  Supplying `persistence: %Beamlet.Runtime.Persistence{}` keeps the existing
+  in-memory worker/supervision model but adds authority prepare/claim/accept and
+  an executor-local attempt journal around it. Omitting it keeps today's
+  behaviour exactly.
+  """
   alias Beamlet.Actions.{Operation, OperationRef}
-  alias Beamlet.Runtime.{Directory, Observation, SharedSupervisor}
+  alias Beamlet.Runtime.{Directory, Observation, Persistence, SharedSupervisor}
 
   @doc """
   Safe Directory-owned report observation, `{:ok, %{version: 1, source: node,
@@ -29,6 +36,13 @@ defmodule Beamlet.Runtime do
   requires a local owner PID and rejects dead ownership at startup and before
   dispatch, including after blocking Directory reads. Startup rejection returns
   `{:error, :unavailable}`. The default permits remote owners as before.
+
+  Optional `persistence: %Beamlet.Runtime.Persistence{}` enables the durable path:
+  the immutable Operation and one prepared attempt are committed before any admit
+  is sent, and a failed authority write returns `{:error, :invalid_operation |
+  :unavailable}` having dispatched nothing. Without it the operation stays
+  ephemeral and in-memory. The struct is authoritative input, so an invalid one
+  raises instead of returning a tuple.
   """
   def submit(operation, opts \\ []) do
     with :ok <- Operation.validate(operation),
@@ -36,12 +50,19 @@ defmodule Beamlet.Runtime do
            :erlang.external_size(operation) <= Directory.limits().operation_bytes,
          true <-
            is_pid(Keyword.get(opts, :owner, self())) and is_pid(Keyword.get(opts, :sink, self())),
-         true <- valid_owner_guard?(opts) do
-      id = Base.encode16(:crypto.strong_rand_bytes(16))
+         true <- valid_owner_guard?(opts),
+         :ok <- coordinators_available(Keyword.get(opts, :persistence)),
+         persistence <- Persistence.new(Keyword.get(opts, :persistence)),
+         {:ok, prepared} <- prepare(persistence, operation) do
+      {id, durable} =
+        case prepared do
+          nil -> {Base.encode16(:crypto.strong_rand_bytes(16)), nil}
+          prepared -> {prepared["operation_id"], {persistence, prepared}}
+        end
 
       args =
         {id, operation, Keyword.get(opts, :owner, self()), Keyword.get(opts, :sink, self()),
-         Keyword.get(opts, :require_live_owner, false)}
+         Keyword.get(opts, :require_live_owner, false), durable}
 
       case DynamicSupervisor.start_child(
              Beamlet.Runtime.Coordinators,
@@ -53,11 +74,57 @@ defmodule Beamlet.Runtime do
         :ignore -> {:error, :unavailable}
       end
     else
+      {:error, reason} when reason in [:invalid_operation, :unavailable] -> {:error, reason}
       _ -> {:error, :invalid_operation}
     end
   catch
     :exit, _ -> {:error, :unavailable}
   end
+
+  @doc """
+  Read-only Evidence query using stable IDs only: the authority Operation and one
+  attempt, plus the executor journal row when this attempt was claimed there.
+
+  No coordinator, dispatch, sink or retry is involved. `journal: :not_found`
+  means this journal has no row; it is not proof that the handler never ran, and
+  `journal: :unavailable` means the journal could not be read at all.
+  """
+  def evidence(%Persistence{} = persistence, operation_id, attempt_id) do
+    with {:ok, authority} <-
+           Beamlet.Storage.OperationRecords.fetch(persistence.authority_repo, operation_id) do
+      journal =
+        case Beamlet.Storage.ExecutorJournal.fetch(
+               persistence.journal_repo,
+               persistence.authority_id,
+               attempt_id
+             ) do
+          {:ok, row} -> row
+          # An absent row and a journal that cannot be read are different facts:
+          # `:not_found` must never be produced by a storage outage.
+          {:error, :conflict} -> :not_found
+          {:error, _reason} -> :unavailable
+        end
+
+      {:ok, %{authority: authority, journal: journal}}
+    end
+  end
+
+  defp prepare(nil, _operation), do: {:ok, nil}
+
+  defp prepare(%Persistence{} = persistence, operation) do
+    Persistence.prepare(persistence, operation)
+  end
+
+  # A durable submit commits an Operation and a prepared attempt, so refuse before
+  # writing when no coordinator can ever pick it up: an orphan prepared attempt has
+  # no id the caller could reconcile with.
+  defp coordinators_available(nil), do: :ok
+
+  defp coordinators_available(%Persistence{}) do
+    if Process.whereis(Beamlet.Runtime.Coordinators), do: :ok, else: {:error, :unavailable}
+  end
+
+  defp coordinators_available(_), do: :ok
 
   defp valid_owner_guard?(opts) do
     case Keyword.get(opts, :require_live_owner, false) do

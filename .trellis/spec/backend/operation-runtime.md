@@ -100,8 +100,50 @@ allowed nodes and all claims; lower utilization then node/incarnation breaks tie
 Gateway revalidates and atomically charges local pools. Report leases are checked
 only against the issuing gateway's clock; lease age conservatively reduces the
 remaining budget. Stale reports can shorten short operations. Discovery reserves
-no capacity. Tombstones/lease watermarks reject old dispatches without durable
-execution deduplication or public retry permission.
+no capacity. Tombstones/lease watermarks reject old dispatches. Ephemeral operation
+still has no durable execution deduplication or public retry permission.
+
+## Durable execution mode (opt-in, stage B)
+
+`Runtime.submit/2` accepts `persistence: %Beamlet.Runtime.Persistence{}` carrying the
+authority repo, journal repo, authority/executor identities and optional owned
+Agent/turn data. Without it nothing changes: no Repo is started, no environment is
+read and no persisted identity is required. With it:
+
+- the immutable Operation and one `prepared` attempt commit before any coordinator
+exists; a failed write returns `{:error, :invalid_operation | :unavailable}` and
+dispatches nothing. A durable submit is refused up front when no coordinator
+supervisor is running, because an orphan `prepared` attempt would have no id the
+caller could reconcile with;
+- the coordinator CASes `prepared -> send_claimed` and only then sends the 9-element
+admit form carrying authority/operation/attempt/executor ids plus the description
+digest; it never sends inside a transaction;
+- the gateway revalidates that identity, recomputes the description digest from the
+operation it will actually run, rejects duplicate admissions from the journal, and
+commits `start_intent` before the worker task exists. A failed journal write rejects
+the attempt with capacity never charged and no handler call;
+- the terminal value and receipt commit before any completion message. If that write
+fails after the handler ran, the gateway reports `:unrecorded`, so the coordinator
+accepts `:uncertain` rather than a definite error. A pre-dispatch rejection stays
+`:error`;
+- the authority persists the receipt evidence and CASes `accepted_result` from NULL
+before the sink is notified. A failed accept notifies no sink and is visible as
+`durable.accepted: false` with `accept_error` in `status/1`; the Result itself is not
+surfaced by status until it is accepted;
+- at gateway boot every remaining `start_intent` of this authority/executor becomes
+`unknown_after_restart`: no worker is rebuilt, no capacity is restored, and the state
+can never become terminal. A boot that cannot write the marker reports not-ready and
+keeps rejecting durable admissions;
+- `Runtime.evidence/3` reads the authority Operation/attempt and the journal row by
+stable ids only. `journal: :not_found` means no row; `journal: :unavailable` means the
+journal could not be read; neither proves the handler never ran.
+
+Enabling persistence on an executor therefore requires every submitter to pass a
+`%Persistence{}`; a durable gateway rejects the ephemeral admit form instead of
+silently degrading. The struct is authoritative input, so an invalid one raises
+rather than returning an error tuple. A single owned-Agent `%Persistence{}` carries
+one `expected_version`, so a new operation against the same Agent needs a freshly
+built struct.
 
 Default configurable limits (`limits: [...]`): coordinators including retained
 256, retention 30_000 ms, refresh 1_000 ms, expiry 5_000 ms, admission 2_000 ms,

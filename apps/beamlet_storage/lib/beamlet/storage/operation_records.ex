@@ -223,6 +223,7 @@ defmodule Beamlet.Storage.OperationRecords do
          "history_seq" => seq,
          "lock_version" => 0,
          "attempt_id" => attempt && attempt.attempt_id,
+         "attempt_version" => attempt && attempt.lock_version,
          "dispatch_state" => attempt && attempt.dispatch_state
        }}
     end
@@ -291,6 +292,7 @@ defmodule Beamlet.Storage.OperationRecords do
       "history_seq" => stored.history_seq,
       "lock_version" => stored.lock_version,
       "attempt_id" => attempt && attempt.attempt_id,
+      "attempt_version" => attempt && attempt.lock_version,
       "dispatch_state" => attempt && attempt.dispatch_state
     }
   end
