@@ -6,7 +6,7 @@ On 2026-10-17 the user accepted the subsequent simplify-agent-queries implementa
 
 ## Historical verdict and scope
 
-**PASS for the research deliverable**, reviewed on baseline9657d2a. This was not product-migration approval. At that time the Endpoint-to-Agent failure coupling was observed and reported, not repaired. Subsequent implementation has now been accepted separately; see [implementation acceptance](../../archive/2026-10/10-17-simplify-agent-queries/acceptance.md).
+**PASS for the research deliverable**, reviewed on baseline9657d2a. This was not product-migration approval. At that time the Endpoint-to-Agent failure coupling was observed and reported, not repaired. Subsequent implementation has now been accepted separately; see [implementation acceptance](../../10-17-simplify-agent-queries/acceptance.md).
 
 The independent reviewer read the curated context, plans, four research documents, four experiment scripts, original raw run/source snapshots and retained failures. It made exactly one independent full replay, generated a new summary and audited identities, events, connection observations, cleanup pairing and scope. No source/product/dependency/spec changes, commit or archive occurred in that research review.
 

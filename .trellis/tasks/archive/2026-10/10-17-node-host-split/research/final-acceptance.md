@@ -13,14 +13,14 @@ recorded in research/commit-execution.md. Archive/journal remain deferred.
 
 ## Evidence chain
 
-- Node: `../10-17-node-library/research/implementation-evidence.md`; independent
+- Node: `../../10-17-node-library/research/implementation-evidence.md`; independent
   report `outputs/c36ffa48-d2c2-4f47-82d1-62506c02f3c1/reviews/node-library-independent-check.md`.
-- Daemon: `../10-17-daemon-host/research/review-disposition.md`; final report
+- Daemon: `../../10-17-daemon-host/research/review-disposition.md`; final report
   `outputs/273eb355-89ef-4bf8-98a9-ca43a487cbe7/reviews/daemon-cleanup-diagnostics-final-check.md`.
-- Discovery: `../10-17-agent-discovery/research/review-disposition.md`; repaired
+- Discovery: `../../10-17-agent-discovery/research/review-disposition.md`; repaired
   admission report `outputs/010f066f-2caa-472e-a8ce-64e4b5119462/reviews/agent-discovery-admission-recheck.md`.
-- CLI: `../10-17-cli-host/research/review-disposition.md` and
-  `../10-17-cli-host/research/review-repair-evidence.md`; full final independent
+- CLI: `../../10-17-cli-host/research/review-disposition.md` and
+  `../../10-17-cli-host/research/review-repair-evidence.md`; full final independent
   report `outputs/5663d550-4f1a-4a4c-a9c1-bbc267a9d0d8/reviews/cli-host-review-recheck.md`.
 
 Report paths above are relative to

@@ -1,6 +1,6 @@
 # 规划阶段证据（不是实验结论）
 
-> 留存状态（2026-10-17）：用户已接受后续 simplify-agent-queries 实现，按约定清理本任务的 results/、experiments/ 及专用 .gitignore。原始记录、失败日志、源快照和实验脚本不再随仓库提供，不能按原命令复现。本文保留历史结论及来源，不冒充仍可读取的原始证据；涉及“当前/现有”的描述均指研究时基线9657d2a。后续实现与验收见[已归档实现任务](../../archive/2026-10/10-17-simplify-agent-queries/prd.md)。
+> 留存状态（2026-10-17）：用户已接受后续 simplify-agent-queries 实现，按约定清理本任务的 results/、experiments/ 及专用 .gitignore。原始记录、失败日志、源快照和实验脚本不再随仓库提供，不能按原命令复现。本文保留历史结论及来源，不冒充仍可读取的原始证据；涉及“当前/现有”的描述均指研究时基线9657d2a。后续实现与验收见[已归档实现任务](../../10-17-simplify-agent-queries/prd.md)。
 
 ## 已检查的本地事实
 
@@ -10,7 +10,7 @@
 - `apps/beamlet_agent/lib/beamlet/agent/discovery/endpoint.ex`：现有实现使用 offer/confirm、新鲜 nonce challenge、查询 worker、心跳租约与本地 deadline；不能把旧版两阶段握手当作当前实现。
 - `apps/beamlet_agent/test/beamlet/agent/discovery_test.exs`：已有 suspended Server、caller loss、deadline、排队确认与心跳过期用例。仅阅读，当前任务尚未运行。
 - `apps/beamlet_node/test/beamlet/discovery_distributed_test.exs:1-130`：已有真实 `:peer`、`connection: :standard_io` 和低 scheduler 数模式，可复用隔离思路；observer 的 distribution monitor/远端 RPC 可能污染连接实验，不能照搬所有观测方法。
-- `.trellis/tasks/10-17-agent-discovery/design.md` 与 `.trellis/spec/backend/agent-orchestration.md`：记载了排除 rex/erpc、无自动连接及有界回收的既有契约。本任务把它们作为待核查的项目约束和历史理由，不把它们当实验结果，也不修改它们。
+- `.trellis/tasks/archive/2026-10/10-17-agent-discovery/design.md` 与 `.trellis/spec/backend/agent-orchestration.md`：记载了排除 rex/erpc、无自动连接及有界回收的既有契约。本任务把它们作为待核查的项目约束和历史理由，不把它们当实验结果，也不修改它们。
 
 ## 已知待核查项
 

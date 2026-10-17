@@ -1,4 +1,4 @@
 {"file":".trellis/spec/backend/index.md","reason":"Backend ownership and pre-development routing"}
 {"file":".trellis/spec/backend/agent-orchestration.md","reason":"Current authority, identity, discovery and lifecycle contracts; research does not silently change them"}
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"Named-peer checks, helper lifecycle evidence and honest validation reporting"}
-{"file":".trellis/tasks/10-17-query-transport-research/research/current-evidence.md","reason":"Inspected baseline, existing test seams, pending questions and no-prejudged-conclusion guard"}
+{"file":".trellis/tasks/archive/2026-10/10-17-query-transport-research/research/current-evidence.md","reason":"Inspected baseline, existing test seams, pending questions and no-prejudged-conclusion guard"}

@@ -4,5 +4,5 @@
 {"file":".trellis/spec/backend/operation-runtime.md","reason":"Verify operation-runtime contracts for agent-discovery; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
 {"file":".trellis/spec/backend/error-handling.md","reason":"Verify error-handling contracts for agent-discovery; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify quality-guidelines contracts for agent-discovery; host/lookup changes follow reviewed task requirements, other baseline invariants remain"}
-{"file":".trellis/tasks/10-17-node-host-split/research/current-seams.md","reason":"Source-backed migration sites and existing regression evidence; not a fresh test run"}
-{"file":".trellis/tasks/10-17-node-host-split/research/planning-contracts.md","reason":"Confirmed cross-child decisions, parent design reference, ownership, identity/resource limits and explicit implementation approval gate"}
+{"file":".trellis/tasks/archive/2026-10/10-17-node-host-split/research/current-seams.md","reason":"Source-backed migration sites and existing regression evidence; not a fresh test run"}
+{"file":".trellis/tasks/archive/2026-10/10-17-node-host-split/research/planning-contracts.md","reason":"Confirmed cross-child decisions, parent design reference, ownership, identity/resource limits and explicit implementation approval gate"}

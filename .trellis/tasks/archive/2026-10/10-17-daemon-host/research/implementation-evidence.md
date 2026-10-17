@@ -2,7 +2,7 @@
 
 ## Candidate / ownership
 
-- Approved child `.trellis/tasks/10-17-daemon-host`, status verified in_progress before writes; baseline HEAD `0fed1b1`, branch dev, cwd `/mnt/data/Project/Beamlet`, accepted uncommitted Node-library prerequisite preserved.
+- Approved child `.trellis/tasks/archive/2026-10/10-17-daemon-host`, status verified in_progress before writes; baseline HEAD `0fed1b1`, branch dev, cwd `/mnt/data/Project/Beamlet`, accepted uncommitted Node-library prerequisite preserved.
 - Product/test/spec candidate is **frozen for parent read-only independent check**. Independent check is pending; neither this note nor checked implementation steps attest that review or final parent acceptance.
 - Smallest gap: generated daemon had no boot policy while deployment still targeted retired Node executable. One coherent daemon config → Application → one-shot bootstrap → runtime/release/checker seam now owns that policy.
 - No edits to accepted Node/Agent/Runtime/Harness/CLI source or tests, Web/runtime/CSP, dependency versions/lockfile, journal or archive. No discovery/session, paid provider, SSH, physical deployment, multi-Node naming, reconnect or business retry work.

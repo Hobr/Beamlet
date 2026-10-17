@@ -4,7 +4,7 @@
 
 需求唯一来源prd.md，R4记录用户接受的语义变化。目标是删除发现专用传输状态机而非建立新服务。一个紧密耦合实现任务：传输移除、装配和回归共同交付，不能先删Endpoint再留坏测试；清理是验收后的顺序收尾，不作为可提前实施子任务。
 
-前置证据：../../../10-17-query-transport-research/research/report.md、otp-paths.md、quality-review.md。现代rpc.call委托erpc；超时放弃响应不是取消执行。旧Endpoint kill可导致Agent死亡。这些研究文档保留，不依赖其results/experiments作为新产品测试。
+前置证据：../10-17-query-transport-research/research/report.md、otp-paths.md、quality-review.md。现代rpc.call委托erpc；超时放弃响应不是取消执行。旧Endpoint kill可导致Agent死亡。这些研究文档保留，不依赖其results/experiments作为新产品测试。
 
 ## 2. Smallest change seam
 

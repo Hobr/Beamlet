@@ -1,6 +1,6 @@
 > 来源与范围：恢复自先前研究子代理保存的完整文档 artifact（6dc6bbae）；仅移除子代理 acceptance-report。以下文档/源码抓取快照未重新联网核验，不是第三方库兼容性实测。原文中的“实验待完成”描述该子研究当时的边界；实验现已完成，综合判断以 [report.md](report.md) 和 [experiment-findings.md](experiment-findings.md) 为准。
 
-> 留存状态（2026-10-17）：用户已接受后续 simplify-agent-queries 实现，按约定清理本任务的 results/、experiments/ 及专用 .gitignore。原始记录、失败日志、源快照和实验脚本不再随仓库提供，不能按原命令复现。本文保留历史结论及来源，不冒充仍可读取的原始证据；涉及“当前/现有”的描述均指研究时基线9657d2a。后续实现与验收见[已归档实现任务](../../archive/2026-10/10-17-simplify-agent-queries/prd.md)。
+> 留存状态（2026-10-17）：用户已接受后续 simplify-agent-queries 实现，按约定清理本任务的 results/、experiments/ 及专用 .gitignore。原始记录、失败日志、源快照和实验脚本不再随仓库提供，不能按原命令复现。本文保留历史结论及来源，不冒充仍可读取的原始证据；涉及“当前/现有”的描述均指研究时基线9657d2a。后续实现与验收见[已归档实现任务](../../10-17-simplify-agent-queries/prd.md)。
 
 # Research: OTP / Elixir 只读 live Agent 发现与 lookup
 

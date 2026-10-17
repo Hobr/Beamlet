@@ -1,4 +1,4 @@
-> Historical transport requirements are superseded by [simplify-agent-queries](../archive/2026-10/10-17-simplify-agent-queries/design.md): finite local/erpc reads, no Endpoint or leases, and standard OTP reconnection after the entry precheck. Public identity/attachment contracts remain.
+> Historical transport requirements are superseded by [simplify-agent-queries](../10-17-simplify-agent-queries/design.md): finite local/erpc reads, no Endpoint or leases, and standard OTP reconnection after the entry precheck. Public identity/attachment contracts remain.
 
 # Agent 发现与附着设计
 

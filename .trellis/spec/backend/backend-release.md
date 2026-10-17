@@ -157,7 +157,7 @@ Active LSP timeout/unavailability is inconclusive, not clean. Physical multi-hos
 and paid provider execution remain untested and are not claimed.
 
 Daemon-stage regression evidence is recorded separately in
-`.trellis/tasks/10-17-daemon-host/research/implementation-evidence.md`; prerequisite
+`.trellis/tasks/archive/2026-10/10-17-daemon-host/research/implementation-evidence.md`; prerequisite
 Node evidence above is not proof of this new release. Daemon tests assert empty
 ordinary startup, all three actual trees, safe invalid host/resource rejection,
 failed-peer continuation and actual startup task/controller/helper DOWN while a

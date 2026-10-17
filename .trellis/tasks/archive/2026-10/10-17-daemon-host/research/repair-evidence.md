@@ -50,8 +50,8 @@ Product/test/spec are frozen; **no further product/test/spec edits without paren
 - `scripts/deployment/check-named-release.py`
 - `scripts/deployment/test-check-named-release.py` (new)
 - `.trellis/spec/backend/agent-orchestration.md` (common preflight ownership clarification)
-- `.trellis/tasks/10-17-daemon-host/implement.md` (repair handoff note)
-- `.trellis/tasks/10-17-daemon-host/research/repair-evidence.md` (this note)
+- `.trellis/tasks/archive/2026-10/10-17-daemon-host/implement.md` (repair handoff note)
+- `.trellis/tasks/archive/2026-10/10-17-daemon-host/research/repair-evidence.md` (this note)
 
 ## Preservation and remaining gates
 

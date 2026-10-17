@@ -7,7 +7,7 @@
 ## Background and Evidence
 
 - 来源：用户明确要求新建实现任务、不提交；新任务经用户确认完成后才清理本次实验中间文件。
-- 前置研究：../../../10-17-query-transport-research/research/report.md、ecosystem.md、quality-review.md。两轮完整实测各98场景/98清理，研究独立检查PASS；这些是研究证据，不是当前产品已经迁移的证明。
+- 前置研究：../10-17-query-transport-research/research/report.md、ecosystem.md、quality-review.md。两轮完整实测各98场景/98清理，研究独立检查PASS；这些是研究证据，不是当前产品已经迁移的证明。
 - apps/beamlet_agent/lib/beamlet/agent/discovery.ex 目前维护 offer/confirm、alias、challenge/heartbeat 等自定义协议；authority_supervisor.ex 将 Endpoint 放在身份岛 one_for_all 中，端点崩溃可终止现有 Agent。
 - apps/beamlet_node/lib/beamlet/node.ex 在非authority角色也启动 Endpoint；node/agents.ex 保留可信已连接目标筛选及有界聚合。
 - 现有 Agent.start 已使用 erpc；但发现接口规范目前要求逐消息无自动连接和失联快速回收。不能把改用标准OTP的较弱语义静默宣称等价。
@@ -20,7 +20,7 @@
 - R4：保留可信节点输入与校验、5秒本地接收预算、最多5秒远端读取预算、32节点/8聚合并发/每authority128身份/1MiB结果上限及敏感信息隔离。用户已接受：调用方超时或退出后已发出的只读工作可在远端有限预算内完成；调用前筛选已连接可信节点，检查后断线允许OTP默认重连，不要求逐消息绝不建连。不再保证失联约300ms回收或过期请求绝不启动，不承诺即时取消或撤回已入业务邮箱的消息。Endpoint专用256 offer/controller配额随该协议移除；不新增全VM查询准入服务，聚合并发限制保持。
 - R5：更新受影响的标准测试、角色装配、文档和spec；用长期保留的产品回归测试覆盖新契约，不让产品验收依赖待删除的研究脚本。
 - R6：实现、验收与清理阶段遵照用户“不提交”，不stage/commit/push；先交付再等用户确认完成后清理，检查通过不替代用户确认。后续用户明确要求“提交”时，授权本地stage/commit，仍不push。
-- R7：清理范围只限旧研究任务 ../../../10-17-query-transport-research/ 中实验中间文件，明确包含 results/ 与 experiments/ 的脚本、日志、原始记录、派生索引和源快照；保留最终研究结论、生态来源和独立复核摘要，修复失效引用并如实注明原始证据已依用户要求清理。不把摘要假称成仍可读取的原始证据。尚未触发清理门禁前全部保留。
+- R7：清理范围只限旧研究任务 ../10-17-query-transport-research/ 中实验中间文件，明确包含 results/ 与 experiments/ 的脚本、日志、原始记录、派生索引和源快照；保留最终研究结论、生态来源和独立复核摘要，修复失效引用并如实注明原始证据已依用户要求清理。不把摘要假称成仍可读取的原始证据。尚未触发清理门禁前全部保留。
 
 ## Acceptance Criteria
 
