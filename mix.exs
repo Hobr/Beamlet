@@ -12,9 +12,14 @@ defmodule Beamlet.Umbrella.MixProject do
       deps: deps(),
       aliases: aliases(),
       releases: [
-        beamlet_node: [
-          applications: [beamlet_node: :permanent],
-          runtime_config_path: "config/backend_runtime.exs"
+        beamlet_daemon: [
+          applications: [beamlet_daemon: :permanent],
+          runtime_config_path: "config/daemon_runtime.exs"
+        ],
+        beamlet_cli: [
+          applications: [beamlet_cli: :permanent],
+          runtime_config_path: "config/cli_runtime.exs",
+          steps: [:assemble, &cli_entrypoint/1, :tar]
         ]
       ],
       listeners: if(backend_apps(), do: [], else: [Phoenix.CodeReloader])
@@ -36,9 +41,27 @@ defmodule Beamlet.Umbrella.MixProject do
     ]
   end
 
+  defp cli_entrypoint(release) do
+    path = Path.join([release.path, "bin", "beamlet_cli"])
+    script = File.read!(path)
+    script = String.replace(script, ~s|start "elixir" --no-halt
+|, ~s|start "elixir" --no-halt -e 'Beamlet.CLI.Runner.main()'
+|)
+    File.write!(path, script)
+    release
+  end
+
   defp backend_apps do
     if System.get_env("BEAMLET_BACKEND_BUILD") == "1",
-      do: [:beamlet_actions, :beamlet_runtime, :beamlet_harness, :beamlet_agent, :beamlet_node],
+      do: [
+        :beamlet_actions,
+        :beamlet_runtime,
+        :beamlet_harness,
+        :beamlet_agent,
+        :beamlet_node,
+        :beamlet_daemon,
+        :beamlet_cli
+      ],
       else: nil
   end
 
