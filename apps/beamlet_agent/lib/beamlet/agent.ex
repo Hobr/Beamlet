@@ -21,6 +21,13 @@ defmodule Beamlet.Agent do
     _, _ -> {:error, :authority_unavailable}
   end
 
+  @doc "Safe observed authority-local identity descriptors; bounded to five seconds."
+  defdelegate list(authority), to: Beamlet.Agent.Discovery
+  @doc "Obtain the present Server Ref explicitly by authority and ID."
+  defdelegate lookup(authority, id), to: Beamlet.Agent.Discovery
+  @doc "Attach a listed descriptor, rejecting replacement PID with stale_agent."
+  defdelegate lookup(descriptor), to: Beamlet.Agent.Discovery
+
   def close(ref), do: command(ref, :close)
   def input(ref, text), do: command(ref, {:input, text})
   def delegate(ref, children, opts \\ []), do: command(ref, {:delegate, children, opts})
