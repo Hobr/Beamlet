@@ -1,4 +1,5 @@
 defmodule Beamlet.NodeConcurrentToolsTest do
+  alias Beamlet.Node.TestBinding
   use ExUnit.Case
   alias Beamlet.Agent
   alias Beamlet.Harness.Catalogue
@@ -12,12 +13,6 @@ defmodule Beamlet.NodeConcurrentToolsTest do
     on_exit(fn -> File.rm_rf!(root) end)
 
     profiles = %{
-      "model" => %{
-        type: :model,
-        module: TestModel,
-        settings: %{loop: true, observer: self()},
-        capability: "model"
-      },
       "tree" => %{
         type: :tool,
         module: TestTool,
@@ -30,11 +25,12 @@ defmodule Beamlet.NodeConcurrentToolsTest do
       {Beamlet.Node,
        roles: [:authority, :executor],
        profiles: profiles,
+       model_providers: %{"model" => TestModel},
        allowlist: %{model: [TestModel], tool: [TestTool]},
        pools: %{"native" => 8}}
     )
 
-    TestBoot.barrier("model")
+    TestBoot.barrier("model.provider:model")
     {:ok, catalogue} = Catalogue.new([TestTool.descriptor()])
 
     refs =
@@ -42,7 +38,7 @@ defmodule Beamlet.NodeConcurrentToolsTest do
         {:ok, ref} =
           Agent.start(node(),
             id: "parallel#{i}",
-            model: %{id: "model", capability: "model"},
+            model: TestBinding.binding("model"),
             catalogue: catalogue,
             tools: %{"workspace_read" => %{id: "tree", capability: "tree"}}
           )
@@ -74,7 +70,7 @@ defmodule Beamlet.NodeConcurrentToolsTest do
     for _ <- refs do
       assert_receive {:model, _, _, history}, 3000
       observations = Enum.filter(history, &(&1["role"] == "tool"))
-      assert Enum.map(observations, & &1["tool_call_id"]) == ["call0", "call1"]
+      assert Enum.map(observations, & &1["call_id"]) == ["call0", "call1"]
     end
 
     Enum.each(refs, fn ref ->

@@ -21,7 +21,8 @@ defmodule Beamlet.NodeTest do
                &(match?({Beamlet.Runtime, _}, &1) or match?({Beamlet.Node.Runtime, _}, &1))
              )
 
-      assert Beamlet.Agent.AuthoritySupervisor in children == :authority in roles
+      assert Enum.any?(children, &match?({Beamlet.Agent.AuthoritySupervisor, _}, &1)) ==
+               :authority in roles
     end
 
     assert {:error, :invalid_node_configuration} = Beamlet.Node.configuration(roles: [:unknown])
@@ -31,7 +32,13 @@ defmodule Beamlet.NodeTest do
     start_supervised!({Beamlet.Node, roles: [:authority], limits: [operation_bytes: 1024]})
 
     {:ok, ref} =
-      Beamlet.Agent.start(node(), id: "small", model: %{id: "model", capability: "model"})
+      Beamlet.Agent.start(node(),
+        id: "small",
+        model: %{
+          provider: "deterministic",
+          config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+        }
+      )
 
     assert {:error, :invalid_or_oversize_input} =
              Beamlet.Agent.input(ref, String.duplicate("x", 2000))
@@ -59,29 +66,24 @@ defmodule Beamlet.NodeTest do
   end
 
   test "local native model goes through Runtime gateway" do
-    reply = %{
-      "choices" => [
-        %{"finish_reason" => "stop", "message" => %{"role" => "assistant", "content" => "answer"}}
-      ]
-    }
+    reply = %{"kind" => "text", "content" => "answer", "calls" => []}
 
-    profiles = %{
-      "fixture" => %{
-        type: :model,
-        module: Beamlet.Harness.Models.Deterministic,
-        settings: %{reply: reply},
-        capability: "model.fixture"
-      }
-    }
+    profiles = %{}
 
-    start_supervised!({Beamlet.Node, roles: [:authority, :executor], profiles: profiles})
+    start_supervised!(
+      {Beamlet.Node,
+       roles: [:authority, :executor],
+       profiles: profiles,
+       model_providers: %{"fixture" => Beamlet.Harness.Models.Deterministic}}
+    )
+
     # Directory queries asynchronously; explicit endpoint discovery barrier.
     wait_ready(100)
 
     assert {:ok, ref} =
              Beamlet.Agent.start(node(),
                id: "local",
-               model: %{id: "fixture", capability: "model.fixture"}
+               model: %{provider: "fixture", config: %{"reply" => reply}}
              )
 
     assert :ok = Beamlet.Agent.subscribe(ref)

@@ -1,63 +1,45 @@
 defmodule Beamlet.Node.TestModel do
+  alias Beamlet.Node.TestBinding
   @moduledoc false
   @behaviour Beamlet.Harness.Model
-  alias Beamlet.Harness.Models.OpenAICompatible
+  alias Beamlet.Harness.Model
 
-  def complete(request, settings, _context) do
-    with :ok <- OpenAICompatible.validate_request(request) do
-      if settings[:observer],
-        do: send(settings.observer, {:model, node(), self(), request.messages})
+  def validate_invocation(%{config: config, credentials: credentials}) do
+    if Map.keys(config) -- ["hold", "loop", "invalid", "observer"] == [] and credentials == %{},
+      do: :ok,
+      else: {:error, :invalid_profile}
+  end
 
-      if settings[:hold],
+  def complete(request, %{config: settings}, _context) do
+    with :ok <- Model.validate_request(request) do
+      if settings["observer"],
         do:
-          (receive do
-             :release -> :ok
-           end)
+          send(
+            TestBinding.observer(settings["observer"]),
+            {:model, node(), self(), request.messages}
+          )
 
+      if settings["hold"], do: receive(do: (:release -> :ok))
       tools = Enum.filter(request.messages, &(&1["role"] == "tool"))
 
-      assistant =
-        if tools == [] and settings[:loop] do
-          calls = configured_calls(settings)
-
-          %{"role" => "assistant", "content" => nil, "tool_calls" => calls}
-        else
-          %{"role" => "assistant", "content" => Jason.encode!(%{node: node(), tools: tools})}
-        end
-
-      finish = if assistant["tool_calls"], do: "tool_calls", else: "stop"
-
-      reply(assistant, finish, request.catalogue, settings)
+      reply(tools, settings)
     end
   end
 
-  # Deliberately violate the native normalized-reply contract in this fixture so
-  # the Agent's own whole-batch guard, rather than Harness normalization, is tested.
-  defp reply(assistant, _, _, %{invalid: true}),
-    do: {:ok, %{kind: :tool_calls, assistant: assistant, content: nil, calls: []}}
+  defp reply(tools, settings) do
+    if tools == [] and settings["loop"] do
+      calls =
+        for {path, i} <- Enum.with_index(["first", "second"]),
+            do: %{id: "call#{i}", name: "workspace_read", arguments: %{"path" => path}}
 
-  defp reply(assistant, finish, catalogue, _) do
-    OpenAICompatible.normalize(
-      %{"choices" => [%{"finish_reason" => finish, "message" => assistant}]},
-      catalogue
-    )
-  end
+      calls =
+        if settings["invalid"],
+          do: List.update_at(calls, 1, &%{&1 | arguments: %{}}),
+          else: calls
 
-  defp configured_calls(%{invalid: true}),
-    do: List.update_at(calls(), 1, &put_in(&1, ["function", "arguments"], "{}"))
-
-  defp configured_calls(_), do: calls()
-
-  defp calls do
-    for {path, index} <- Enum.with_index(["first", "second"]) do
-      %{
-        "id" => "call#{index}",
-        "type" => "function",
-        "function" => %{
-          "name" => "workspace_read",
-          "arguments" => Jason.encode!(%{"path" => path})
-        }
-      }
+      {:ok, %{kind: :tool_calls, content: nil, calls: calls}}
+    else
+      {:ok, %{kind: :text, content: Jason.encode!(%{node: node(), tools: tools}), calls: []}}
     end
   end
 end
@@ -85,7 +67,11 @@ defmodule Beamlet.Node.TestBoot do
   alias Beamlet.Runtime.Directory
 
   def authority do
-    {:ok, pid} = AuthoritySupervisor.start_link([])
+    {:ok, pid} =
+      AuthoritySupervisor.start_link(
+        model_providers: %{"held" => Beamlet.Node.TestModel, "model" => Beamlet.Node.TestModel}
+      )
+
     Process.unlink(pid)
     :ok
   end
@@ -95,6 +81,28 @@ defmodule Beamlet.Node.TestBoot do
     {:ok, pid} = Beamlet.Node.start_link(opts)
     Process.unlink(pid)
     :ok
+  end
+
+  def capacity_fence(n \\ 100) do
+    if map_size(:sys.get_state(Beamlet.Runtime.ExecutorGateway).tasks) == 0 do
+      System.monotonic_time(:millisecond)
+    else
+      if n == 0, do: raise("gateway capacity timeout")
+      Process.sleep(10)
+      capacity_fence(n - 1)
+    end
+  end
+
+  def fresh_capacity(executor, fence, n \\ 100) do
+    if Enum.any?(Directory.snapshots(), fn {_, r} ->
+         r.node == executor and r.lease > fence and r.available["native"] == 2
+       end) do
+      :ok
+    else
+      if n == 0, do: raise("fresh capacity report timeout")
+      Process.sleep(10)
+      fresh_capacity(executor, fence, n - 1)
+    end
   end
 
   def pending(ref, n \\ 100) do

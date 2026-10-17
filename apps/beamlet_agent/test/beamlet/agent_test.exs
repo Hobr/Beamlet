@@ -10,15 +10,34 @@ defmodule Beamlet.AgentTest do
   test "authority Agent capacity rejects explicitly" do
     for i <- 1..128 do
       assert {:ok, _} =
-               Agent.start(node(), id: "capacity#{i}", model: %{id: "m", capability: "m"})
+               Agent.start(node(),
+                 id: "capacity#{i}",
+                 model: %{
+                   provider: "deterministic",
+                   config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+                 }
+               )
     end
 
     assert {:error, :max_children} =
-             Agent.start(node(), id: "overflow", model: %{id: "m", capability: "m"})
+             Agent.start(node(),
+               id: "overflow",
+               model: %{
+                 provider: "deterministic",
+                 config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+               }
+             )
   end
 
   test "authority identity is unique and subscription is snapshot first" do
-    opts = [id: "one", model: %{id: "model", capability: "model"}]
+    opts = [
+      id: "one",
+      model: %{
+        provider: "deterministic",
+        config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+      }
+    ]
+
     assert {:ok, ref} = Agent.start(node(), opts)
     assert {:error, _} = Agent.start(node(), opts)
     assert :ok = Agent.subscribe(ref)
@@ -30,13 +49,28 @@ defmodule Beamlet.AgentTest do
   end
 
   test "oversize executable input is rejected and context remains untouched" do
-    {:ok, ref} = Agent.start(node(), id: "large", model: %{id: "m", capability: "m"})
+    {:ok, ref} =
+      Agent.start(node(),
+        id: "large",
+        model: %{
+          provider: "deterministic",
+          config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+        }
+      )
+
     assert {:error, :invalid_or_oversize_input} = Agent.input(ref, String.duplicate("a", 65_537))
     assert {:ok, %{status: :idle, turn: nil}} = Agent.snapshot(ref)
   end
 
   test "subscriber limit and removal are explicit" do
-    {:ok, ref} = Agent.start(node(), id: "subs", model: %{id: "m", capability: "m"})
+    {:ok, ref} =
+      Agent.start(node(),
+        id: "subs",
+        model: %{
+          provider: "deterministic",
+          config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+        }
+      )
 
     sinks =
       for _ <- 1..32,

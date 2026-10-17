@@ -1,10 +1,12 @@
 defmodule Beamlet.Node do
+  alias Beamlet.Harness.Model
+  alias Beamlet.Runtime.Limits
+  alias Beamlet.Runtime.Report
   @moduledoc "Trusted opt-in role composition. Default umbrella boot starts no roles."
   use Supervisor
   alias Beamlet.Agent.Integration.{Caller, Handler}
   alias Beamlet.Harness.Catalogue
   alias Beamlet.Node.Routes
-  @models [Beamlet.Harness.Models.Deterministic, Beamlet.Harness.Models.OpenAICompatible]
   @tools [Beamlet.Harness.Tools.Deterministic, Beamlet.Harness.Tools.WorkspaceRead]
 
   def profile(id), do: GenServer.call(Routes, {:profile, id})
@@ -28,16 +30,19 @@ defmodule Beamlet.Node do
     roles = Keyword.get(opts, :roles, [])
     profiles = Keyword.get(opts, :profiles, %{})
     providers = Keyword.get(opts, :providers, [])
-    allowlist = Keyword.get(opts, :allowlist, %{model: @models, tool: @tools})
+    models = Keyword.get(opts, :model_providers, Model.default_providers())
+    allowlist = Keyword.get(opts, :allowlist, %{tool: @tools})
 
     with true <- valid_options?(opts),
          true <- valid_roles?(roles),
          true <- valid_profiles?(profiles, allowlist),
          true <- valid_providers?(providers),
+         :ok <- Model.validate_registry(models),
+         true <- combined_capabilities?(profiles, models),
          true <- valid_routes?(Keyword.get(opts, :routes, %{})),
          :ok <- Catalogue.validate(Keyword.get(opts, :catalogue, %{})) do
       execution = :executor in roles
-      capabilities = Enum.map(profiles, fn {_, p} -> p.capability end) |> Enum.uniq()
+      capabilities = capabilities(profiles, models)
 
       environments =
         Enum.flat_map(profiles, &environment/1)
@@ -49,7 +54,9 @@ defmodule Beamlet.Node do
         if execution do
           runtime ++
             [
-              handlers: %{"agent.native" => {Handler, profiles}},
+              handlers: %{
+                "agent.native" => {Handler, %{profiles: profiles, model_providers: models}}
+              },
               capabilities: capabilities,
               environments: environments,
               providers: providers,
@@ -58,6 +65,13 @@ defmodule Beamlet.Node do
         else
           runtime
         end
+
+      if execution,
+        do:
+          Report.validate_configuration!(
+            runtime,
+            Limits.new(runtime)
+          )
 
       children =
         if execution,
@@ -72,13 +86,24 @@ defmodule Beamlet.Node do
 
       {:ok,
        if(:authority in roles,
-         do: children ++ [Beamlet.Agent.AuthoritySupervisor],
+         do: children ++ [{Beamlet.Agent.AuthoritySupervisor, model_providers: models}],
          else: children
        )}
     else
       _ -> {:error, :invalid_node_configuration}
     end
+  rescue
+    _ -> {:error, :invalid_node_configuration}
   end
+
+  defp capabilities(profiles, models),
+    do:
+      Enum.uniq(
+        Enum.map(profiles, fn {_, p} -> p.capability end) ++
+          Enum.map(models, fn {id, _} -> "model.provider:" <> id end)
+      )
+
+  defp combined_capabilities?(profiles, models), do: length(capabilities(profiles, models)) <= 32
 
   defp environment({_, %{environment: environment}}), do: [environment]
   defp environment(_), do: []
@@ -87,7 +112,17 @@ defmodule Beamlet.Node do
     do:
       Keyword.keyword?(opts) and
         Keyword.keys(opts) --
-          [:roles, :profiles, :providers, :pools, :limits, :allowlist, :routes, :catalogue] == []
+          [
+            :roles,
+            :profiles,
+            :model_providers,
+            :providers,
+            :pools,
+            :limits,
+            :allowlist,
+            :routes,
+            :catalogue
+          ] == []
 
   defp valid_routes?(routes) when is_map(routes) do
     map_size(routes) <= 64 and
@@ -106,22 +141,20 @@ defmodule Beamlet.Node do
   defp valid_providers?(providers),
     do: is_list(providers) and length(providers) < 32 and Enum.all?(providers, &is_pid/1)
 
-  defp valid_profiles?(profiles, %{model: models, tool: tools} = allowlist)
-       when is_list(models) and is_list(tools) do
+  defp valid_profiles?(profiles, %{tool: tools} = allowlist)
+       when is_list(tools) do
     is_map(profiles) and map_size(profiles) <= 32 and
       Enum.all?(profiles, &profile?(&1, allowlist))
   end
 
   defp valid_profiles?(_, _), do: false
 
-  defp allowed_module?(%{type: type, module: module}, allowlist) when type in [:model, :tool] do
+  defp allowed_module?(%{type: type, module: module}, allowlist) when type == :tool do
     module in Map.fetch!(allowlist, type) and is_atom(module) and
       Code.ensure_loaded?(module) and native_exports?(type, module)
   end
 
   defp allowed_module?(_, _), do: false
-
-  defp native_exports?(:model, module), do: function_exported?(module, :complete, 3)
 
   defp native_exports?(:tool, module),
     do: function_exported?(module, :descriptor, 0) and function_exported?(module, :invoke, 3)

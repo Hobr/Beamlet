@@ -48,20 +48,9 @@ defmodule Beamlet.Node.ReleaseIntegrationTest do
     end)
 
     {cp, executor} = peers.executor
-    assert :ok = :peer.call(cp, System, :put_env, ["RELEASE_FIXTURE_KEY", "local-fixture-only"])
+    assert nil == :peer.call(cp, System, :get_env, ["RELEASE_FIXTURE_KEY"])
 
     profiles = %{
-      "model" => %{
-        type: :model,
-        module: Beamlet.Harness.Models.OpenAICompatible,
-        capability: "http-model",
-        settings: %{
-          base_url: "http://127.0.0.1:#{port}/v1",
-          model: "fixture",
-          key_env: "RELEASE_FIXTURE_KEY",
-          allow_local_http: true
-        }
-      },
       "tree" => %{
         type: :tool,
         module: Beamlet.Harness.Tools.WorkspaceRead,
@@ -76,7 +65,12 @@ defmodule Beamlet.Node.ReleaseIntegrationTest do
 
       opts =
         if role == :executor,
-          do: opts ++ [profiles: profiles, pools: %{"native" => 2}],
+          do:
+            opts ++
+              [
+                profiles: profiles,
+                pools: %{"native" => 2}
+              ],
           else: opts
 
       assert :ok = :peer.call(peer, Beamlet.Node.TestBoot, :boot, [opts])
@@ -84,7 +78,10 @@ defmodule Beamlet.Node.ReleaseIntegrationTest do
 
     {ap, _} = peers.interaction
     {bp, authority} = peers.authority
-    assert :ok = :peer.call(bp, Beamlet.Node.TestBoot, :barrier, ["http-model"])
+
+    assert :ok =
+             :peer.call(bp, Beamlet.Node.TestBoot, :barrier, ["model.provider:openai-compatible"])
+
     assert nil == :peer.call(cp, Process, :whereis, [Beamlet.Agent.Registry])
     assert nil == :peer.call(bp, Process, :whereis, [Beamlet.Runtime.ExecutorGateway])
 
@@ -93,7 +90,16 @@ defmodule Beamlet.Node.ReleaseIntegrationTest do
 
     options = [
       id: "http-loop",
-      model: %{id: "model", capability: "http-model", allowed_nodes: [executor]},
+      model: %{
+        provider: "openai-compatible",
+        config: %{
+          "base_url" => "http://127.0.0.1:#{port}/v1",
+          "model" => "fixture",
+          "allow_local_http" => true
+        },
+        credentials: %{"api_key" => "local-fixture-only"},
+        placement: %{allowed_nodes: [executor], claims: %{"native" => 1}}
+      },
       catalogue: catalogue,
       tools: %{
         "workspace_read" => %{
@@ -115,6 +121,16 @@ defmodule Beamlet.Node.ReleaseIntegrationTest do
     [tool] = Enum.filter(second["messages"], &(&1["role"] == "tool"))
     assert tool["tool_call_id"] == "marker-call"
     assert tool["content"] =~ "executor-marker"
+    fence = :peer.call(cp, Beamlet.Node.TestBoot, :capacity_fence, [])
+    assert :ok = :peer.call(bp, Beamlet.Node.TestBoot, :fresh_capacity, [executor, fence])
+    later_server = spawn_link(fn -> serve(listener, owner, 1) end)
+    on_exit(fn -> Process.exit(later_server, :kill) end)
+    {:ok, _} = CLI.input(ref, "later turn")
+    assert {:ok, %{status: :done, final: "verified"}} = CLI.watch(ref, timeout: 10_000)
+    assert_receive {:http_request, 1, later}, 1000
+    assert later["model"] == "fixture"
+    fence = :peer.call(cp, Beamlet.Node.TestBoot, :capacity_fence, [])
+    assert :ok = :peer.call(bp, Beamlet.Node.TestBoot, :fresh_capacity, [executor, fence])
     assert :ok = CLI.close(ref)
 
     # Same adapter, but no eligible workspace: the model sees an explicit failure,
@@ -172,6 +188,8 @@ defmodule Beamlet.Node.ReleaseIntegrationTest do
     [head, body] = :binary.split(data, "\r\n\r\n")
     [_, length] = Regex.run(~r/content-length: (\d+)/i, head)
     request = body(socket, body, String.to_integer(length)) |> Jason.decode!()
+    true = String.contains?(String.downcase(head), "authorization: bearer local-fixture-only")
+    false = String.contains?(inspect(request), "local-fixture-only")
     send(owner, {:http_request, count, request})
 
     message =

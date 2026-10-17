@@ -1,7 +1,8 @@
 defmodule Beamlet.NodeDistributedTest do
-  alias Beamlet.Harness.Catalogue
-  alias Beamlet.Node.TestTool
   use ExUnit.Case
+  alias Beamlet.Harness.Catalogue
+  alias Beamlet.Node.TestBinding
+  alias Beamlet.Node.TestTool
   @moduletag :distributed
   setup do
     unless Node.alive?(), do: flunk("named VM required")
@@ -36,6 +37,8 @@ defmodule Beamlet.NodeDistributedTest do
       |> Map.new()
 
     Enum.each(peers, fn {_, {peer, remote}} ->
+      assert :peer.call(peer, Node, :connect, [node()])
+
       Enum.each(peers, fn {_, {_, other}} ->
         if other != remote, do: :peer.call(peer, Node, :connect, [other])
       end)
@@ -48,18 +51,6 @@ defmodule Beamlet.NodeDistributedTest do
     on_exit(fn -> File.rm_rf!(root) end)
 
     profiles = %{
-      "held" => %{
-        type: :model,
-        module: Beamlet.Node.TestModel,
-        settings: %{hold: true, observer: self()},
-        capability: "held"
-      },
-      "model" => %{
-        type: :model,
-        module: Beamlet.Node.TestModel,
-        settings: %{loop: true, observer: self()},
-        capability: "model"
-      },
       "workspace" => %{
         type: :tool,
         module: TestTool,
@@ -70,7 +61,11 @@ defmodule Beamlet.NodeDistributedTest do
     }
 
     Enum.each(peers, fn {role, {peer, _}} ->
-      opts = [roles: [role], limits: [refresh_ms: 20, expiry_ms: 500]]
+      opts = [
+        model_providers: %{"held" => Beamlet.Node.TestModel, "model" => Beamlet.Node.TestModel},
+        roles: [role],
+        limits: [refresh_ms: 20, expiry_ms: 500]
+      ]
 
       opts =
         if role == :executor,
@@ -87,7 +82,7 @@ defmodule Beamlet.NodeDistributedTest do
     end)
 
     {bp, _} = peers.authority
-    :ok = :peer.call(bp, Beamlet.Node.TestBoot, :barrier, ["model"])
+    :ok = :peer.call(bp, Beamlet.Node.TestBoot, :barrier, ["model.provider:model"])
     %{peers: peers}
   end
 
@@ -102,7 +97,7 @@ defmodule Beamlet.NodeDistributedTest do
 
     opts = [
       id: "remote",
-      model: %{id: "model", capability: "model"},
+      model: TestBinding.binding("model"),
       catalogue: catalogue,
       tools: %{
         "workspace_read" => %{id: "workspace", capability: "workspace", environment: "tree"}
@@ -124,7 +119,7 @@ defmodule Beamlet.NodeDistributedTest do
     send(first, :release)
     assert_receive {:model, ^executor, _, messages}, 3000
 
-    assert Enum.map(Enum.filter(messages, &(&1["role"] == "tool")), & &1["tool_call_id"]) == [
+    assert Enum.map(Enum.filter(messages, &(&1["role"] == "tool")), & &1["call_id"]) == [
              "call0",
              "call1"
            ]
@@ -136,7 +131,7 @@ defmodule Beamlet.NodeDistributedTest do
     assert {:ok, missing} =
              :peer.call(ap, Beamlet.Agent, :start, [
                authority,
-               [id: "missing", model: %{id: "missing", capability: "absent"}]
+               [id: "missing", model: TestBinding.binding("missing")]
              ])
 
     Beamlet.Agent.subscribe(missing)
@@ -180,14 +175,14 @@ defmodule Beamlet.NodeDistributedTest do
     {:ok, parent} =
       :peer.call(ap, Beamlet.Agent, :start, [
         interaction,
-        [id: "delegator", model: %{id: "model", capability: "model"}]
+        [id: "delegator", model: TestBinding.binding("model")]
       ])
 
     Beamlet.Agent.subscribe(parent)
 
     spec = %{
       authority: authority,
-      options: [id: "remote-child", model: %{id: "held", capability: "held"}],
+      options: [id: "remote-child", model: TestBinding.binding("held")],
       input: "hold"
     }
 

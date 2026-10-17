@@ -18,7 +18,16 @@ defmodule Beamlet.Node.CLITest do
 
   test "event limits and dead refs clean up the subscriber" do
     start_supervised!({Beamlet.Node, roles: [:authority]})
-    {:ok, ref} = CLI.create(node(), id: "cleanup", model: %{id: "absent", capability: "absent"})
+
+    {:ok, ref} =
+      CLI.create(node(),
+        id: "cleanup",
+        model: %{
+          provider: "deterministic",
+          config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+        }
+      )
+
     assert {:error, :event_limit} = CLI.watch(ref, events: 1)
     assert :sys.get_state(ref.pid).subscribers == %{}
     assert {:error, :timeout_or_loss} = CLI.watch(ref, timeout: 1)
@@ -29,7 +38,16 @@ defmodule Beamlet.Node.CLITest do
 
   test "authority loss while watching is explicit" do
     start_supervised!({Beamlet.Node, roles: [:authority]})
-    {:ok, ref} = CLI.create(node(), id: "loss", model: %{id: "absent", capability: "absent"})
+
+    {:ok, ref} =
+      CLI.create(node(),
+        id: "loss",
+        model: %{
+          provider: "deterministic",
+          config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+        }
+      )
+
     watcher = Task.async(fn -> CLI.watch(ref, timeout: 100) end)
     await_subscriber(ref.pid, watcher.pid, System.monotonic_time(:millisecond) + 1000)
     stop_supervised(Beamlet.Node)
@@ -48,7 +66,13 @@ defmodule Beamlet.Node.CLITest do
     start_supervised!({Beamlet.Node, roles: [:authority]})
 
     assert {:ok, ref} =
-             CLI.create(node(), id: "cli", model: %{id: "absent", capability: "absent"})
+             CLI.create(node(),
+               id: "cli",
+               model: %{
+                 provider: "deterministic",
+                 config: %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
+               }
+             )
 
     assert {:ok, %{status: :idle}} = CLI.status(ref)
     assert {:error, :invalid_watch_options} = CLI.watch(ref, events: 257)

@@ -1,10 +1,11 @@
 defmodule Beamlet.Agent.Server do
+  alias Beamlet.Agent.ModelBinding
   @moduledoc false
   use GenServer, restart: :temporary
   alias Beamlet.Actions.{Operation, Result}
   alias Beamlet.Agent.{Delegation, Integration.Caller, OperationOwner, Ref}
   alias Beamlet.Harness.{Catalogue, Context}
-  alias Beamlet.Harness.Models.OpenAICompatible
+  alias Beamlet.Harness.Model
   alias Beamlet.Runtime.Directory
 
   def start_link(opts) do
@@ -31,8 +32,7 @@ defmodule Beamlet.Agent.Server do
   def init({opts, limit}) do
     catalogue = Keyword.get(opts, :catalogue, %{})
 
-    with :ok <- Catalogue.validate(catalogue),
-         true <- valid_options?(opts) do
+    if valid_options?(opts) do
       if opts[:delegator], do: Process.link(opts[:delegator])
 
       ref = %Ref{
@@ -72,23 +72,28 @@ defmodule Beamlet.Agent.Server do
          final: nil
        }}
     else
-      _ -> {:stop, :invalid_agent_options}
+      {:stop, :invalid_agent_options}
     end
   end
 
-  defp valid_options?(opts) when is_list(opts) do
-    if Keyword.keyword?(opts), do: valid_keyword_options?(opts), else: false
+  defp valid_options?(opts, binding_validator \\ &ModelBinding.valid?/1)
+
+  defp valid_options?(opts, binding_validator) when is_list(opts) do
+    if Keyword.keyword?(opts) and Catalogue.validate(Keyword.get(opts, :catalogue, %{})) == :ok,
+      do: valid_keyword_options?(opts, binding_validator),
+      else: false
   end
 
-  defp valid_options?(_), do: false
+  defp valid_options?(_, _), do: false
 
-  defp valid_keyword_options?(opts) do
+  defp valid_keyword_options?(opts, binding_validator) do
     tools = Keyword.get(opts, :tools, %{})
 
     Keyword.keys(opts) -- [:id, :model, :tools, :catalogue, :delegator] == [] and
       valid_id?(opts[:id]) and
       (is_nil(opts[:delegator]) or is_pid(opts[:delegator])) and
-      Caller.profile?(opts[:model]) and is_map(tools) and map_size(tools) <= 64 and
+      binding_validator.(opts[:model]) and
+      is_map(tools) and map_size(tools) <= 64 and
       Enum.all?(tools, fn {name, profile} -> is_binary(name) and Caller.profile?(profile) end)
   end
 
@@ -101,7 +106,8 @@ defmodule Beamlet.Agent.Server do
   defp delegation_spec?(spec) when is_map(spec) do
     Map.keys(spec) -- [:authority, :options, :input] == [] and
       is_atom(spec[:authority]) and is_list(spec[:options]) and Keyword.keyword?(spec[:options]) and
-      valid_options?(spec.options) and is_binary(spec[:input]) and byte_size(spec.input) <= 65_536
+      valid_options?(spec.options, &ModelBinding.portable?/1) and is_binary(spec[:input]) and
+      byte_size(spec.input) <= 65_536
   end
 
   defp delegation_spec?(_), do: false
@@ -209,7 +215,7 @@ defmodule Beamlet.Agent.Server do
     with true <- Enum.all?(s.owners, fn {_, o} -> Map.get(o, :completed, false) end),
          true <- is_binary(text) and String.valid?(text) and byte_size(text) <= 65_536,
          {:ok, messages} <- Context.append(s.messages, [%{"role" => "user", "content" => text}]),
-         :ok <- OpenAICompatible.validate_request(%{messages: messages, catalogue: s.catalogue}),
+         :ok <- Model.validate_request(%{messages: messages, catalogue: s.catalogue}),
          {:ok, _} <-
            Caller.operation(
              s.model,
@@ -624,20 +630,12 @@ defmodule Beamlet.Agent.Server do
     end
   end
 
-  defp canonical_reply(%{kind: kind, assistant: assistant} = reply, catalogue)
-       when kind in [:text, :tool_calls] do
-    finish = if kind == :text, do: "stop", else: "tool_calls"
-    envelope = %{"choices" => [%{"finish_reason" => finish, "message" => assistant}]}
-
-    case OpenAICompatible.normalize(envelope, catalogue) do
-      {:ok, ^reply} -> {:ok, reply}
+  defp canonical_reply(reply, catalogue) do
+    case Model.validate_reply(reply, catalogue) do
+      :ok -> {:ok, Map.put(reply, :assistant, Model.assistant_message(reply))}
       _ -> {:error, :invalid_reply}
     end
-  rescue
-    _ -> {:error, :invalid_reply}
   end
-
-  defp canonical_reply(_, _), do: {:error, :invalid_reply}
 
   defp complete(s, :model, %{status: :ok, value: reply}) do
     case canonical_reply(reply, s.catalogue) do
@@ -676,7 +674,7 @@ defmodule Beamlet.Agent.Server do
   defp complete_tool(s, id, content) do
     observation = %{
       "role" => "tool",
-      "tool_call_id" => id,
+      "call_id" => id,
       "content" => content
     }
 
@@ -704,7 +702,7 @@ defmodule Beamlet.Agent.Server do
   end
 
   defp batch(s, assistant) do
-    with {:ok, calls} <- Catalogue.batch(assistant["tool_calls"], s.catalogue),
+    with {:ok, calls} <- Catalogue.batch(assistant["calls"], s.catalogue),
          true <- Enum.all?(calls, &Map.has_key?(s.tools, &1.name)),
          true <- length(s.messages) + 1 + length(calls) <= 128,
          {:ok, _messages} <- Context.append(s.messages, [assistant]),

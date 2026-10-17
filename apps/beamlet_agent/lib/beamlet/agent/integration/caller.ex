@@ -1,5 +1,5 @@
 defmodule Beamlet.Agent.Integration.Caller do
-  @moduledoc "Portable opaque profile routing, without executor credentials or roots."
+  @moduledoc "Construct bounded model invocations and opaque Tool Operations."
   alias Beamlet.Actions.Operation
   alias Beamlet.Runtime.Directory
 
@@ -16,6 +16,31 @@ defmodule Beamlet.Agent.Integration.Caller do
     operation(profile, request, limit)
   catch
     :exit, _ -> {:error, :runtime_unavailable}
+  end
+
+  def operation(%{provider: provider, config: config} = binding, request, limit) do
+    placement = Map.get(binding, :placement, %{})
+
+    attrs =
+      Map.merge(placement, %{
+        kind: "agent.native",
+        payload: %{
+          "type" => "model",
+          "provider" => provider,
+          "config" => config,
+          "request" => request
+        },
+        credentials: Map.get(binding, :credentials, %{}),
+        capabilities: ["model.provider:" <> provider]
+      })
+
+    case Operation.new(attrs) do
+      {:ok, op} = result ->
+        if :erlang.external_size(op) <= limit, do: result, else: {:error, :executable_input_limit}
+
+      error ->
+        error
+    end
   end
 
   def operation(%{id: id, capability: capability} = profile, request, limit) do

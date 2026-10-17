@@ -6,38 +6,35 @@ defmodule Beamlet.NodeReviewTest do
   alias Beamlet.Agent.OperationOwner
   alias Beamlet.Agent.Server
   alias Beamlet.Harness.Catalogue
-  alias Beamlet.Harness.Models.OpenAICompatible
-  alias Beamlet.Node.{TestBoot, TestModel}
+  alias Beamlet.Node.{TestBinding, TestBoot, TestModel}
 
   defmodule InconsistentModel do
+    def validate_invocation(_), do: :ok
+
     def complete(_, _, _) do
       {:ok,
        %{
          kind: :text,
          content: "different",
          calls: [],
-         assistant: %{"role" => "assistant", "content" => "original"}
+         unsupported: true
        }}
     end
   end
 
   defmodule ProgressModel do
-    def complete(_, settings, context) do
-      send(settings.observer, {:progress_worker, self()})
+    def validate_invocation(_), do: :ok
+
+    def complete(_, %{config: settings}, context) do
+      send(
+        TestBinding.observer(settings["observer"]),
+        {:progress_worker, self()}
+      )
+
       receive do: (:release -> :ok)
       context.progress.("native progress")
 
-      OpenAICompatible.normalize(
-        %{
-          "choices" => [
-            %{
-              "finish_reason" => "stop",
-              "message" => %{"role" => "assistant", "content" => "done"}
-            }
-          ]
-        },
-        %{}
-      )
+      {:ok, %{kind: :text, content: "done", calls: []}}
     end
   end
 
@@ -49,37 +46,19 @@ defmodule Beamlet.NodeReviewTest do
 
   setup do
     profiles = %{
-      "progress" => %{
-        type: :model,
-        module: ProgressModel,
-        settings: %{observer: self()},
-        capability: "progress"
-      },
-      "loop" => %{
-        type: :model,
-        module: Beamlet.Node.TestLoopModel,
-        settings: %{},
-        capability: "loop"
-      },
-      "echo" => %{type: :tool, module: UnencodableTool, settings: %{}, capability: "echo"},
-      "held" => %{
-        type: :model,
-        module: TestModel,
-        settings: %{hold: true, observer: self()},
-        capability: "held"
-      },
-      "inconsistent" => %{
-        type: :model,
-        module: InconsistentModel,
-        settings: %{},
-        capability: "inconsistent"
-      }
+      "echo" => %{type: :tool, module: UnencodableTool, settings: %{}, capability: "echo"}
     }
 
     start_supervised!(
       {Beamlet.Node,
        roles: [:authority, :executor],
        profiles: profiles,
+       model_providers: %{
+         "progress" => ProgressModel,
+         "loop" => Beamlet.Node.TestLoopModel,
+         "held" => TestModel,
+         "inconsistent" => InconsistentModel
+       },
        allowlist: %{
          model: [TestModel, InconsistentModel, Beamlet.Node.TestLoopModel, ProgressModel],
          tool: [UnencodableTool]
@@ -87,7 +66,7 @@ defmodule Beamlet.NodeReviewTest do
        limits: [refresh_ms: 20]}
     )
 
-    TestBoot.barrier("held")
+    TestBoot.barrier("model.provider:held")
     :ok
   end
 
@@ -142,7 +121,7 @@ defmodule Beamlet.NodeReviewTest do
   end
 
   defp agent(id, profile \\ "held") do
-    {:ok, ref} = Agent.start(node(), id: id, model: %{id: profile, capability: profile})
+    {:ok, ref} = Agent.start(node(), id: id, model: TestBinding.binding(profile))
     ref
   end
 
@@ -256,7 +235,7 @@ defmodule Beamlet.NodeReviewTest do
 
     spec = %{
       authority: node(),
-      options: [id: "late-child", model: %{id: "held", capability: "held"}],
+      options: [id: "late-child", model: TestBinding.binding("held")],
       input: "never"
     }
 
@@ -277,7 +256,7 @@ defmodule Beamlet.NodeReviewTest do
 
     spec = %{
       authority: node(),
-      options: [id: "teardown-local-child", model: %{id: "held", capability: "held"}],
+      options: [id: "teardown-local-child", model: TestBinding.binding("held")],
       input: "never"
     }
 
@@ -312,7 +291,7 @@ defmodule Beamlet.NodeReviewTest do
 
     spec = %{
       authority: node(),
-      options: [id: "authority-child", model: %{id: "held", capability: "held"}],
+      options: [id: "authority-child", model: TestBinding.binding("held")],
       input: "never"
     }
 
@@ -332,7 +311,7 @@ defmodule Beamlet.NodeReviewTest do
 
     spec = %{
       authority: node(),
-      options: [id: "nested-child", model: %{id: "held", capability: "held"}],
+      options: [id: "nested-child", model: TestBinding.binding("held")],
       input: "hold"
     }
 
@@ -346,7 +325,10 @@ defmodule Beamlet.NodeReviewTest do
     Agent.stop_turn(child)
 
     grand_spec =
-      put_in(spec.options, id: "nested-grandchild", model: %{id: "held", capability: "held"})
+      put_in(spec.options,
+        id: "nested-grandchild",
+        model: TestBinding.binding("held")
+      )
 
     Agent.delegate(child, [grand_spec])
     assert_receive {:model, _, grand_worker, _}, 3000
@@ -396,7 +378,7 @@ defmodule Beamlet.NodeReviewTest do
     end
   end
 
-  test "inconsistent normalized native reply fails without poisoning retained context" do
+  test "malformed neutral native reply fails without poisoning retained context" do
     ref = agent("canonical", "inconsistent")
     Agent.subscribe(ref)
     Agent.input(ref, "hello")
@@ -414,7 +396,7 @@ defmodule Beamlet.NodeReviewTest do
 
     spec = %{
       authority: node(),
-      options: [id: "helper-child", model: %{id: "held", capability: "held"}],
+      options: [id: "helper-child", model: TestBinding.binding("held")],
       input: "hold"
     }
 
@@ -448,13 +430,17 @@ defmodule Beamlet.NodeReviewTest do
 
   test "executor rejects extra executable fields before native provider invocation" do
     context = %{
-      settings: %{"p" => %{type: :model, module: OpenAICompatible, settings: %{}}},
+      settings: %{
+        model_providers: %{"p" => Beamlet.Harness.Models.OpenAICompatible},
+        profiles: %{}
+      },
+      credentials: %{},
       progress: nil,
       cancelled?: nil
     }
 
     request = %{"messages" => [%{"role" => "user", "content" => "x"}], "catalogue" => %{}}
-    payload = %{"profile" => "p", "request" => request}
+    payload = %{"type" => "model", "provider" => "p", "config" => %{}, "request" => request}
     assert {:error, :invalid_request} = Handler.run(Map.put(payload, "extra", true), context)
 
     assert {:error, :invalid_request} =
@@ -465,15 +451,8 @@ defmodule Beamlet.NodeReviewTest do
     assert {:error, :invalid_node_configuration} =
              Beamlet.Node.configuration(
                roles: [:executor],
-               allowlist: %{model: [String], tool: []},
-               profiles: %{
-                 "invalid" => %{
-                   type: :model,
-                   module: String,
-                   settings: %{},
-                   capability: "invalid"
-                 }
-               }
+               model_providers: %{"invalid" => String},
+               profiles: %{}
              )
   end
 
@@ -483,7 +462,7 @@ defmodule Beamlet.NodeReviewTest do
     {:ok, ref} =
       Agent.start(node(),
         id: "non-json",
-        model: %{id: "loop", capability: "loop"},
+        model: TestBinding.binding("loop"),
         catalogue: catalogue,
         tools: %{"echo" => %{id: "echo", capability: "echo"}}
       )
@@ -546,7 +525,7 @@ defmodule Beamlet.NodeReviewTest do
     directory = Process.whereis(Beamlet.Runtime.Directory)
     :sys.suspend(directory)
     on_exit(fn -> if Process.alive?(directory), do: :sys.resume(directory) end)
-    profile = %{id: "held", capability: "held"}
+    profile = TestBinding.binding("held")
 
     startup =
       Task.async(fn ->
@@ -641,7 +620,7 @@ defmodule Beamlet.NodeReviewTest do
 
       spec = %{
         authority: node(),
-        options: [id: "delayed-child-#{action}", model: %{id: "held", capability: "held"}],
+        options: [id: "delayed-child-#{action}", model: TestBinding.binding("held")],
         input: "must not run"
       }
 
@@ -663,7 +642,7 @@ defmodule Beamlet.NodeReviewTest do
 
     spec = %{
       authority: node(),
-      options: [id: "admission-child", model: %{id: "held", capability: "held"}],
+      options: [id: "admission-child", model: TestBinding.binding("held")],
       input: "must not run"
     }
 
@@ -694,7 +673,7 @@ defmodule Beamlet.NodeReviewTest do
       for id <- ["partial-a", "partial-b"],
           do: %{
             authority: node(),
-            options: [id: id, model: %{id: "held", capability: "held"}],
+            options: [id: id, model: TestBinding.binding("held")],
             input: "must not run"
           }
 

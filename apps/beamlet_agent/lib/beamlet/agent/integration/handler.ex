@@ -1,18 +1,39 @@
 defmodule Beamlet.Agent.Integration.Handler do
-  @moduledoc "Executor-only native adapter. Executable modules and settings are local registration data."
+  alias Beamlet.Agent.ModelBinding
+  @moduledoc "Executor adapter resolving only locally installed trusted providers and Tools."
   @behaviour Beamlet.Actions.Handler
-  alias Beamlet.Harness.Models.OpenAICompatible
+  alias Beamlet.Harness.Model
+
   @impl true
+  def run(
+        %{"type" => "model", "provider" => provider, "config" => config, "request" => request} =
+          payload,
+        context
+      )
+      when map_size(payload) == 4 do
+    invocation = %{config: config, credentials: context.credentials}
+
+    with :ok <- Model.validate_registry(context.settings.model_providers),
+         {:ok, module} <- Map.fetch(context.settings.model_providers, provider),
+         true <- is_map(request) and Enum.sort(Map.keys(request)) == ["catalogue", "messages"],
+         native_request = %{messages: request["messages"], catalogue: request["catalogue"]},
+         :ok <- Model.validate_request(native_request),
+         :ok <- ModelBinding.validate(module, invocation) do
+      module.complete(native_request, invocation, native(context))
+    else
+      _ -> {:error, :invalid_request}
+    end
+  rescue
+    _ -> {:error, :provider_failure}
+  catch
+    _, _ -> {:error, :provider_failure}
+  end
+
   def run(%{"profile" => profile, "request" => request} = payload, context)
       when map_size(payload) == 2 and is_binary(profile) and is_map(request) do
-    native = %Beamlet.Harness.Context{progress: context.progress, cancelled?: context.cancelled?}
-
-    case Map.fetch(context.settings, profile) do
-      {:ok, %{type: :model, module: module, settings: settings}} ->
-        complete(module, request, settings, native)
-
-      {:ok, %{type: :tool, module: module, settings: settings}} ->
-        module.invoke(request, settings, native)
+    case Map.fetch(context.settings.profiles, profile) do
+      {:ok, %{type: :tool, module: module, settings: settings}} when context.credentials == %{} ->
+        module.invoke(request, settings, native(context))
 
       _ ->
         {:error, :invalid_profile}
@@ -21,15 +42,6 @@ defmodule Beamlet.Agent.Integration.Handler do
 
   def run(_, _), do: {:error, :invalid_request}
 
-  defp complete(module, request, settings, native) do
-    if Enum.sort(Map.keys(request)) == ["catalogue", "messages"] do
-      native_request = %{messages: request["messages"], catalogue: request["catalogue"]}
-
-      with :ok <- OpenAICompatible.validate_request(native_request) do
-        module.complete(native_request, settings, native)
-      end
-    else
-      {:error, :invalid_request}
-    end
-  end
+  defp native(context),
+    do: %Beamlet.Harness.Context{progress: context.progress, cancelled?: context.cancelled?}
 end

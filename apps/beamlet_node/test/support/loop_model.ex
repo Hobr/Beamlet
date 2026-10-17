@@ -1,22 +1,17 @@
 defmodule Beamlet.Node.TestLoopModel do
+  alias Beamlet.Harness.Model
   @moduledoc false
   @behaviour Beamlet.Harness.Model
-  alias Beamlet.Harness.Models.OpenAICompatible
+  def validate_invocation(_), do: :ok
 
-  def complete(request, _settings, _context) do
-    call = %{
-      "id" => "loop",
-      "type" => "function",
-      "function" => %{"name" => "echo", "arguments" => "{\"text\":\"again\"}"}
-    }
-
-    assistant = %{"role" => "assistant", "content" => nil, "tool_calls" => [call]}
-
-    with :ok <- OpenAICompatible.validate_request(request) do
-      OpenAICompatible.normalize(
-        %{"choices" => [%{"finish_reason" => "tool_calls", "message" => assistant}]},
-        request.catalogue
-      )
+  def complete(request, _, _) do
+    with :ok <- Model.validate_request(request) do
+      {:ok,
+       %{
+         kind: :tool_calls,
+         content: nil,
+         calls: [%{id: "loop", name: "echo", arguments: %{"text" => "again"}}]
+       }}
     end
   end
 end

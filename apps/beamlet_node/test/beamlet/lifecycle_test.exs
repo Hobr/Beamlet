@@ -1,42 +1,19 @@
 defmodule Beamlet.NodeLifecycleTest do
-  alias Beamlet.Harness.{Catalogue, Context}
-  alias Beamlet.Harness.Tools.Deterministic
-  alias Beamlet.Node.TestBoot
-  alias Beamlet.Node.TestTool
   use ExUnit.Case
   alias Beamlet.Agent
+  alias Beamlet.Harness.{Catalogue, Context}
+  alias Beamlet.Harness.Tools.Deterministic
+  alias Beamlet.Node.TestBinding
+  alias Beamlet.Node.TestBoot
+  alias Beamlet.Node.TestTool
 
   setup do
     profiles = %{
-      "loop" => %{
-        type: :model,
-        module: Beamlet.Node.TestLoopModel,
-        settings: %{},
-        capability: "loop"
-      },
       "echo" => %{
         type: :tool,
         module: Beamlet.Harness.Tools.Deterministic,
         settings: %{},
         capability: "echo"
-      },
-      "held" => %{
-        type: :model,
-        module: Beamlet.Node.TestModel,
-        settings: %{hold: true, observer: self()},
-        capability: "held"
-      },
-      "plain" => %{
-        type: :model,
-        module: Beamlet.Node.TestModel,
-        settings: %{},
-        capability: "plain"
-      },
-      "bad" => %{
-        type: :model,
-        module: Beamlet.Node.TestModel,
-        settings: %{loop: true, invalid: true},
-        capability: "bad"
       },
       "tool" => %{
         type: :tool,
@@ -50,6 +27,12 @@ defmodule Beamlet.NodeLifecycleTest do
       {Beamlet.Node,
        roles: [:authority, :executor],
        profiles: profiles,
+       model_providers: %{
+         "loop" => Beamlet.Node.TestLoopModel,
+         "held" => Beamlet.Node.TestModel,
+         "plain" => Beamlet.Node.TestModel,
+         "bad" => Beamlet.Node.TestModel
+       },
        allowlist: %{
          model: [Beamlet.Node.TestModel, Beamlet.Node.TestLoopModel],
          tool: [TestTool, Beamlet.Harness.Tools.Deterministic]
@@ -58,12 +41,12 @@ defmodule Beamlet.NodeLifecycleTest do
        limits: [refresh_ms: 20, expiry_ms: 500]}
     )
 
-    TestBoot.barrier("held")
+    TestBoot.barrier("model.provider:held")
     :ok
   end
 
   defp agent(id, profile \\ "plain") do
-    {:ok, ref} = Agent.start(node(), id: id, model: %{id: profile, capability: profile})
+    {:ok, ref} = Agent.start(node(), id: id, model: TestBinding.binding(profile))
     ref
   end
 
@@ -116,7 +99,7 @@ defmodule Beamlet.NodeLifecycleTest do
     {:ok, loop} =
       Agent.start(node(),
         id: "loop",
-        model: %{id: "loop", capability: "loop"},
+        model: TestBinding.binding("loop"),
         catalogue: catalogue,
         tools: %{"echo" => %{id: "echo", capability: "echo"}}
       )
@@ -171,7 +154,7 @@ defmodule Beamlet.NodeLifecycleTest do
       Process.exit(Process.whereis(name), :kill)
       assert_receive {:DOWN, ^monitor, _, _, _}, 3000
       fresh_authority(100)
-      TestBoot.barrier("held")
+      TestBoot.barrier("model.provider:held")
       refute_receive {:model, _, _, _}, 20
     end
   end
@@ -182,7 +165,7 @@ defmodule Beamlet.NodeLifecycleTest do
 
     spec = %{
       authority: node(),
-      options: [id: "continuation-child", model: %{id: "plain", capability: "plain"}],
+      options: [id: "continuation-child", model: TestBinding.binding("plain")],
       input: "answer"
     }
 
@@ -194,7 +177,7 @@ defmodule Beamlet.NodeLifecycleTest do
 
     held = %{
       authority: node(),
-      options: [id: "stale-child", model: %{id: "held", capability: "held"}],
+      options: [id: "stale-child", model: TestBinding.binding("held")],
       input: "hold"
     }
 
@@ -239,7 +222,7 @@ defmodule Beamlet.NodeLifecycleTest do
 
     spec = %{
       authority: node(),
-      options: [id: "expiry-child", model: %{id: "held", capability: "held"}],
+      options: [id: "expiry-child", model: TestBinding.binding("held")],
       input: "hold"
     }
 
@@ -270,7 +253,7 @@ defmodule Beamlet.NodeLifecycleTest do
 
     failed = %{
       authority: node(),
-      options: [id: "failed-child", model: %{id: "absent", capability: "absent"}],
+      options: [id: "failed-child", model: TestBinding.binding("absent")],
       input: "fail"
     }
 
@@ -293,7 +276,7 @@ defmodule Beamlet.NodeLifecycleTest do
     {:ok, ref} =
       Agent.start(node(),
         id: "batch",
-        model: %{id: "bad", capability: "bad"},
+        model: TestBinding.binding("bad"),
         catalogue: catalogue,
         tools: %{"workspace_read" => %{id: "tool", capability: "tool"}}
       )
@@ -331,7 +314,7 @@ defmodule Beamlet.NodeLifecycleTest do
       for i <- 1..2,
           do: %{
             authority: node(),
-            options: [id: "child#{i}", model: %{id: "held", capability: "held"}],
+            options: [id: "child#{i}", model: TestBinding.binding("held")],
             input: "hold"
           }
 
@@ -354,7 +337,7 @@ defmodule Beamlet.NodeLifecycleTest do
 
       spec = %{
         authority: node(),
-        options: [id: "child#{action}", model: %{id: "held", capability: "held"}],
+        options: [id: "child#{action}", model: TestBinding.binding("held")],
         input: "hold"
       }
 
@@ -405,13 +388,13 @@ defmodule Beamlet.NodeLifecycleTest do
     Process.exit(provider, :kill)
     assert_receive {:DOWN, ^monitor, _, _, _}, 3000
     fresh_authority(100)
-    TestBoot.barrier("held")
+    TestBoot.barrier("model.provider:held")
   end
 
   defp fresh_authority(0), do: flunk("fresh authority unavailable")
 
   defp fresh_authority(n) do
-    case Agent.start(node(), id: "fresh", model: %{id: "plain", capability: "plain"}) do
+    case Agent.start(node(), id: "fresh", model: TestBinding.binding("plain")) do
       {:ok, ref} ->
         Agent.close(ref)
 
