@@ -30,6 +30,30 @@ defmodule Beamlet.RuntimeTest do
 
   defp operation(attrs \\ []), do: elem(Operation.new([kind: "echo"] ++ attrs), 1)
 
+  test "credentials reach the handler unchanged and stay absent from generated outputs" do
+    credentials = %{
+      "token" => "synthetic-operation-only",
+      "session" => [%{"credentials" => [true, nil, 4]}]
+    }
+
+    operation = operation(payload: %{"mode" => "credentials"}, credentials: credentials)
+    assert {:ok, ref} = Runtime.submit(operation, require_live_owner: true)
+    assert_receive {:credentials, executor, ^credentials}, 3000
+    assert executor == node()
+    assert_receive {:beamlet_operation, ^ref, {:progress, _, seq, "working"}}, 3000
+    :ok = Runtime.ack(ref, seq)
+    assert_receive {:beamlet_operation, ^ref, {:result, result}}, 3000
+    assert result.status == :ok
+    assert result.value == "done"
+    assert {:ok, snapshot} = Runtime.status(ref)
+
+    for projection <- [result, snapshot, Runtime.Directory.snapshots()] do
+      refute inspect(projection) =~ "synthetic-operation-only"
+      refute inspect(projection) =~ "credentials:"
+      refute inspect(projection) =~ ~s("credentials" =>)
+    end
+  end
+
   test "successful result is accepted once and retained only boundedly" do
     assert {:ok, ref} = Runtime.submit(operation())
     assert_receive {:beamlet_operation, ^ref, {:result, result}}, 1000

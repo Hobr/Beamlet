@@ -67,6 +67,12 @@ defmodule Beamlet.Actions.Result do
 end
 
 defmodule Beamlet.Actions.Handler do
-  @moduledoc "Executor-local handler. Return {:ok, data} or {:error, safe_reason}. Context is local."
+  @moduledoc """
+  Executor-local handler. Return {:ok, data} or {:error, safe_reason}.
+
+  Context contains local `settings`, invocation `credentials` (default `%{}`),
+  `remaining_ms`, and `progress`/`cancelled?` callbacks. Credentials are generic
+  data and must not be copied into ordinary outputs or diagnostics.
+  """
   @callback run(term(), map()) :: {:ok, term()} | {:error, term()}
 end

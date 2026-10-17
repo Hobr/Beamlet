@@ -232,6 +232,7 @@ defmodule Beamlet.Runtime.ExecutorGateway do
       Task.Supervisor.async_nolink(Workers, Worker, :run, [
         module,
         op.payload,
+        op.credentials,
         settings,
         self(),
         remaining,

@@ -62,6 +62,61 @@ defmodule Beamlet.RuntimeDistributedTest do
         1
       )
 
+  test "remote gateway enforces credential-inclusive deployment cap", %{
+    peer: peer,
+    remote: remote
+  } do
+    :ok = :peer.call(peer, Runtime.TestPeer, :operation_cap, [1024])
+    base = op(remote, credentials: %{"token" => ""})
+
+    exact = %{
+      base
+      | credentials: %{"token" => String.duplicate("x", 1024 - :erlang.external_size(base))}
+    }
+
+    over = %{exact | credentials: Map.update!(exact.credentials, "token", &(&1 <> "x"))}
+    assert :erlang.external_size(exact) == 1024
+    assert :ok = Operation.validate(over)
+    # Public cap remains larger: executor must independently reject this invocation.
+    assert {:ok, ref} = Runtime.submit(over)
+    assert_receive {:beamlet_operation, ^ref, {:result, %{reason: :ineligible} = rejected}}, 3000
+    assert rejected.value == nil
+    refute inspect(rejected) =~ "credentials:"
+    assert {:ok, snapshot} = Runtime.status(ref)
+    refute inspect(snapshot) =~ "credentials:"
+    state = :peer.call(peer, :sys, :get_state, [Runtime.ExecutorGateway])
+    assert state.tasks == %{}
+    assert state.available == %{"cpu" => 1}
+    assert {:ok, accepted} = Runtime.submit(exact)
+    assert_receive {:beamlet_operation, ^accepted, {:result, %{status: :ok}}}, 3000
+  end
+
+  test "credentials reach the handler unchanged and stay absent from generated outputs", %{
+    remote: remote
+  } do
+    credentials = %{
+      "token" => "synthetic-operation-only",
+      "session" => [%{"credentials" => [true, nil, 4]}]
+    }
+
+    operation = op(remote, payload: %{"mode" => "credentials"}, credentials: credentials)
+    assert {:ok, ref} = Runtime.submit(operation, require_live_owner: true)
+    assert_receive {:credentials, executor, ^credentials}, 3000
+    assert executor == remote
+    assert_receive {:beamlet_operation, ^ref, {:progress, _, seq, "working"}}, 3000
+    :ok = Runtime.ack(ref, seq)
+    assert_receive {:beamlet_operation, ^ref, {:result, result}}, 3000
+    assert result.status == :ok
+    assert result.value == "done"
+    assert {:ok, snapshot} = Runtime.status(ref)
+
+    for projection <- [result, snapshot, Runtime.Directory.snapshots()] do
+      refute inspect(projection) =~ "synthetic-operation-only"
+      refute inspect(projection) =~ "credentials:"
+      refute inspect(projection) =~ ~s("credentials" =>)
+    end
+  end
+
   test "remote execution, stale duplicate result, and no local fallback", %{
     peer: peer,
     remote: remote

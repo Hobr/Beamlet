@@ -3,6 +3,7 @@ defmodule Beamlet.Actions.Operation do
   defstruct kind: nil,
             version: 1,
             payload: %{},
+            credentials: %{},
             capabilities: [],
             environment: nil,
             allowed_nodes: nil,
@@ -14,6 +15,7 @@ defmodule Beamlet.Actions.Operation do
           kind: binary(),
           version: 1,
           payload: term(),
+          credentials: %{binary() => term()},
           capabilities: list(),
           environment: term(),
           allowed_nodes: [node()] | nil,
@@ -36,7 +38,8 @@ defmodule Beamlet.Actions.Operation do
   def validate(%__MODULE__{} = op) do
     valid =
       header?(op) and placement?(op) and claims?(op.claims) and
-        Beamlet.Actions.bounded?(Map.from_struct(op), 262_144) and
+        Beamlet.Actions.credentials?(op.credentials) and
+        Beamlet.Actions.bounded?(Map.delete(Map.from_struct(op), :credentials), 262_144) and
         :erlang.external_size(op) <= 262_144
 
     if valid, do: :ok, else: {:error, :invalid_operation}

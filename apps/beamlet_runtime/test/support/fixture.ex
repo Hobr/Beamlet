@@ -1,6 +1,15 @@
 defmodule Beamlet.Runtime.TestHandler do
   @moduledoc false
   @behaviour Beamlet.Actions.Handler
+  def run(%{"mode" => "credentials"}, context) do
+    # Explicit test-only observer; normal outputs below contain no invocation data.
+    send(context.settings, {:credentials, node(), context.credentials})
+    true = is_integer(context.remaining_ms)
+    false = context.cancelled?.()
+    :ok = context.progress.("working")
+    {:ok, "done"}
+  end
+
   def run(%{"mode" => "trap"}, context) do
     Process.flag(:trap_exit, true)
     run(%{"mode" => "hold"}, context)
@@ -51,6 +60,14 @@ defmodule Beamlet.Runtime.TestPeer do
   def boot(opts) do
     {:ok, pid} = SharedSupervisor.start_link(opts)
     Process.unlink(pid)
+    :ok
+  end
+
+  def operation_cap(bytes) do
+    :sys.replace_state(Beamlet.Runtime.ExecutorGateway, fn state ->
+      %{state | limits: %{state.limits | operation_bytes: bytes}}
+    end)
+
     :ok
   end
 

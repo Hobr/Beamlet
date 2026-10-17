@@ -1,6 +1,6 @@
 defmodule Beamlet.Runtime.Worker do
   @moduledoc "MFA wrapper with finite producer credits. Auxiliary callbacks marshal through the wrapper."
-  def run(module, payload, settings, gateway, remaining, limits, cancellation) do
+  def run(module, payload, credentials, settings, gateway, remaining, limits, cancellation) do
     wrapper = self()
     counters = :atomics.new(4, [])
     started = System.monotonic_time(:millisecond)
@@ -14,6 +14,7 @@ defmodule Beamlet.Runtime.Worker do
 
     context = %{
       settings: settings,
+      credentials: credentials,
       remaining_ms: remaining,
       cancelled?: fn -> :atomics.get(cancellation, 1) == 1 end,
       progress: fn value -> progress(wrapper, marshal, counters, started, value, limits) end

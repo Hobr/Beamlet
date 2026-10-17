@@ -19,6 +19,37 @@ defmodule Beamlet.Runtime.ReviewTest do
 
   defp op(payload \\ %{}), do: elem(Operation.new(kind: "echo", payload: payload), 1)
 
+  test "credential bytes count at the exact deployment envelope boundary at both admissions" do
+    boot(operation_bytes: 1024)
+    base = %Operation{kind: "echo", credentials: %{"token" => ""}}
+
+    exact = %{
+      base
+      | credentials: %{"token" => String.duplicate("x", 1024 - :erlang.external_size(base))}
+    }
+
+    assert :erlang.external_size(exact) == 1024
+    over = %{exact | credentials: Map.update!(exact.credentials, "token", &(&1 <> "x"))}
+    assert :ok = Operation.validate(over)
+
+    for guarded <- [false, true] do
+      assert {:error, :invalid_operation} = Runtime.submit(over, require_live_owner: guarded)
+    end
+
+    gateway = :sys.get_state(ExecutorGateway)
+
+    send(
+      ExecutorGateway,
+      {:admit, self(), "op", "credential-over", gateway.incarnation,
+       System.monotonic_time(:millisecond), over, 1000}
+    )
+
+    assert_receive {:rejected, "credential-over", :ineligible}
+    assert :sys.get_state(ExecutorGateway).tasks == %{}
+    assert {:ok, ref} = Runtime.submit(exact)
+    assert_receive {:beamlet_operation, ^ref, {:result, %{status: :ok}}}, 1000
+  end
+
   test "multiple pools charge atomically and duplicate terminal messages release once" do
     boot([], %{"cpu" => 1, "io" => 2})
 
