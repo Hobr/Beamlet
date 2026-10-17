@@ -44,7 +44,7 @@ commands for the change are identified.
 | [Native Harness](./harness-providers.md) | Model/Tool contracts, schema/history validation, HTTP and trusted workspace boundaries |
 | [Agent and Node](./agent-orchestration.md) | Explicit authority, bounded orchestration, lifecycle ownership, subscriptions and roles |
 | [Backend CLI and Release](./backend-release.md) | CLI bounds, isolated packaging/config, named control ports and deployment evidence |
-| [State and Persistence](./database-guidelines.md) | Absence of a database, cookie sessions, configuration and storage pitfalls |
+| [State and Persistence](./database-guidelines.md) | Stage-A `beamlet_storage` tables/transactions, cookie sessions, configuration and storage pitfalls |
 | [Error Handling](./error-handling.md) | OTP startup propagation, status renderers, component feedback and gaps |
 | [Quality Guidelines](./quality-guidelines.md) | Formatting, build/test/static-analysis commands, test examples and coverage limits |
 | [Logging and Telemetry](./logging-guidelines.md) | Request IDs, formatter, Phoenix/VM metrics, development diagnostics |

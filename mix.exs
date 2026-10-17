@@ -55,6 +55,7 @@ defmodule Beamlet.Umbrella.MixProject do
     if System.get_env("BEAMLET_BACKEND_BUILD") == "1",
       do: [
         :beamlet_actions,
+        :beamlet_storage,
         :beamlet_runtime,
         :beamlet_harness,
         :beamlet_agent,

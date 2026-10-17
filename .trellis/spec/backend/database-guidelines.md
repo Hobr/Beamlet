@@ -15,13 +15,44 @@ carry transient invocation copies. Registry metadata stores trusted local adapte
 registrations, not user bindings/keys. No credential persistence, recovery or
 secure-erasure guarantee exists. Resources retains infrastructure PID inventories
 until DOWN, with VM-local restart fencing and no business replay state. There is no
-durable Agent/Operation history. See [Agent and Node](./agent-orchestration.md). See [Operation Runtime](./operation-runtime.md).
+durable Agent/Operation history. Agent's bounded live-context display and subscriptions
+can omit or truncate content; their annotation IDs are incarnation-local. Node and
+Runtime observations are non-atomic advisory reads. Node services `ready` means
+required local registrations exist, not database writability or confirmed worker
+termination. None is a persistence or recovery fact source. See [Agent and Node](./agent-orchestration.md). See [Operation Runtime](./operation-runtime.md).
 
-Accordingly, there are no established table names, migration commands, transaction
-patterns, or repository test fixtures to follow. Storage work needs an explicit
-task-level contract rather than an invented Ecto convention. Runtime refs address
-live coordinators; status is unavailable after expiry or shared infrastructure loss.
-Do not turn retained Results/tombstones into replay or durable deduplication promises.
+Runtime refs address live coordinators; status is unavailable after expiry or
+shared infrastructure loss. Do not turn retained Results/tombstones into replay or
+durable deduplication promises.
+
+## Implemented Storage Foundation (Stage A Only)
+
+`apps/beamlet_storage` is a real, tested Ecto library for the persistence contract;
+it is **not** wired into Agent/Runtime/Node and no durable business recovery runs.
+Read `apps/beamlet_storage/README.md` before changing it. Established facts:
+
+- Authority tables: `agents`, `checkpoints`, `events`, `operations`, `executions`,
+  `execution_evidence`, `commands`, `artifacts`, plus the singleton
+  `storage_metadata` installation row and Ecto's `schema_migrations`. The executor
+  journal database has `journal_attempts` + `storage_metadata`.
+- Migrations are explicit and versioned: `Dataset.initialize/2` runs
+  `priv/authority_migrations/1_authority_v1.exs` or
+  `priv/journal_migrations/1_journal_v1.exs`; `Dataset.open/2` never migrates and
+  refuses a missing dataset, identity/role mismatch, backup marker, or newer
+  `format_version`/migration version. Downgrade raises by design.
+- Write entries are `Beamlet.Storage.{AgentRecords, OperationRecords,
+  ExecutorJournal}` only; each is one transaction (`Transaction.write/2`) with CAS
+  on `lock_version`, unique constraints as the concurrency fact, command identity
+  replay and no automatic retry. Do not expose Repos or raw SQL upward.
+- SQLite runs pool size 1, WAL, `synchronous=FULL`, `foreign_keys=ON`, immediate
+  write transactions, and a 2000 ms Exqlite busy handler; `PRAGMA busy_timeout`
+  reads 0 by design. PostgreSQL runs pool size 4 with `after_connect` checks of
+  `synchronous_commit`/`fsync`.
+- Contract tests: `apps/beamlet_storage/test/beamlet/storage/storage_contract_test.exs`
+  runs one shared assertion set on real SQLite files and on a real PostgreSQL
+  dataset (`test/support/contract_fixture.ex`); SQLite-only suites cover the
+  executor journal, codec and installation. Never report a skipped adapter as
+  passing.
 
 ## Proposed Next Architecture (Not Implemented)
 
@@ -36,8 +67,18 @@ compares pinned pi durable source with LangGraph, Agents SDK and Temporal, and
 limits durable primitives to history records and checkpoints. Fork returns a new
 Agent identity with materialized context and provenance; it does not introduce
 branch tables, active-branch switching or recursive parent-history loading. Consult its [delivery and acceptance plan](../../../docs/architecture/persistence-delivery.md)
-when scoping future implementation; the current no-database description above
-continues to apply until implementation lands.
+when scoping future implementation. Stage A storage exists (above); stages B–F
+(durable Agent/Runtime behaviour, fork/rewind, export, recovery, release tooling)
+remain design material and are not implemented.
+
+The proposal remains compatible with the display/observation and stop-provenance
+changes through `a078aa3`. Future durable writes must occur at business transitions,
+not by recording display snapshots or subscriptions. Preserve the first observed
+stop trigger and actual terminal outcome in execution evidence; cancellation
+requests must not rewrite deadline or successful Results. Enforce durable admission
+in authority transactions and executor journal writes even when Node/Repo processes
+remain registered. See proposal sections 3.3, 6 and 11 for the full contract; these
+requirements add no Display/Observation table or new durable primitive.
 
 ## Existing State Boundaries
 
