@@ -33,12 +33,17 @@ Run these from the repository root unless noted:
 | Format/check Elixir and HEEx | `mix format` / `mix format --check-formatted` (`.formatter.exs`, child formatters, `.pre-commit-config.yaml`) |
 | All app tests | `mix test` (`README.md`, pre-commit test hook) |
 | Focused web regression | `cd apps/beamlet_web && mix test test/beamlet_web/controllers/page_controller_test.exs` (child manifest uses shared root config) |
-| Static checks | `mix dialyzer`, `mix credo`, `mix sobelow` (`README.md`, root tool deps); root alias runs `sobelow --root apps/beamlet_web --private` |
-| Repository hooks | `pre-commit run --all-files` (`README.md`, `.pre-commit-config.yaml`); this includes general file hygiene and Elixir test/format hooks |
+| Static checks | `mix dialyzer`, `mix credo`, `mix sobelow` (`.pre-commit-config.yaml`, root tool deps); root alias runs `sobelow --root apps/beamlet_web --private` |
+| Repository hooks | `pre-commit run --all-files` (`README.md`, `.pre-commit-config.yaml`); this includes general file hygiene, Elixir test/format hooks, Dialyzer, Credo, Sobelow, the example benchmark and CycloneDX SBoM generation |
 | Asset changes | `cd apps/beamlet_web && mix assets.build`; `mix assets.deploy` for minified/digested output (child `mix.exs` aliases) |
 | Benchmark setup smoke check | `mix bench` (root alias runs `bench/enum.exs` without starting apps); this compares Enum/comprehension, not Beamlet performance |
 
 The local hooks use system `mix`; test and format hooks match Elixir files.
+Dialyzer, Credo, Sobelow, benchmark and SBoM hooks also match root `mix.lock`
+changes and use `pass_filenames: false` to run once against the umbrella.
+Run `pre-commit install` after cloning to enable the commit hook. The SBoM hook
+uses `--force --output _build/bom.cdx.json` to avoid interactive overwrite prompts
+and leave the tracked root `bom.cdx.json` unchanged.
 There is no checked-in GitHub build/test workflow, coverage threshold, or custom
 Credo configuration. Tool declarations and README commands do not establish a
 passing baseline; report actual results, including dependency/tool failures.

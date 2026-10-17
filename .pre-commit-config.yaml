@@ -13,18 +13,53 @@ repos:
 
   - repo: local
     hooks:
-    - id: mix-test
-      name: 'elixir test'
-      entry: mix test
-      language: system
-      pass_filenames: false
-      files: \.exs*$
+      - id: mix-test
+        name: 'elixir test'
+        entry: mix test
+        language: system
+        pass_filenames: false
+        files: \.exs*$
 
-    - id: mix-format
-      name: 'elixir format'
-      entry: mix format --check-formatted
-      language: system
-      files: \.exs*$
+      - id: mix-format
+        name: 'elixir format'
+        entry: mix format --check-formatted
+        language: system
+        files: \.exs*$
+
+      - id: mix-dialyzer
+        name: 'elixir dialyzer'
+        entry: mix dialyzer
+        language: system
+        pass_filenames: false
+        files: '(\.exs?$|^mix\.lock$)'
+
+      - id: mix-credo
+        name: 'elixir credo'
+        entry: mix credo
+        language: system
+        pass_filenames: false
+        files: '(\.exs?$|^mix\.lock$)'
+
+      - id: mix-sobelow
+        name: 'elixir security analysis'
+        entry: mix sobelow
+        language: system
+        pass_filenames: false
+        files: '(\.exs?$|^mix\.lock$)'
+
+      - id: mix-bench
+        name: 'elixir benchmark'
+        entry: mix bench
+        language: system
+        pass_filenames: false
+        files: '(\.exs?$|^mix\.lock$)'
+
+      - id: mix-sbom-cyclonedx
+        name: 'elixir CycloneDX SBoM'
+        entry: mix sbom.cyclonedx --force --output _build/bom.cdx.json
+        language: system
+        pass_filenames: false
+        files: '(\.exs?$|^mix\.lock$)'
 
 ci:
     autoupdate_schedule: weekly
