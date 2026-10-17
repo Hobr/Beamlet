@@ -7,11 +7,24 @@ defmodule Beamlet.Storage.AgentRecords do
   `history_seq` and `lock_version` advance by CAS in the same transaction.
   """
   import Ecto.Query
-  alias Beamlet.Storage.{Codec, Records, Transaction}
+  alias Beamlet.Storage.{Artifacts, Codec, Records, Transaction}
   alias Beamlet.Storage.Schema.{Agent, Checkpoint, Command, Event, Operation}
 
   @continuations ~w(await_input model_prepared tool_batch_prepared await_model_result await_tool_results reply_recorded results_to_consume ready_for_next_step await_delegation await_peer interrupted blocked completed)
   @consumption_kinds ~w(tool_result model_result evidence_resolution)
+  # A fork copies only a boundary where nothing of the source turn is still in
+  # flight: no reply awaiting a batch, no results waiting to be consumed.
+  # Checkpoints that carry a complete, copyable message boundary.
+  @fork_idle ~w(await_input await_model_result completed)
+  # ...of which only these are actually quiet: a mid-turn checkpoint may be copied
+  # for inspection, but forking it needs a frozen source.
+  @fork_quiet ~w(await_input completed)
+  @fork_source_freezes ~w(frozen idle)a
+  @fork_source_environments ~w(confirmed_stopped unconfirmed)a
+  @risk_states ~w(uncertain deadline cancelled unknown)
+  @max_messages 128
+  @max_fork_bytes 1_048_576
+  @fork_evidence_limit 256
   @max_consumptions 128
   @page_default 100
   @page_max 500
@@ -32,6 +45,27 @@ defmodule Beamlet.Storage.AgentRecords do
   def consume_result(repo, attrs) do
     with {:ok, input} <- validate_consume(attrs) do
       Records.transact(repo, fn -> write_consume(repo, input) end)
+    end
+  end
+
+  @doc """
+  Copies one immutable checkpoint of `source_agent_id` into a new independent Agent
+  in one authority transaction: the Agent row (with `forked_from_*` provenance
+  only), the inherited context records (fresh record ids plus source markers), the
+  new `await_input` checkpoint, the fork event and the command response.
+
+  Only a `safe_to_fork` checkpoint on a complete message boundary is accepted: no
+  pending/join state, no unconsumed model reply or Tool result, no blocked turn and
+  a complete Tool-call/result pairing. A source with undecided work in flight
+  requires `source.freeze == :frozen`; an unconfirmed stop is recorded on the new
+  Agent as `environment.risk == "unconfirmed"` so it may not execute until an
+  explicit acceptance. A copy larger than `@max_fork_bytes` is refused, never
+  truncated. Nothing of the source is read outside the transaction or referenced
+  by the new Agent afterwards.
+  """
+  def fork(repo, attrs) do
+    with {:ok, input} <- validate_fork(attrs) do
+      Records.transact(repo, fn -> write_fork(repo, input) end)
     end
   end
 
@@ -189,6 +223,392 @@ defmodule Beamlet.Storage.AgentRecords do
       {1, _} -> {:ok, checkpoint_id}
       {0, _} -> {:error, :conflict}
     end
+  end
+
+  ## Fork
+
+  defp validate_fork(attrs) do
+    with {:ok, _} <-
+           Records.fields(
+             attrs,
+             [
+               :command,
+               :id,
+               :authority_id,
+               :source_agent_id,
+               :checkpoint_id,
+               :expected_version,
+               :new_checkpoint_id,
+               :source,
+               :data,
+               :event
+             ],
+             [:alias]
+           ),
+         {:ok, command} <- command(attrs[:command]),
+         {:ok, id} <- Records.uuid(attrs[:id]),
+         {:ok, new_checkpoint_id} <- Records.uuid(attrs[:new_checkpoint_id]),
+         {:ok, authority_id} <- Records.uuid(attrs[:authority_id]),
+         {:ok, alias_name} <- Records.optional_text(attrs[:alias], 255),
+         {:ok, source_agent_id} <- Records.uuid(attrs[:source_agent_id]),
+         {:ok, checkpoint_id} <- Records.uuid(attrs[:checkpoint_id]),
+         {:ok, version} <- Records.count(attrs[:expected_version]),
+         {:ok, source} <- fork_source(attrs[:source]),
+         {:ok, data} <- Records.json(attrs[:data], :checkpoint),
+         {:ok, event} <- Records.event_input(attrs[:event]) do
+      {:ok,
+       %{
+         command: command,
+         id: id,
+         new_checkpoint_id: new_checkpoint_id,
+         authority_id: authority_id,
+         alias: alias_name,
+         source_agent_id: source_agent_id,
+         checkpoint_id: checkpoint_id,
+         expected_version: version,
+         source: source,
+         data: data,
+         event: event
+       }}
+    end
+  end
+
+  defp fork_source(source) when is_map(source) and not is_struct(source) do
+    with {:ok, _} <- Records.fields(source, [:freeze, :environment], []),
+         true <- source[:freeze] in @fork_source_freezes,
+         true <- source[:environment] in @fork_source_environments do
+      {:ok, %{freeze: source[:freeze], environment: source[:environment]}}
+    else
+      _ -> {:error, :invalid_data}
+    end
+  end
+
+  defp fork_source(_), do: {:error, :invalid_data}
+
+  defp write_fork(repo, input) do
+    case replay(repo, input.command) do
+      {:ok, {:stored, response}} -> {:ok, response}
+      {:ok, :new} -> insert_fork(repo, input)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp insert_fork(repo, input) do
+    with {:ok, source} <- Records.get(repo, Agent, input.source_agent_id),
+         :ok <- same_authority(source, input.authority_id),
+         :ok <- source_version(source, input.expected_version),
+         {:ok, checkpoint} <- fork_checkpoint(repo, input),
+         {:ok, messages} <- fork_messages(checkpoint["data"]),
+         :ok <- fork_freeze(repo, source, checkpoint, input.source),
+         {:ok, risk} <- fork_risk(repo, source, input.source),
+         {:ok, definition} <- fork_definition(repo, source),
+         :ok <- fork_size(messages, definition),
+         seq = length(messages) + 1,
+         {:ok, _agent} <- Records.insert(repo, fork_agent_changeset(input, definition, seq)),
+         data = fork_data(input, checkpoint, messages, risk),
+         {:ok, checkpoint_digest} <- digest_of(data, :checkpoint),
+         {:ok, _checkpoint} <-
+           Records.insert(
+             repo,
+             checkpoint_changeset(
+               %{
+                 id: input.new_checkpoint_id,
+                 data: data,
+                 continuation: "await_input",
+                 digest: checkpoint_digest,
+                 safe_to_fork: true
+               },
+               input.id,
+               nil
+             )
+           ),
+         {:ok, _} <- set_head(repo, input.id, input.new_checkpoint_id),
+         {:ok, _event} <- Records.insert(repo, fork_event_changeset(input, source, risk)),
+         {:ok, inherited} <- insert_inherited(repo, input, messages),
+         response = fork_response(input, risk, seq, messages, inherited),
+         {:ok, _command} <- insert_command(repo, input.command, response) do
+      {:ok, response}
+    end
+  end
+
+  defp same_authority(source, authority_id) do
+    if source.authority_id == authority_id, do: :ok, else: {:error, :invalid_data}
+  end
+
+  # The expected version is the caller's proof it saw the source state it is
+  # branching from; a fork never writes to the source, so it is a check, not a CAS.
+  defp source_version(source, expected) do
+    if source.lock_version == expected, do: :ok, else: {:error, :conflict}
+  end
+
+  defp fork_checkpoint(repo, input) do
+    with {:ok, %Checkpoint{} = checkpoint} <- Records.get(repo, Checkpoint, input.checkpoint_id),
+         true <- checkpoint.agent_id == input.source_agent_id,
+         true <- checkpoint.safe_to_fork == true,
+         true <- checkpoint.continuation in @fork_idle do
+      {:ok, Records.plain(checkpoint)}
+    else
+      _ -> {:error, :unsafe_checkpoint}
+    end
+  end
+
+  defp fork_messages(%{"messages" => messages} = data) do
+    with true <- is_list(messages),
+         :ok <- fork_message_count(messages),
+         :ok <- fork_boundary(data),
+         :ok <- complete_pairing(messages) do
+      {:ok, messages}
+    else
+      {:error, :limit} = error -> error
+      _ -> {:error, :unsafe_checkpoint}
+    end
+  end
+
+  defp fork_messages(_), do: {:error, :unsafe_checkpoint}
+
+  defp fork_message_count(messages) when length(messages) <= @max_messages, do: :ok
+  defp fork_message_count(_messages), do: {:error, :limit}
+
+  defp fork_boundary(data) do
+    cond do
+      Map.get(data, "pending") != [] -> {:error, :unsafe_checkpoint}
+      Map.get(data, "order") != [] -> {:error, :unsafe_checkpoint}
+      Map.get(data, "results") != %{} -> {:error, :unsafe_checkpoint}
+      Map.get(data, "assistant") != nil -> {:error, :unsafe_checkpoint}
+      Map.get(data, "blocked") != nil -> {:error, :unsafe_checkpoint}
+      true -> :ok
+    end
+  end
+
+  # Every Tool call is answered exactly once, in call order, and no Tool message
+  # answers an unknown call: a copied context is therefore model-valid.
+  defp complete_pairing(messages) do
+    Enum.reduce_while(messages, {:ok, []}, fn message, {:ok, pending} ->
+      case pairing_step(message, pending) do
+        {:ok, next} -> {:cont, {:ok, next}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, []} -> :ok
+      _ -> {:error, :unsafe_checkpoint}
+    end
+  end
+
+  defp pairing_step(%{"role" => "tool", "call_id" => call_id}, [call_id | rest]), do: {:ok, rest}
+
+  defp pairing_step(%{"role" => "assistant", "calls" => calls}, []) when is_list(calls) do
+    ids =
+      Enum.map(calls, fn
+        %{"id" => id} when is_binary(id) -> id
+        _ -> nil
+      end)
+
+    if Enum.all?(ids) and length(Enum.uniq(ids)) == length(ids),
+      do: {:ok, ids},
+      else: :error
+  end
+
+  defp pairing_step(%{"role" => role}, []) when role in ~w(system user assistant), do: {:ok, []}
+  defp pairing_step(_, _), do: :error
+
+  defp fork_freeze(repo, source, checkpoint, source_input) do
+    working? =
+      Map.get(checkpoint, "continuation") not in @fork_quiet or
+        undecided_turn?(repo, source.id, checkpoint)
+
+    if working? and source_input.freeze != :frozen,
+      do: {:error, :source_not_frozen},
+      else: :ok
+  end
+
+  # Only Operations of the head checkpoint's own turn can be in flight. An Operation
+  # an explicit decision already abandoned keeps a NULL accepted_result forever and
+  # must not make every later fork of an otherwise idle Agent fail.
+  defp undecided_turn?(repo, source_agent_id, checkpoint) do
+    case Map.get(checkpoint, "turn_id") do
+      turn_id when is_binary(turn_id) ->
+        query =
+          from(o in Operation,
+            where:
+              o.owner_agent_id == ^source_agent_id and o.turn_id == ^turn_id and
+                is_nil(o.accepted_result),
+            select: count(o.id)
+          )
+
+        repo.one(query, log: false) > 0
+
+      _ ->
+        false
+    end
+  end
+
+  # An unconfirmed stop is a risk, and so is any accepted Result the source never
+  # resolved: either way the copied context does not prove the shared environment
+  # stopped changing.
+  defp fork_risk(repo, source, source_input) do
+    if source_input.environment == :unconfirmed or risky_result?(repo, source.id),
+      do: {:ok, "unconfirmed"},
+      else: {:ok, nil}
+  end
+
+  # A scan that cannot see every accepted Result must assume risk: the safe
+  # direction for an unverified shared environment is "unconfirmed".
+  defp risky_result?(repo, source_agent_id) do
+    total =
+      from(o in Operation,
+        where: o.owner_agent_id == ^source_agent_id and not is_nil(o.accepted_result),
+        select: count(o.id)
+      )
+      |> repo.one(log: false)
+
+    if total > @fork_evidence_limit do
+      true
+    else
+      from(o in Operation,
+        where: o.owner_agent_id == ^source_agent_id and not is_nil(o.accepted_result),
+        order_by: [desc: o.history_seq],
+        select: o.accepted_result
+      )
+      |> repo.all(log: false)
+      |> Enum.any?(fn result ->
+        String.Chars.to_string(get_in(result, ["status"])) in @risk_states
+      end)
+    end
+  end
+
+  defp fork_definition(repo, %Agent{definition: definition}) when is_map(definition) do
+    with :ok <- Artifacts.verify_references(repo, artifact_ids(definition)) do
+      {:ok, definition}
+    end
+  end
+
+  defp artifact_ids(definition) do
+    definition
+    |> Map.get("tools", %{})
+    |> Enum.flat_map(fn
+      {_name, reference} when is_map(reference) -> Map.get(reference, "artifact_refs", [])
+      _ -> []
+    end)
+    |> Enum.uniq()
+  end
+
+  defp fork_size(messages, definition) do
+    case Codec.encode(%{"messages" => messages, "definition" => definition}, :checkpoint) do
+      {:ok, bytes} when byte_size(bytes) <= @max_fork_bytes -> :ok
+      {:ok, _bytes} -> {:error, :limit}
+      {:error, :limit} -> {:error, :limit}
+      {:error, _reason} -> {:error, :invalid_data}
+    end
+  end
+
+  defp fork_agent_changeset(input, definition, seq) do
+    Agent.changeset(%Agent{}, %{
+      id: input.id,
+      authority_id: input.authority_id,
+      alias: input.alias,
+      definition: definition,
+      generation: 0,
+      lock_version: 0,
+      history_seq: seq,
+      forked_from_agent_id: input.source_agent_id,
+      forked_from_checkpoint_id: input.checkpoint_id
+    })
+    |> Ecto.Changeset.unique_constraint([:authority_id, :alias],
+      name: :agents_authority_id_alias_index
+    )
+  end
+
+  defp fork_data(input, checkpoint, messages, risk) do
+    Map.merge(input.data, %{
+      "messages" => messages,
+      "continuation" => "await_input",
+      "turn_id" => nil,
+      "step" => 0,
+      "pending" => [],
+      "order" => [],
+      "results" => %{},
+      "assistant" => nil,
+      "blocked" => nil,
+      "consumed" => [],
+      "request_digest" => nil,
+      "fork" => %{
+        "source_agent_id" => input.source_agent_id,
+        "source_checkpoint_id" => checkpoint["id"],
+        "source_version" => input.expected_version,
+        "inherited_messages" => length(messages)
+      },
+      "environment" => %{
+        "source_agent_id" => input.source_agent_id,
+        "source_checkpoint_id" => checkpoint["id"],
+        "freeze" => Atom.to_string(input.source.freeze),
+        "environment" => Atom.to_string(input.source.environment),
+        "risk" => risk
+      }
+    })
+  end
+
+  defp fork_event_changeset(input, source, risk) do
+    payload = %{
+      "source_agent_id" => source.id,
+      "source_checkpoint_id" => input.checkpoint_id,
+      "source_version" => input.expected_version,
+      "freeze" => Atom.to_string(input.source.freeze),
+      "environment" => Atom.to_string(input.source.environment),
+      "risk" => risk
+    }
+
+    event_changeset(input.event, input.id, 1, %{})
+    |> Ecto.Changeset.change(payload: payload)
+  end
+
+  defp insert_inherited(repo, input, messages) do
+    messages
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {message, index}, {:ok, acc} ->
+      attrs = %{
+        "index" => index,
+        "role" => Map.get(message, "role"),
+        "source_agent_id" => input.source_agent_id,
+        "source_checkpoint_id" => input.checkpoint_id
+      }
+
+      case Records.insert(repo, inherited_changeset(input, index, attrs)) do
+        {:ok, event} -> {:cont, {:ok, [event.id | acc]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, ids} -> {:ok, Enum.reverse(ids)}
+      error -> error
+    end
+  end
+
+  defp inherited_changeset(input, index, payload) do
+    Records.event_changeset(%{
+      id: Ecto.UUID.generate(),
+      scope_id: input.id,
+      seq: index + 2,
+      type: "context.inherited",
+      schema_version: 1,
+      payload: payload,
+      source_agent_id: input.source_agent_id,
+      recorded_at: DateTime.utc_now()
+    })
+  end
+
+  defp fork_response(input, risk, seq, messages, inherited) do
+    %{
+      "agent_id" => input.id,
+      "checkpoint_id" => input.new_checkpoint_id,
+      "source_agent_id" => input.source_agent_id,
+      "source_checkpoint_id" => input.checkpoint_id,
+      "command_id" => input.command.command_id,
+      "lock_version" => 0,
+      "history_seq" => seq,
+      "risk" => risk,
+      "copied" => %{"messages" => length(messages), "records" => length(inherited)}
+    }
   end
 
   ## Input acceptance
@@ -569,15 +989,18 @@ defmodule Beamlet.Storage.AgentRecords do
            Records.fields(
              attrs,
              [:agent_id, :expected_version, :expected_generation, :turn_id, :checkpoint, :event],
-             [:command]
+             [:command, :adoption]
            ),
          {:ok, agent_id} <- Records.uuid(attrs[:agent_id]),
          {:ok, version} <- Records.count(attrs[:expected_version]),
          {:ok, generation} <- Records.count(attrs[:expected_generation]),
-         {:ok, turn_id} <- Records.uuid(attrs[:turn_id]),
+         # A decision taken at a no-turn boundary (`await_input`) has no active
+         # turn; a reply/batch advance always supplies one.
+         {:ok, turn_id} <- Records.optional_uuid(attrs[:turn_id]),
          {:ok, checkpoint} <- next_checkpoint(attrs[:checkpoint]),
          {:ok, event} <- Records.event_input(attrs[:event]),
-         {:ok, command} <- optional_command(attrs[:command]) do
+         {:ok, command} <- optional_command(attrs[:command]),
+         {:ok, adoption} <- optional_adoption(attrs[:adoption]) do
       {:ok,
        %{
          agent_id: agent_id,
@@ -586,13 +1009,28 @@ defmodule Beamlet.Storage.AgentRecords do
          turn_id: turn_id,
          checkpoint: checkpoint,
          event: event,
-         command: command
+         command: command,
+         adoption: adoption
        }}
     end
   end
 
   defp optional_command(nil), do: {:ok, nil}
   defp optional_command(command), do: command(command)
+
+  # A decision that adopts a stored accepted Result names that Result by digest,
+  # so the transaction refuses to advance on a Result it did not read.
+  defp optional_adoption(nil), do: {:ok, nil}
+
+  defp optional_adoption(adoption) when is_map(adoption) and not is_struct(adoption) do
+    with {:ok, _} <- Records.fields(adoption, [:operation_id, :accepted_digest], []),
+         {:ok, operation_id} <- Records.uuid(adoption[:operation_id]),
+         {:ok, digest} <- Records.digest(adoption[:accepted_digest]) do
+      {:ok, %{operation_id: operation_id, accepted_digest: digest}}
+    end
+  end
+
+  defp optional_adoption(_), do: {:error, :invalid_data}
 
   defp write_advance(repo, %{command: nil} = input), do: insert_advance(repo, input, nil)
 
@@ -607,6 +1045,8 @@ defmodule Beamlet.Storage.AgentRecords do
   defp insert_advance(repo, input, command) do
     with {:ok, agent} <- Records.get(repo, Agent, input.agent_id),
          :ok <- current_generation(agent, input.expected_generation),
+         :ok <- adoption_owner(repo, agent, input.adoption),
+         :ok <- turn_binding(repo, agent, input.turn_id),
          seq = agent.history_seq + 1,
          {:ok, _checkpoint} <-
            Records.insert(
@@ -636,6 +1076,38 @@ defmodule Beamlet.Storage.AgentRecords do
       }
 
       with {:ok, _command} <- insert_command(repo, command, response), do: {:ok, response}
+    end
+  end
+
+  # Only an idle head may advance without a turn; a live turn keeps its binding so a
+  # caller cannot drop the turn identity from an in-flight checkpoint.
+  defp turn_binding(repo, agent, nil) do
+    case head_checkpoint(repo, agent) do
+      %Checkpoint{turn_id: nil} -> :ok
+      _ -> {:error, :invalid_data}
+    end
+  end
+
+  defp turn_binding(_repo, _agent, _turn_id), do: :ok
+
+  defp adoption_owner(_repo, _agent, nil), do: :ok
+
+  defp adoption_owner(repo, agent, adoption) do
+    with {:ok, operation} <- Records.get(repo, Operation, adoption.operation_id) do
+      cond do
+        operation.owner_agent_id != agent.id -> {:error, :conflict}
+        is_nil(operation.accepted_result) -> {:error, :conflict}
+        true -> adopted_digest(operation, adoption)
+      end
+    else
+      {:error, :conflict} -> {:error, :conflict}
+    end
+  end
+
+  defp adopted_digest(operation, adoption) do
+    case Codec.digest(operation.accepted_result, :result) do
+      {:ok, digest} when digest == adoption.accepted_digest -> :ok
+      _ -> {:error, :conflict}
     end
   end
 

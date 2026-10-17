@@ -23,13 +23,16 @@ defmodule Beamlet.Agent.Durable do
   """
   alias Beamlet.Actions.Operation
   alias Beamlet.Runtime.Persistence
-  alias Beamlet.Storage.{AgentRecords, Artifacts, OperationRecords}
+  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, OperationRecords}
 
   @schema_version 1
   @schema "beamlet.agent.checkpoint"
   @continuations ~w(await_input await_model_result reply_recorded await_tool_results results_to_consume blocked completed)
   @resolutions ~w(confirmed_failed confirmed_executed)
   @consumption_kinds ~w(tool_result model_result evidence_resolution)
+  # Copy/provenance facts belong to the Agent, not to one turn, so every later
+  # checkpoint of the same Agent carries them forward.
+  @provenance_keys ~w(fork environment)
 
   @enforce_keys [:repo, :authority_id, :agent_id]
   defstruct [
@@ -159,9 +162,10 @@ defmodule Beamlet.Agent.Durable do
   identity returns the stored turn and `replayed?: true`.
   """
   def accept_input(%__MODULE__{} = durable, attrs) do
-    with {:ok, input} <- validate_input(attrs) do
+    with {:ok, input} <- validate_input(attrs),
+         :ok <- risk_clear(durable) do
       data =
-        state(%{
+        state_with_provenance(durable, %{
           "messages" => input.messages,
           "continuation" => "await_model_result",
           "turn_id" => input.turn_id,
@@ -204,7 +208,7 @@ defmodule Beamlet.Agent.Durable do
     with {:ok, input} <- validate_reply(attrs),
          {:ok, request_digest} <- digest(input.request),
          data =
-           state(%{
+           state_with_provenance(durable, %{
              "messages" => input.messages,
              "continuation" => "reply_recorded",
              "turn_id" => durable.turn_id,
@@ -260,7 +264,7 @@ defmodule Beamlet.Agent.Durable do
         end)
 
       data =
-        state(%{
+        state_with_provenance(durable, %{
           "messages" => messages,
           "continuation" => "await_tool_results",
           "turn_id" => durable.turn_id,
@@ -315,7 +319,7 @@ defmodule Beamlet.Agent.Durable do
          {:ok, order} <- list(attrs[:order]),
          {:ok, step} <- count(Map.get(attrs, :step, step(durable))),
          data =
-           state(%{
+           state_with_provenance(durable, %{
              "messages" => messages,
              "continuation" => "await_model_result",
              "turn_id" => durable.turn_id,
@@ -332,7 +336,9 @@ defmodule Beamlet.Agent.Durable do
         expected_generation: durable.generation,
         turn_id: durable.turn_id,
         operations: operations,
-        checkpoint: checkpoint(checkpoint_id, data, "await_model_result", false)
+        # Every Tool result of the turn is in the context and nothing is in
+        # flight, so this is a complete message boundary a fork may copy.
+        checkpoint: checkpoint(checkpoint_id, data, "await_model_result", true)
       })
       |> case do
         {:ok, response} ->
@@ -370,42 +376,325 @@ defmodule Beamlet.Agent.Durable do
   ## Decisions and continuation
 
   @doc """
-  Validates versions, dependency references and pending risks, records the
-  decision and returns the continuation to resume. Nothing is dispatched here.
+  Records one explicit decision and returns the continuation to resume. Nothing is
+  dispatched here.
+
+  Two decisions exist beyond the plain blocked-state release:
+
+    * `%{"risk" => "accepted"}` accepts a shared-environment risk a fork recorded as
+      unconfirmed; it is the only way such an Agent may start work.
+    * `%{"resolution" => "confirmed_executed" | "confirmed_failed", "operation_id" =>
+      id}` resolves one stored accepted Result with later evidence. The accepted
+      Result is never overwritten; an unanswered Tool-call slot is filled once from
+      the stored Result, and a slot already consumed gets a separate correction
+      message instead of a second Tool result.
   """
   def decide(%__MODULE__{} = durable, attrs) do
-    with {:ok, decision} <- validate_decision(attrs),
+    with {:ok, input} <- validate_decision(attrs),
          head = head(durable),
          {:ok, data} <- head_data(head, durable),
-         {:ok, next} <- next_continuation(data["continuation"], decision.decision),
-         {:ok, data} <- decision_data(data, next, decision.decision) do
-      durable
-      |> advance_raw(
-        decision.checkpoint_id,
-        data,
-        next,
-        "agent.decision",
-        %{
-          "continuation" => next,
-          "decision" => decision.decision,
-          "command_id" => decision.command_id
-        },
-        %{"continue" => %{"from" => data["continuation"], "decision" => decision.decision}},
-        decision.command_id
-      )
-      |> case do
-        {:ok, response} ->
-          {:ok,
-           %{
-             continuation: next,
-             version: response["lock_version"],
-             generation: durable.generation
-           }}
+         {:ok, plan} <- decision_plan(durable, data, input) do
+      case plan do
+        {:risk, next, data} ->
+          accept_risk(durable, data, next, input)
 
-        {:error, reason} ->
-          {:error, normalize(reason)}
+        {:resolution, from, next, data, adoption} ->
+          resolve(durable, data, from, next, input, adoption)
       end
     end
+  end
+
+  defp decision_plan(_durable, data, %{risk: "accepted"} = input) do
+    environment = data["environment"]
+
+    cond do
+      Map.get(input, :resolution) != nil ->
+        {:error, {:blocked, :ambiguous_decision}}
+
+      data["continuation"] != "await_input" ->
+        {:error, {:blocked, :unexpected_risk_position}}
+
+      not is_map(environment) or environment["risk"] != "unconfirmed" ->
+        {:error, {:blocked, :no_pending_risk}}
+
+      true ->
+        {:ok,
+         {:risk, "await_input", state(Map.put(data, "environment", risk_accepted(environment)))}}
+    end
+  end
+
+  defp decision_plan(_durable, data, %{operation_id: nil} = input) do
+    with {:ok, next} <- next_continuation(data["continuation"], input.resolution),
+         {:ok, decided} <- decision_data(data, next, input.resolution) do
+      {:ok, {:resolution, data["continuation"], next, decided, nil}}
+    end
+  end
+
+  defp decision_plan(durable, data, %{operation_id: operation_id} = input) do
+    with {:ok, next} <- next_continuation(data["continuation"], input.resolution),
+         {:ok, operation} <- adoption_operation(durable, operation_id),
+         {:ok, messages} <- adopt_messages(data["messages"], operation, input.resolution),
+         {:ok, decided} <-
+           decision_data(Map.put(data, "messages", messages), next, input.resolution),
+         {:ok, digest} <- result_digest(operation["accepted_result"]) do
+      {:ok,
+       {:resolution, data["continuation"], next, decided,
+        %{operation_id: operation_id, accepted_digest: digest}}}
+    end
+  end
+
+  defp risk_accepted(environment) do
+    environment
+    |> Map.merge(%{"risk" => nil, "risk_accepted" => true})
+    |> Map.put("risk_acceptance", %{
+      "source_agent_id" => Map.get(environment, "source_agent_id"),
+      "source_checkpoint_id" => Map.get(environment, "source_checkpoint_id")
+    })
+  end
+
+  defp accept_risk(durable, data, next, input) do
+    payload = %{
+      "continuation" => next,
+      "risk" => "accepted",
+      "source_agent_id" => get_in(data, ["fork", "source_agent_id"]),
+      "source_checkpoint_id" => get_in(data, ["fork", "source_checkpoint_id"]),
+      "command_id" => input.command_id
+    }
+
+    durable
+    |> advance_raw(
+      input.checkpoint_id,
+      data,
+      next,
+      "agent.risk_accepted",
+      payload,
+      %{"risk" => %{"accept" => true}},
+      input.command_id
+    )
+    |> decision_response(durable, next)
+  end
+
+  defp resolve(durable, data, from, next, input, adoption) do
+    payload = %{
+      "continuation" => next,
+      "decision" => input.resolution,
+      "command_id" => input.command_id,
+      "operation_id" => input.operation_id,
+      "adopted" => adoption != nil,
+      "evidence" => input.evidence,
+      "evidence_digest" => evidence_digest(input.evidence)
+    }
+
+    params = %{
+      "continue" => %{
+        "from" => from,
+        "decision" => input.resolution,
+        "operation_id" => input.operation_id
+      }
+    }
+
+    durable
+    |> advance_raw(
+      input.checkpoint_id,
+      data,
+      next,
+      "agent.decision",
+      payload,
+      params,
+      input.command_id,
+      adoption
+    )
+    |> decision_response(durable, next)
+  end
+
+  defp decision_response({:ok, response}, durable, next) do
+    {:ok,
+     %{continuation: next, version: response["lock_version"], generation: durable.generation}}
+  end
+
+  defp decision_response({:error, reason}, _durable, _next), do: {:error, normalize(reason)}
+
+  # The stored Result is the accepted fact; a decision can only point at it.
+  defp adoption_operation(durable, operation_id) do
+    case OperationRecords.fetch(durable.repo, operation_id) do
+      {:ok, %{"operation" => operation}} ->
+        cond do
+          operation["owner_agent_id"] != durable.agent_id ->
+            {:error, {:blocked, :missing_operation}}
+
+          is_nil(operation["accepted_result"]) ->
+            {:error, {:blocked, :unresolved_effect}}
+
+          true ->
+            {:ok, operation}
+        end
+
+      _ ->
+        {:error, {:blocked, :missing_operation}}
+    end
+  end
+
+  defp adopt_messages(messages, operation, resolution) when is_list(messages) do
+    call_id = operation["tool_call_id"]
+
+    addition =
+      if occupied?(messages, call_id),
+        do: correction_message(operation, call_id, resolution),
+        else: observation_message(operation, call_id, resolution)
+
+    case Beamlet.Harness.Context.append(messages, [addition]) do
+      {:ok, all} -> {:ok, all}
+      {:error, _reason} -> {:error, :limit}
+    end
+  end
+
+  defp adopt_messages(_messages, _operation, _resolution),
+    do: {:error, {:blocked, :schema_unsupported}}
+
+  defp occupied?(messages, call_id) do
+    Enum.any?(messages, fn message ->
+      Map.get(message, "role") == "tool" and Map.get(message, "call_id") == call_id
+    end)
+  end
+
+  defp observation_message(operation, call_id, resolution) do
+    result = operation["accepted_result"]
+
+    %{
+      "role" => "tool",
+      "call_id" => call_id,
+      "content" =>
+        Jason.encode!(%{
+          "status" => Map.get(result, "status"),
+          "value" => Map.get(result, "value"),
+          "reason" => Map.get(result, "reason"),
+          "operation_id" => operation["id"],
+          "resolution" => resolution,
+          "adopted" => true
+        })
+    }
+  end
+
+  defp correction_message(operation, call_id, resolution) do
+    status = Map.get(operation["accepted_result"], "status")
+
+    %{
+      "role" => "user",
+      "content" =>
+        "Late evidence resolved Tool call #{call_id} as #{resolution} " <>
+          "(stored Result: #{status}, operation #{operation["id"]}). " <>
+          "The accepted Result is unchanged; this is a review correction."
+    }
+  end
+
+  defp evidence_digest(nil), do: nil
+
+  defp evidence_digest(evidence) do
+    case Codec.digest(evidence, :event) do
+      {:ok, digest} -> digest
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp result_digest(result) do
+    case Codec.digest(result, :result) do
+      {:ok, digest} -> {:ok, digest}
+      {:error, _reason} -> {:error, :invalid_data}
+    end
+  end
+
+  ## Fork
+
+  @doc """
+  Copies one immutable checkpoint of the source Agent into a new independent Agent
+  in one authority transaction and returns its locator. The new Agent starts
+  paused at `await_input` with the copied effective context, configuration and
+  Tool schema; `forked_from_*` is provenance only, so loading it never reads the
+  source.
+
+  `locator.source` declares the source's operational state and is never inferred
+  from reachability: `%{freeze: :frozen | :idle, environment: :confirmed_stopped |
+  :unconfirmed}`; omitting it means `idle` and `unconfirmed`. A source that still
+  has work in flight requires `freeze: :frozen`, and an unconfirmed stop marks the
+  new Agent `environment.risk == "unconfirmed"`, which blocks input until an
+  explicit `%{"risk" => "accepted"}` decision is recorded. Nothing is dispatched
+  or executed here, and the source rows are not modified.
+  """
+  def fork(locator, checkpoint_id, expected_version, command_id) do
+    with {:ok, loc} <- validate_locator(locator),
+         {:ok, checkpoint_id} <- uuid(checkpoint_id),
+         {:ok, version} <- count(expected_version),
+         {:ok, command_id} <- uuid(command_id),
+         {:ok, source} <- fork_source(loc[:source]),
+         {:ok, fetched} <- fa(AgentRecords.fetch(loc.repo, loc.agent_id)),
+         agent = fetched["agent"],
+         {:ok, response} <-
+           AgentRecords.fork(loc.repo, %{
+             command:
+               command(loc.agent_id, command_id, %{
+                 "fork" => %{
+                   "checkpoint_id" => checkpoint_id,
+                   "version" => version,
+                   "freeze" => Atom.to_string(source.freeze),
+                   "environment" => Atom.to_string(source.environment)
+                 }
+               }),
+             id: Ecto.UUID.generate(),
+             new_checkpoint_id: Ecto.UUID.generate(),
+             authority_id: agent["authority_id"],
+             alias: nil,
+             source_agent_id: loc.agent_id,
+             checkpoint_id: checkpoint_id,
+             expected_version: version,
+             source: source,
+             data: state(%{}),
+             event:
+               event("agent.forked", %{
+                 "source_agent_id" => loc.agent_id,
+                 "source_checkpoint_id" => checkpoint_id
+               })
+           }) do
+      {:ok, fork_result(loc, response)}
+    end
+  end
+
+  defp fork_source(nil), do: {:ok, %{freeze: :idle, environment: :unconfirmed}}
+
+  defp fork_source(source) when is_map(source) do
+    with {:ok, _} <- fields(source, [:freeze, :environment], []),
+         freeze when freeze in [:frozen, :idle] <- source[:freeze],
+         environment when environment in [:confirmed_stopped, :unconfirmed] <-
+           source[:environment] do
+      {:ok, %{freeze: freeze, environment: environment}}
+    else
+      _ -> {:error, :invalid_data}
+    end
+  end
+
+  defp fork_source(_), do: {:error, :invalid_data}
+
+  defp fork_result(loc, response) do
+    %{
+      agent_id: response["agent_id"],
+      checkpoint_id: response["checkpoint_id"],
+      version: response["lock_version"],
+      generation: 0,
+      risk: response["risk"],
+      copied: response["copied"],
+      source: %{
+        agent_id: response["source_agent_id"],
+        checkpoint_id: response["source_checkpoint_id"]
+      },
+      locator: %{
+        repo: loc.repo,
+        agent_id: response["agent_id"],
+        model: loc[:model],
+        tools: Map.get(loc, :tools, %{}),
+        catalogue: Map.get(loc, :catalogue, %{}),
+        environment: loc[:environment],
+        runtime: loc[:runtime]
+      }
+    }
   end
 
   ## Restore
@@ -504,6 +793,16 @@ defmodule Beamlet.Agent.Durable do
     )
   end
 
+  defp state_with_provenance(durable, overrides) do
+    case head(durable) do
+      %{"data" => data} when is_map(data) ->
+        state(Map.merge(Map.take(data, @provenance_keys), overrides))
+
+      _ ->
+        state(overrides)
+    end
+  end
+
   @doc "Bounded server-side state of a restored checkpoint, with no live PIDs/Refs."
   def restored_state(%{checkpoint: data}), do: data
 
@@ -512,7 +811,31 @@ defmodule Beamlet.Agent.Durable do
   ## Internal writes
 
   defp advance_raw(durable, checkpoint_id, data, continuation, type, payload, params, command_id) do
-    AgentRecords.advance(durable.repo, %{
+    advance_raw(
+      durable,
+      checkpoint_id,
+      data,
+      continuation,
+      type,
+      payload,
+      params,
+      command_id,
+      nil
+    )
+  end
+
+  defp advance_raw(
+         durable,
+         checkpoint_id,
+         data,
+         continuation,
+         type,
+         payload,
+         params,
+         command_id,
+         adoption
+       ) do
+    attrs = %{
       agent_id: durable.agent_id,
       expected_version: durable.version,
       expected_generation: durable.generation,
@@ -520,7 +843,10 @@ defmodule Beamlet.Agent.Durable do
       checkpoint: checkpoint(checkpoint_id, data, continuation, false),
       event: event(type, payload),
       command: command(durable.agent_id, command_id, params)
-    })
+    }
+
+    attrs = if is_nil(adoption), do: attrs, else: Map.put(attrs, :adoption, adoption)
+    AgentRecords.advance(durable.repo, attrs)
   end
 
   defp advance_raw(durable, checkpoint_id, data, continuation, type, payload) do
@@ -591,6 +917,22 @@ defmodule Beamlet.Agent.Durable do
 
   defp decision_data(data, next, decision),
     do: {:ok, state(Map.merge(data, %{"continuation" => next, "decision" => decision}))}
+
+  # A forked Agent may not start work while its shared-environment risk is
+  # unconfirmed. The version CAS on the write still fences the read: an acceptance
+  # moves the Agent version, so a stale caller cannot pass this with an old version.
+  defp risk_clear(%__MODULE__{repo: repo, agent_id: agent_id}) do
+    case AgentRecords.fetch(repo, agent_id) do
+      {:ok, %{"head_checkpoint" => %{"data" => data}}} when is_map(data) ->
+        case data["environment"] do
+          %{"risk" => "unconfirmed"} -> {:error, {:blocked, :environment_risk_unconfirmed}}
+          _ -> :ok
+        end
+
+      _ ->
+        :ok
+    end
+  end
 
   ## Dependency references
 
@@ -772,22 +1114,69 @@ defmodule Beamlet.Agent.Durable do
     with {:ok, _} <- fields(attrs, [:command_id, :checkpoint_id], [:decision]),
          {:ok, command_id} <- uuid(attrs[:command_id]),
          {:ok, checkpoint_id} <- uuid(attrs[:checkpoint_id]),
-         {:ok, decision} <- resolution(attrs[:decision]) do
-      {:ok, %{command_id: command_id, checkpoint_id: checkpoint_id, decision: decision}}
+         {:ok, decision} <- decision(attrs[:decision]) do
+      {:ok,
+       %{
+         command_id: command_id,
+         checkpoint_id: checkpoint_id,
+         resolution: decision.resolution,
+         risk: decision.risk,
+         operation_id: decision.operation_id,
+         evidence: decision.evidence
+       }}
     end
   end
+
+  defp decision(nil), do: {:ok, %{resolution: nil, risk: nil, operation_id: nil, evidence: nil}}
+
+  defp decision(value) when is_map(value) and not is_struct(value) do
+    with {:ok, keys} <- decision_keys(value),
+         {:ok, resolution} <- resolution(keys[:resolution]),
+         {:ok, risk} <- decision_risk(keys[:risk]),
+         {:ok, operation_id} <- decision_operation(keys[:operation_id]),
+         {:ok, evidence} <- decision_evidence(keys[:evidence]),
+         :ok <- decision_shape(resolution, risk, operation_id) do
+      {:ok, %{resolution: resolution, risk: risk, operation_id: operation_id, evidence: evidence}}
+    end
+  end
+
+  defp decision(_), do: {:error, {:blocked, :unresolved_effect}}
+
+  defp decision_keys(value) do
+    Enum.reduce_while(value, {:ok, %{}}, fn {key, child}, {:ok, acc} ->
+      case decision_key(key) do
+        nil -> {:halt, {:error, :invalid_data}}
+        key -> {:cont, {:ok, Map.put(acc, key, child)}}
+      end
+    end)
+  end
+
+  defp decision_key(key) when key in [:resolution, :risk, :operation_id, :evidence], do: key
+  defp decision_key("resolution"), do: :resolution
+  defp decision_key("risk"), do: :risk
+  defp decision_key("operation_id"), do: :operation_id
+  defp decision_key("evidence"), do: :evidence
+  defp decision_key(_), do: nil
 
   defp resolution(nil), do: {:ok, nil}
-
-  defp resolution(decision) when is_map(decision) do
-    case Map.get(decision, "resolution", Map.get(decision, :resolution)) do
-      nil -> {:ok, nil}
-      value when value in @resolutions -> {:ok, value}
-      _ -> {:error, {:blocked, :unresolved_effect}}
-    end
-  end
-
+  defp resolution(value) when value in @resolutions, do: {:ok, value}
   defp resolution(_), do: {:error, {:blocked, :unresolved_effect}}
+
+  defp decision_risk(nil), do: {:ok, nil}
+  defp decision_risk("accepted"), do: {:ok, "accepted"}
+  defp decision_risk(_), do: {:error, {:blocked, :unresolved_effect}}
+
+  defp decision_operation(nil), do: {:ok, nil}
+  defp decision_operation(value), do: uuid(value)
+
+  defp decision_evidence(nil), do: {:ok, nil}
+  defp decision_evidence(value), do: json(value)
+
+  defp decision_shape(nil, nil, nil), do: :ok
+  defp decision_shape(resolution, nil, _operation_id) when resolution != nil, do: :ok
+  defp decision_shape(nil, "accepted", nil), do: :ok
+  defp decision_shape(nil, "accepted", _operation_id), do: {:error, :invalid_data}
+  defp decision_shape(_resolution, _risk, _operation_id), do: {:error, :invalid_data}
 
   defp validate_locator(locator) when is_map(locator) do
     with {:ok, repo} <- repo(locator[:repo]),

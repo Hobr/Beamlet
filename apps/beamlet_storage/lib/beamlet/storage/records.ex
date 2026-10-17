@@ -10,7 +10,7 @@ defmodule Beamlet.Storage.Records do
   alias Beamlet.Storage.{Codec, Transaction}
   alias Beamlet.Storage.Schema.{Agent, Command, Event}
 
-  @errors ~w(invalid_data limit conflict stale_generation schema_unsupported artifact_missing storage_unavailable storage_outcome_unknown)a
+  @errors ~w(invalid_data limit conflict stale_generation schema_unsupported artifact_missing storage_unavailable storage_outcome_unknown unsafe_checkpoint source_not_frozen)a
   @event_type ~r/\A[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+\z/
   @digest ~r/\A[0-9a-f]{64}\z/
 

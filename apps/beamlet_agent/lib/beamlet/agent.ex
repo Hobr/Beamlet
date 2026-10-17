@@ -102,6 +102,40 @@ defmodule Beamlet.Agent do
   end
 
   @doc """
+  Copies a safe checkpoint of the source Agent into a new independent Agent and
+  returns its locator (`%{agent_id:, checkpoint_id:, locator:, source:, risk:,
+  copied:, version:, generation:}`). The source locator, Ref and alias keep
+  pointing at the source; the caller must use the returned locator explicitly.
+
+  The local source instance must be retired first: a still-registered source is
+  refused with `{:error, :source_not_frozen}`, because a live local dispatcher is
+  not a frozen source. The fork writes no row of the source Agent, its checkpoints or
+  its events; the one exception is the fork command receipt, which is stored in the
+  source's command namespace so a retried command returns the same locator. See
+  `Beamlet.Agent.Durable.fork/4` for `locator.source` and the risk rule.
+  """
+  def fork(locator, checkpoint_id, expected_version, command_id) do
+    with :ok <- dormant_source(locator) do
+      Beamlet.Agent.Durable.fork(locator, checkpoint_id, expected_version, command_id)
+    end
+  end
+
+  defp dormant_source(%{repo: repo, agent_id: agent_id}) do
+    case Beamlet.Storage.AgentRecords.fetch(repo, agent_id) do
+      {:ok, %{"agent" => %{"alias" => alias_name} = agent}} ->
+        if Registry.lookup(Beamlet.Agent.Registry, alias_name || agent["id"]) == [],
+          do: :ok,
+          else: {:error, :source_not_frozen}
+
+      # An unknown source is the fork transaction's error to report.
+      _ ->
+        :ok
+    end
+  end
+
+  defp dormant_source(_), do: :ok
+
+  @doc """
   Read-only durable history of a locator (`%{repo:, agent_id:}`) without starting
   or contacting an Agent: `view: :turns | :facts | :context | :steps | :tools |
   :evidence | :decisions | :provenance`. Current runtime observation is not part

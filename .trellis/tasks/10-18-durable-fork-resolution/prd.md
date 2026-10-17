@@ -1,6 +1,6 @@
 # 安全 fork 与恢复决定
 
-状态：planning。仅创建规划；用户尚未授权激活或实施，不运行 `task.py start`，不安装依赖、不修改应用代码。
+状态：in_progress。用户于 2026-10-18 授权 A–F 连续实施；先决 A–D 已验收并提交（3aefa85、11577fb、f7be001、22d6159）。
 
 ## Goal
 
@@ -22,12 +22,12 @@
 
 ## Acceptance Criteria
 
-- [ ] 新 Agent 不读父 Agent 即可恢复；完整 Tool-call/result 配对及共享 artifact 引用有效，继承 usage 不重复计费。
-- [ ] 复制事务前后崩溃、相同 command 重试、超限、unsafe checkpoint 和版本冲突均无部分状态。
-- [ ] 源冻结后本地发送者退役、旧代写拒绝；远端未确认停止时新 Agent 保持阻塞，风险接受事件可审阅。
-- [ ] 不复制 Operation/Execution/evidence/运行控制/provider session/display 注解；原 Agent 迟到结果只补原历史。
-- [ ] 先 uncertain 后 success 经显式采纳只推进允许的上下文，不覆盖历史、不重复占用原 Tool result 槽。
-- [ ] 真实 fork 的历史/导出明确标记继承观察；源环境已发生改变在 fork 后仍存在。
+- [x] 新 Agent 不读父 Agent 即可恢复；完整 Tool-call/result 配对及共享 artifact 引用有效，继承 usage 不重复计费。
+- [x] 复制事务前后崩溃、相同 command 重试、超限、unsafe checkpoint 和版本冲突均无部分状态。
+- [x] 源冻结后本地发送者退役、旧代写拒绝；远端未确认停止时新 Agent 保持阻塞，风险接受事件可审阅。
+- [x] 不复制 Operation/Execution/evidence/运行控制/provider session/display 注解；原 Agent 迟到结果只补原历史。
+- [x] 先 uncertain 后 success 经显式采纳只推进允许的上下文，不覆盖历史、不重复占用原 Tool result 槽。
+- [x] 真实 fork 的历史/导出明确标记继承观察；源环境已发生改变在 fork 后仍存在。
 
 ## Scope Limits
 

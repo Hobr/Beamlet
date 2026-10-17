@@ -259,3 +259,54 @@ limits. Resource tests delay code loading on ten peers to observe eight in-fligh
 requests and a single receive deadline. Same-host tests do not prove physical deployment.
 Wrong: infer remote cancellation from caller timeout, or promise never reconnect
 from a connected precheck. Correct: finite independent reads and explicit partial failures.
+
+## Durable fork, environment risk and evidence resolution
+
+Opt-in only, next to `Beamlet.Agent.restore/3` and `continue/4`; an Agent started
+without `durable:` keeps exactly the old behaviour.
+
+```elixir
+locator = %{repo: repo, agent_id: source_id, model: binding, tools: tools,
+            catalogue: catalogue, environment: ref | nil, runtime: runtime | nil,
+            source: %{freeze: :frozen | :idle, environment: :confirmed_stopped | :unconfirmed}}
+{:ok, %{agent_id: new_id, checkpoint_id: cp, locator: new_locator, source: %{...},
+        risk: nil | "unconfirmed", copied: %{"messages" => n, "records" => n},
+        version: 0, generation: 0}} =
+  Beamlet.Agent.fork(locator, checkpoint_id, expected_version, command_id)
+{:ok, %{continuation: "await_input", version: v, generation: g}} =
+  Beamlet.Agent.continue(ref, expected_version, %{"risk" => "accepted"}, command_id)
+{:ok, %{continuation: pos, version: v, generation: g}} =
+  Beamlet.Agent.continue(ref, expected_version,
+    %{"resolution" => "confirmed_executed" | "confirmed_failed",
+      "operation_id" => op_id | nil, "evidence" => map | nil}, command_id)
+```
+
+- `Agent.fork/4` refuses while the source instance is still registered locally
+  (`:source_not_frozen`): a live local dispatcher is not a frozen source. The
+  source's own rows are never written by a fork, and the old locator/Ref/alias
+  keep pointing at the source; callers must use the returned locator.
+- Fork copies one immutable checkpoint only, and only when it is a complete
+  boundary (`safe_to_fork`, no pending/join/results/assistant/blocked state, full
+  Tool-call/result pairing, `await_input`/`await_model_result`/`completed`). Refusals:
+  `:unsafe_checkpoint`, `:source_not_frozen`, `:limit` (over 1 MiB or 128
+  messages), `:conflict` (stale source version, wrong checkpoint owner, replayed
+  command with different params), `:artifact_missing`. Nothing is written on
+  refusal. A retried identical command returns the same new locator.
+- The new Agent starts paused at `await_input`. Copied messages keep their exact
+  shape; provenance is carried by new `context.inherited` events with
+  `source_agent_id` + `source_checkpoint_id` markers, `agents.forked_from_*` and
+  the checkpoint's `fork`/`environment` metadata. No Operation, Execution,
+  evidence, pending/join/consumption, command, cancellation, delegation or peer
+  state is copied, and no parent read is needed to restore it.
+- Execution gate: `environment.risk == "unconfirmed"` (caller-declared unconfirmed
+  stop, or any accepted `uncertain`/`deadline`/`cancelled`/`unknown` source Result)
+  makes `Durable.accept_input/2` return `{:error, {:blocked, :environment_risk_unconfirmed}}`
+  until `%{"risk" => "accepted"}` is recorded as an `agent.risk_accepted` event.
+  Omitting `locator.source` means `idle` + `unconfirmed`: the quiet default never
+  grants execution. A read-only history copy or export never grants execution.
+- Resolution: an accepted Result is never overwritten. A decision that adopts late
+  evidence names the Operation; the transaction re-reads it and refuses on an
+  ownership or accepted-Result digest mismatch (`:conflict`). If the Tool slot is
+  still empty it is filled once from the stored Result; if it is already occupied
+  the adoption appends one `user` correction message instead of a second Tool
+  result. The evidence map and its digest stay in the `agent.decision` event.
