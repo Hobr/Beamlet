@@ -25,7 +25,7 @@ defmodule Beamlet.Web.MixProject do
   def application do
     [
       mod: {Beamlet.Web.Application, []},
-      extra_applications: [:logger, :runtime_tools, :os_mon]
+      extra_applications: [:logger, :runtime_tools, :os_mon, :crypto]
     ]
   end
 
@@ -38,6 +38,11 @@ defmodule Beamlet.Web.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:beamlet_runtime, in_umbrella: true, only: :test},
+      {:beamlet_node, in_umbrella: true},
+      {:beamlet_agent, in_umbrella: true},
+      {:beamlet_actions, in_umbrella: true},
+      {:beamlet_harness, in_umbrella: true},
       {:phoenix, "~> 1.8.15"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},

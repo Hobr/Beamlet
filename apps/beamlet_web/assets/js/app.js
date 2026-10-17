@@ -29,7 +29,29 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, FollowContext: {
+    mounted() {
+      this.region = this.el.querySelector("[data-scroll-region]")
+      this.indicator = this.el.querySelector("[data-new-activity]")
+      this.follow = true
+      this.onScroll = () => {
+        this.follow = this.region.scrollHeight - this.region.scrollTop - this.region.clientHeight < 40
+        if (this.follow) this.indicator.hidden = true
+      }
+      this.onJump = () => { this.follow = true; this.region.scrollTop = this.region.scrollHeight; this.indicator.hidden = true }
+      this.region.addEventListener("scroll", this.onScroll)
+      this.indicator.addEventListener("click", this.onJump)
+      this.onJump()
+    },
+    updated() {
+      if (this.follow) this.onJump()
+      else this.indicator.hidden = false
+    },
+    destroyed() {
+      this.region.removeEventListener("scroll", this.onScroll)
+      this.indicator.removeEventListener("click", this.onJump)
+    }
+  }},
 })
 
 // Show progress bar on live navigation and form submits

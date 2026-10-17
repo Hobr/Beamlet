@@ -51,7 +51,12 @@ defmodule Beamlet.Web.Router do
   scope "/", Beamlet.Web do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", WorkbenchLive, :index
+    live "/agents/new", WorkbenchLive, :new
+    live "/agents/:handle", WorkbenchLive, :show
+    live "/admin/nodes", ManagementLive, :nodes
+    live "/admin/presets", ManagementLive, :presets
+    live "/admin/diagnostics", ManagementLive, :diagnostics
   end
 
   # Other scopes may use custom stacks.

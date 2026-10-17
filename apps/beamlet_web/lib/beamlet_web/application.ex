@@ -10,6 +10,7 @@ defmodule Beamlet.Web.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      {Beamlet.Web.Host, Application.get_env(:beamlet_web, :host, [])},
       Beamlet.Web.Telemetry,
       {Phoenix.PubSub, name: Beamlet.Web.PubSub},
       Endpoint
