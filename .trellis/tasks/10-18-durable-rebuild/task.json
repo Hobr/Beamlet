@@ -1,0 +1,31 @@
+{
+  "id": "durable-rebuild",
+  "name": "durable-rebuild",
+  "title": "重构 Storage 与 Agent durable：事件历史及 Operation 内容归属",
+  "description": "按已确认设计彻底替换消息检查点持久模型，覆盖存储事务、Runtime 适配、Agent 事件归约和上下文、fork/导出及端到端验收，不要求旧格式兼容",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "hobr",
+  "assignee": "hobr",
+  "createdAt": "2026-10-18",
+  "completedAt": null,
+  "branch": "refactor/durable-rebuild",
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-18-durable-storage-core",
+    "10-18-durable-runtime-integration",
+    "10-18-durable-agent-reducer",
+    "10-18-durable-reference-delivery"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
