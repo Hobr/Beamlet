@@ -1,5 +1,12 @@
 # Operation Runtime
 
+**Integration status:** Storage authority format 2 and Runtime B now support atomic
+Agent-owned request preparation and independent Operation acceptance. The
+[revised durable target](../../../docs/architecture/agent-operation-persistence.md)
+assigns fixed LLM/Tool requests to Operations and outputs to accepted Results.
+Agent reducer/model preparation call sites and reference delivery remain C/D work;
+this intermediate code is not complete product acceptance.
+
 ## Scenario: submit generic work to an eligible connected node
 
 ### 1. Scope / Trigger
@@ -153,9 +160,15 @@ journal could not be read; neither proves the handler never ran.
 Enabling persistence on an executor therefore requires every submitter to pass a
 `%Persistence{}`; a durable gateway rejects the ephemeral admit form instead of
 silently degrading. The struct is authoritative input, so an invalid one raises
-rather than returning an error tuple. A single owned-Agent `%Persistence{}` carries
-one `expected_version`, so a new operation against the same Agent needs a freshly
-built struct.
+rather than returning an error tuple. Format-2 owned requests use Storage's atomic
+`AgentRecords.prepare_operations/2` and pass the exact returned member to
+`Runtime.submit/2` as `prepared:`. Runtime validates the stored description and
+attempt/executor/boot identity; it never creates another owned Operation. Optional
+Persistence owner metadata is `{agent_id, turn_id, step_id}` only. Acceptance uses
+Operation CAS independently of Agent position, with explicit Agent consumption
+left to the orchestration layer. Failed/duplicate claims cannot accept Results;
+late receipts preserve evidence without replacement or a second sink completion.
+See [Runtime integration API](../../../apps/beamlet_runtime/README.md).
 
 Default configurable limits (`limits: [...]`): coordinators including retained
 256, retention 30_000 ms, refresh 1_000 ms, expiry 5_000 ms, admission 2_000 ms,

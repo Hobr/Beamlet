@@ -13,6 +13,13 @@ Cross-physical-host acceptance was removed by user decision; no physical executi
 These English guidelines describe checked-in behavior; source paths below are
 relative to the repository root.
 
+The revised [durable design](../../../docs/architecture/agent-operation-persistence.md)
+has format2 Storage/Runtime, event-reduced Agent control and direct reference
+fork/history/export integration. See [Event-reduced Agent](./agent-durable.md) and
+[Durable references](./durable-references.md). No message-checkpoint/transcript-copy
+API or old-format fallback exists. Final independent product acceptance is separate
+from the implementation gates recorded in D's handoff.
+
 ## Pre-Development Checklist
 
 1. Read the task requirements and [Directory Structure](./directory-structure.md).
@@ -42,6 +49,8 @@ commands for the change are identified.
 | [Directory Structure](./directory-structure.md) | Actual app boundaries, supervision, Phoenix request flow, file placement |
 | [Operation Runtime](./operation-runtime.md) | Generic contracts, opt-in supervision, admission, events, limits and failure semantics |
 | [Native Harness](./harness-providers.md) | Model/Tool contracts, schema/history validation, HTTP and trusted workspace boundaries |
+| [Event-reduced Agent](./agent-durable.md) | Format 2 pure reducer, bounded loader, fixed-source context, paused continuation and C validation |
+| [Durable references](./durable-references.md) | Same-authority fork, immutable closure, risk, fixed history/export and offline verification |
 | [Agent and Node](./agent-orchestration.md) | Explicit authority, bounded orchestration, lifecycle ownership, subscriptions and roles |
 | [Web Management](./web-management.md) | Read-only nodes/presets/diagnostics, bounded refresh and explicit unknown facts |
 | [Web Workbench](./web-workbench.md) | LiveView caller/sink ownership, trusted discovery, separate feedback and replacement display |

@@ -1,0 +1,172 @@
+# Event-reduced Agent orchestration (C)
+
+## 1. Scope / Trigger
+
+Use for authority format 2 Agent input, preparation, consumption, inspect and
+paused continuation. Sources: `apps/beamlet_agent/lib/beamlet/agent/{durable,
+reducer,loader,context_builder,server}.ex`. C replaces the old durable message
+checkpoint adapter. D adds [direct reference fork/history/export](./durable-references.md)
+and format2 host e2e integration. The reducer now also owns a flat inheritance
+manifest, fork provenance and environment_risk, without inherited consumption.
+Independent product acceptance remains separate from implementation-stage gates.
+
+## 2. Signatures
+
+```elixir
+Reducer.new(agent_id)
+Reducer.reduce(control, committed_event) # {:ok, control} | {:error, reason}
+Loader.load(repo, agent_id, through_seq: seq, cache: false)
+Durable.inspect(%{repo: repo, agent_id: id}) # read only, no model/runtime required
+Durable.restore(locator, expected_version, command_id)
+Durable.context(durable, catalogue)
+Durable.prepare(durable, [%{operation: operation}], "model", sources)
+Durable.consume(durable, operation_ids_in_ordinal_order, "completed")
+Agent.restore(locator, expected_version, command_id) # paused live Ref
+Agent.continue(ref, expected_version, decision, command_id)
+```
+
+Durable.restore returns `{:ok, %{durable: d, alias: alias, control: control}}`;
+Loader returns `{:ok, %{agent: row, control: control}}`. Position is
+`%{agent_id: id, lock_version: version, generation: generation}`. Runtime wiring
+is `%{authority_repo: repo, journal_repo: repo, executor_id: uuid,
+executor_boot_id: uuid}`. Credentials remain transient in the live model binding.
+
+## 3. Contracts
+
+Reducer version 1 consumes Storage event schema version 1. State owns references,
+turn/step/continuation/generation, pending ordinal/step identities, consumed refs,
+resolutions and pause/block facts; it owns no request/reply bodies. Live Durable
+projects only returned committed events. Unknown writes read command_response by
+stable ID, never retry a write or business work. Durable preflights policy transitions
+through that same reducer before writes: invalid prepare/consume/decision events
+must not commit a history the live projection subsequently refuses. The decoder
+checks payload keys, digest shape, envelope linkage, first creation event, step/
+ordinal/turn identity, pause state and role-specific continuation/consumption.
+
+Input is exactly `%{"text" => utf8}` at most 65536 bytes, checked before the
+Storage transaction and in replay. Preparation is the atomic AgentRecords batch
+API for both model and tool work. Only after commit may OperationOwner call public
+Runtime.submit with `prepared: member`. Acceptance does not advance Agent seq.
+Consumption reads full accepted Results from authority, then commits references
+and join position. Tools join by original ordinal, independently of acceptance
+order. Complete model replies and full sibling batches validate before dispatch.
+The executable byte ceiling includes configuration and policy metadata; recheck
+that full model Operation before preparation, not only the earlier bare request.
+
+ContextBuilder ordinary policy 1 materializes original inputs and previously
+consumed accepted Results in timeline order. Its policy metadata fixes policy/
+instruction versions, Agent definition_version and through_seq. Caller adds a
+content-derived configuration_version to every model/Tool Operation before byte
+validation: SHA-256 of the canonical nonsecret execution description with request
+messages/arguments removed (the model catalogue remains). Model parameters,
+schemas and portable profile/placement changes therefore change that version;
+conversation input and credential changes do not. This is distinct from definition
+revision 1, not a constant configuration label. Sources belong to that Operation.
+Opaque executor-local profile/environment IDs still require matching trusted
+registrations/builds; the hash does not inspect executor roots or adapter code.
+No unconsumed evidence/output enters context.
+A prepared request is reused exactly; changed dependencies fail description equality.
+Native context limits remain 128 messages / 1 MiB. Model steps remain 16, tools 8.
+
+Loader fixes through_seq before 100-event keyset pages (100000 events / 32 MiB
+maximum per history traversal); reference traversal has a 5s deadline. Cache
+validation compares its projection to the supported history prefix, then reduces
+the suffix, so it currently revalidates the prefix rather than avoiding its I/O.
+Missing, corrupt, unsupported or semantically inconsistent caches fall back to full
+history. Corrupt history/references block. Accepted bodies, including pending
+unconsumed outputs, must match the Operation acceptance event digest; consumed
+references additionally match that digest. Descriptions also match the immutable
+Operation preparation event, and owner/turn/step/ordinal/prepared_seq match the
+Agent preparation event. Cache content is compared to reduced history before any
+cache-supplied reference is dereferenced; a digest-valid malformed cache must not
+raise. Prefix and suffix share one history budget. No executor/provider is contacted.
+
+Activation increments generation, appends agent.activated, and pauses without
+dispatch. Both restore entry points reject an already registered sender before
+writing. OperationOwner registrations carry transient Agent/generation identities;
+Resources fences dead owners' inventoried groups and waits for observed DOWN
+before activation (5s call, at most128 pending fences). Registrations delayed past
+owner death cannot start workers. Runtime remains responsible for cancellation;
+fencing local helpers is not proof of remote/upstream termination. An identical
+Durable.restore command at the same activation head returns the same paused
+control without another generation. Live continuation returns owners_retiring
+without committing while the previous Server-owned groups remain inventoried.
+Explicit continuation adopts only the pending prepared/accepted identities into
+the new generation transactionally; claimed unresolved attempts refuse. Old
+prepared generations cannot claim. Late acceptance cannot itself advance Agent.
+Uncertain/cancelled/deadline/unknown accepted results require an explicit decision
+naming the pending operation and confirmed_failed/confirmed_executed; consumption
+then uses evidence_resolution without changing the accepted Result. A decision
+cannot relabel an accepted ok/error outcome or authorize a claimed unresolved
+attempt. For several uncertain siblings supply all named resolutions atomically:
+`%{"resolutions" => [%{"operation_id" => id, "resolution" => "confirmed_failed"}, ...]}`.
+A safe input-only/dependency interruption needs no fabricated execution resolution.
+Accepted definite model errors are consumed once to completed with an error view;
+context carries a sourced failure notice, not a fabricated successful assistant.
+Unknown fields in stored model replies/calls are refused, not normalized away.
+Restored sibling dispatch stops at the first blocker; later siblings stay prepared.
+
+Memory mode likewise blocks automatic follow-on work and new input after an
+uncertain/cancelled/deadline model/Tool Result (create a fresh memory Agent rather
+than claiming durable resolution). Its existing explicit stop/new-input and
+nested-delegation lifecycle behavior is retained; this is not durable recovery.
+
+## 4. Validation & Error Matrix
+
+| Boundary | Result |
+| --- | --- |
+| Unknown event version / missing seq | schema_unsupported / invalid_history |
+| Invalid input shape, encoding, >64 KiB | invalid_data before commit |
+| Malformed stored JSON refused by Ecto's Storage.JSON type | invalid_data on read; no repair |
+| Missing/invalid checkpoint | full-history fallback |
+| Corrupt accepted/body/source digest | invalid_reference |
+| History count/bytes/gap | history_limit_or_gap |
+| Native context count/bytes | context_limit |
+| Full executable envelope including policy exceeds captured cap | executable_input_limit, zero prepare |
+| Claimed unresolved / unapproved uncertainty | unresolved_execution |
+| Changed prepared request dependencies | dependency_missing |
+| Prior local owner groups not retired | owners_retiring before decision/activation |
+| Decision relabels definite accepted output | invalid_reference, no commit |
+| Stale live continuation version | stale_version |
+| Already registered restore identity | already_active, no generation change |
+
+## 5. Good/Base/Bad Cases
+
+Good: accept raw input, commit immutable model request, execute once, accept output,
+consume its ref, atomically prepare validated tools, join ordinal refs.
+Base: input-only history with no checkpoint/provider/executor remains inspectable
+and may be activated paused. Bad: accept an oversized input and discover the limit
+only after reducer failure; that leaves persisted and live positions inconsistent.
+
+## 6. Tests Required
+
+`durable_agent_test.exs` runs SQLite by default; set
+`BEAMLET_AGENT_TEST_ADAPTER=postgres`, `BEAMLET_PG_SOCKET_DIR`, optional
+`BEAMLET_PG_PORT/BEAMLET_PG_USER` for actual isolated PostgreSQL datasets. It shares
+Storage's throwaway database fixture and uses a real SQLite executor journal.
+Assert zero model calls during inspect/replay, accepted resume without reexecution,
+claimed refusal, consumed reply/tool resume, exact 64 KiB and native message/byte
+limits, unconsumed-source exclusion, corrupt-acceptance refusal, multi-page replay,
+cache fallback (including digest-valid malformed refs), checkpoint+nonempty suffix,
+fixed older high water, and live/partial Tool consumption order. Exercise actual
+32 MiB history overflow with a valid near-limit cache prefix plus nonempty suffix;
+the cache must not reset the total budget. Include policy metadata at the exact
+executable ceiling and require zero prepared Operations on overflow. Refuse invalid
+prepare/consume before writes, missing history despite valid cache, forged request
+replacement, success-hiding resolutions, and incomplete multi-Tool resolutions.
+Cover definite model-error continuation, changed dependencies with zero sibling
+dispatch, memory unknown model/Tool blockers, suspended old owner fencing and
+actual inventoried group DOWN before activation. Malformed stored JSON must return
+a safe error, not Ecto's raw field-bearing ArgumentError; normalize only the strict
+Storage.JSON struct-load failure and re-raise unrelated programmer errors. Assert
+effective configuration versions change for model/schema/profile changes but stay
+stable across inputs/arguments/credentials, including metadata on actual prepared
+model/Tool requests. Keep Agent/Node actual helper DOWN
+regressions while infrastructure stays suspended and the named distributed suite.
+
+## 7. Wrong vs Correct
+
+Wrong: trust an accepted body merely because the reference has not been consumed,
+or let a post-commit reducer discover an input limit.
+Correct: verify the committed acceptance digest even for pending output, and reject
+unsupported input at the write boundary. Checkpoints do not repair bad history.

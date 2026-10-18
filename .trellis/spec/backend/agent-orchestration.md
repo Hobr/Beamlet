@@ -1,5 +1,12 @@
 # Agent Orchestration and Node Composition
 
+**Integration status:** format-2 event-reduced control, Operation-owned requests,
+accepted Result references, direct reference fork and offline history/export are
+implemented. Use [Event-reduced Agent](./agent-durable.md) and the
+[Agent README](../../../apps/beamlet_agent/README.md) for durable contracts.
+Ephemeral orchestration and Node contracts below still apply. Final independent
+product acceptance remains a separate gate; old transcript APIs do not exist.
+
 ## 1. Scope / Trigger
 
 Use when wrapping Agent APIs, adding integration handlers, or composing Node roles.
@@ -265,53 +272,30 @@ requests and a single receive deadline. Same-host tests do not prove physical de
 Wrong: infer remote cancellation from caller timeout, or promise never reconnect
 from a connected precheck. Correct: finite independent reads and explicit partial failures.
 
-## Durable fork, environment risk and evidence resolution
+## Reference fork and durable reads
 
-Opt-in only, next to `Beamlet.Agent.restore/3` and `continue/4`; an Agent started
-without `durable:` keeps exactly the old behaviour.
+`Agent.fork(locator, through_seq, current_source_version, command_uuid)` creates a
+paused/await_input Agent at a safe complete committed sequence. It does not require
+or copy a checkpoint. The same-authority transaction materializes a flat immutable
+reference closure, verifies membership/digests and retains original input/Operation/
+accepted Result ownership. Input artifacts are shared by digest. No source row,
+execution, pending, consumption/command dedupe or provider session is copied.
+Replay and chained forks do not read a parent's event prefix. All content must
+remain retained; there is no GC or cross-dataset transfer protocol.
 
-```elixir
-locator = %{repo: repo, agent_id: source_id, model: binding, tools: tools,
-            catalogue: catalogue, environment: ref | nil, runtime: runtime | nil,
-            source: %{freeze: :frozen | :idle, environment: :confirmed_stopped | :unconfirmed}}
-{:ok, %{agent_id: new_id, checkpoint_id: cp, locator: new_locator, source: %{...},
-        risk: nil | "unconfirmed", copied: %{"messages" => n, "records" => n},
-        version: 0, generation: 0}} =
-  Beamlet.Agent.fork(locator, checkpoint_id, expected_version, command_id)
-{:ok, %{continuation: "await_input", version: v, generation: g}} =
-  Beamlet.Agent.continue(ref, expected_version, %{"risk" => "accepted"}, command_id)
-{:ok, %{continuation: pos, version: v, generation: g}} =
-  Beamlet.Agent.continue(ref, expected_version,
-    %{"resolution" => "confirmed_executed" | "confirmed_failed",
-      "operation_id" => op_id | nil, "evidence" => map | nil}, command_id)
-```
+A registered source refuses source_not_frozen; local inventoried senders are fenced.
+No pending work, blocked state or incomplete call pair may cross the boundary.
+Default environment risk is unconfirmed, even for quiet sources. Only explicit
+source.environment=:confirmed_stopped or a recorded continue decision
+`%{"risk" => "accepted"}` allows subsequent execution. Confirmation is an operator
+assertion, not proof of remote stopping. Late source evidence cannot advance the
+child or overwrite accepted Results. Inherited usage is not new execution/billing.
 
-- `Agent.fork/4` refuses while the source instance is still registered locally
-  (`:source_not_frozen`): a live local dispatcher is not a frozen source. The
-  source's own rows are never written by a fork, and the old locator/Ref/alias
-  keep pointing at the source; callers must use the returned locator.
-- Fork copies one immutable checkpoint only, and only when it is a complete
-  boundary (`safe_to_fork`, no pending/join/results/assistant/blocked state, full
-  Tool-call/result pairing, `await_input`/`await_model_result`/`completed`). Refusals:
-  `:unsafe_checkpoint`, `:source_not_frozen`, `:limit` (over 1 MiB or 128
-  messages), `:conflict` (stale source version, wrong checkpoint owner, replayed
-  command with different params), `:artifact_missing`. Nothing is written on
-  refusal. A retried identical command returns the same new locator.
-- The new Agent starts paused at `await_input`. Copied messages keep their exact
-  shape; provenance is carried by new `context.inherited` events with
-  `source_agent_id` + `source_checkpoint_id` markers, `agents.forked_from_*` and
-  the checkpoint's `fork`/`environment` metadata. No Operation, Execution,
-  evidence, pending/join/consumption, command, cancellation, delegation or peer
-  state is copied, and no parent read is needed to restore it.
-- Execution gate: `environment.risk == "unconfirmed"` (caller-declared unconfirmed
-  stop, or any accepted `uncertain`/`deadline`/`cancelled`/`unknown` source Result)
-  makes `Durable.accept_input/2` return `{:error, {:blocked, :environment_risk_unconfirmed}}`
-  until `%{"risk" => "accepted"}` is recorded as an `agent.risk_accepted` event.
-  Omitting `locator.source` means `idle` + `unconfirmed`: the quiet default never
-  grants execution. A read-only history copy or export never grants execution.
-- Resolution: an accepted Result is never overwritten. A decision that adopts late
-  evidence names the Operation; the transaction re-reads it and refuses on an
-  ownership or accepted-Result digest mismatch (`:conflict`). If the Tool slot is
-  still empty it is filled once from the stored Result; if it is already occupied
-  the adoption appends one `user` correction message instead of a second Tool
-  result. The evidence map and its digest stay in the `agent.decision` event.
+History context is a reference projection at as_of_seq. Keyset cursors retain the
+original Agent cutoff. Step/tool history only includes outputs consumed by that
+cutoff; evidence is labeled as a separate Operation observation. Trace format2
+captures fixed Agent and Operation high waters, full logical requests/accepted
+outputs, input/definition/artifact closure and digests before writing pages.
+Missing/corrupt content or redaction is explicit and never called complete.
+Read-only inspect/export needs no provider/executor and grants no execution.
+See the Agent README for exact signatures, limits and package verification.

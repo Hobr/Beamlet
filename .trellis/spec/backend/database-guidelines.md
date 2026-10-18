@@ -1,5 +1,13 @@
 # State and Persistence
 
+Authority format2 / journal format1 contracts live in the Storage/Runtime app
+READMEs and [Event-reduced Agent](./agent-durable.md). Agent checkpoints contain
+control/references, never messages/assistant. Original input is committed before
+requests; acceptance digests are checked even for pending outputs. Reference fork
+and format2 offline trace export are implemented; see the Agent README. No old
+transcript API, automatic migration or compatibility fallback exists. Independent
+product acceptance remains separate from implementation-stage evidence.
+
 ## Current Scope: Ephemeral and Opt-in Durable Modes
 
 Beamlet implements opt-in Ecto storage through `apps/beamlet_storage` and the
@@ -36,7 +44,7 @@ Read `apps/beamlet_storage/README.md` before changing it. Established facts:
   `storage_metadata` installation row and Ecto's `schema_migrations`. The executor
   journal database has `journal_attempts` + `storage_metadata`.
 - Migrations are explicit and versioned: `Dataset.initialize/2` runs
-  `priv/authority_migrations/1_authority_v1.exs` or
+  `priv/authority_migrations/2_authority_v2.exs` (format2) or
   `priv/journal_migrations/1_journal_v1.exs`; `Dataset.open/2` never migrates and
   refuses a missing dataset, identity/role mismatch, backup marker, or newer
   `format_version`/migration version. Downgrade raises by design.
@@ -80,29 +88,27 @@ restored dataset pauses admission until an operator resolves the marker.
 
 ## Architecture and Delivery Contract
 
-The [Agent / Operation persistence design](../../../docs/architecture/agent-operation-persistence.md)
-extends the archived distributed architecture with Ecto, authority-owned SQLite or
-PostgreSQL, an executor-local SQLite evidence journal, paused recovery, history,
-trace export, and rewind by copying a safe checkpoint's effective context into a
-new Agent. The user accepted its core direction and the removal of standalone
-branches. The implemented stages use these decisions as their delivery contract.
-The [mechanism study](../../../docs/architecture/research/durable-agent-mechanisms.md)
-compares pinned pi durable source with LangGraph, Agents SDK and Temporal, and
-limits durable primitives to history records and checkpoints. Fork returns a new
-Agent identity with materialized context and provenance; it does not introduce
-branch tables, active-branch switching or recursive parent-history loading. Consult its [delivery and acceptance plan](../../../docs/architecture/persistence-delivery.md)
-when changing the implementation. Stages A–F cover storage, durable Agent/Runtime
-behaviour, fork, export, paused restore and release tooling; their retained
-acceptance evidence is under `.trellis/tasks/archive/2026-10/10-18-durable-*`.
+The [Agent / Operation design](../../../docs/architecture/agent-operation-persistence.md)
+is implemented through the format2 Storage/Runtime and event-reduced Agent path.
+Agent owns original input/decisions/control, Operation owns fixed logical request
+and sources, and accepted Result owns output. Replay performs no effects; caches
+are optional and currently revalidate their history prefix. There is no Branch,
+transcript-copy fork, graph authority table or source-parent history recursion.
 
-The proposal remains compatible with the display/observation and stop-provenance
-changes through `a078aa3`. Future durable writes must occur at business transitions,
-not by recording display snapshots or subscriptions. Preserve the first observed
-stop trigger and actual terminal outcome in execution evidence; cancellation
-requests must not rewrite deadline or successful Results. Enforce durable admission
-in authority transactions and executor journal writes even when Node/Repo processes
-remain registered. See proposal sections 3.3, 6 and 11 for the full contract; these
-requirements add no Display/Observation table or new durable primitive.
+Same-dataset fork creates independent paused control plus a flat validated reference
+manifest; original input content is shared through immutable digest-deduplicated
+artifacts, and inherited Operations remain source-owned. Source facts are retained;
+no GC is implemented. Full history and reference content remain sufficient without
+checkpoint, live Agent, provider or executor. Missing/damaged content blocks.
+History/export fix high waters, preserve source provenance and never count inherited
+usage as new execution. Redaction explicitly prevents restoration claims.
+
+Durable writes remain business transitions, not snapshots/subscriptions. First stop
+trigger and actual termination are separate evidence; cancel/deadline never rewrite
+accepted Results. Admission is checked independently of Repo/Node registration.
+Real adapter, process-window, named-peer and release results belong in the current
+D handoff, not inferred from archived Stage A–F's old representation. No physical
+host, power-cut, paid provider or external exactly-once guarantee is claimed.
 
 ## Existing State Boundaries
 
