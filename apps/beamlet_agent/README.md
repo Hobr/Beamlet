@@ -120,3 +120,12 @@ covers actual model→Tool→model, host restart, paused continuation and refere
 `scripts/deployment/durable-e2e.sh` repeats the phases in independent OS processes.
 Named peer fault-window/call-count and release evidence are separate gates; no
 physical-host, paid-provider or power-cut acceptance is implied.
+
+## Pure business kernel
+
+[Agent Core](../beamlet_agent_core/README.md) owns event semantics, ordered context
+conversion and continuation decisions. This application's Reducer and
+ContextBuilder remain storage adapters; Server/Durable retain process ownership,
+preparation/acceptance/consumption transactions and execution. Core receives no
+Repo, callback, credentials or live Runtime reference. Public Agent interfaces and
+persisted event/reducer/checkpoint versions are unchanged.

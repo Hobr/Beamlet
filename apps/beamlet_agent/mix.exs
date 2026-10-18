@@ -25,6 +25,7 @@ defmodule Beamlet.Agent.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:beamlet_agent_core, in_umbrella: true},
       {:beamlet_actions, in_umbrella: true},
       {:beamlet_runtime, in_umbrella: true},
       {:beamlet_harness, in_umbrella: true}

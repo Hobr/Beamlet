@@ -23,6 +23,17 @@ Durable.prepare(durable, [%{operation: operation}], "model", sources)
 Durable.consume(durable, operation_ids_in_ordinal_order, "completed")
 Agent.restore(locator, expected_version, command_id) # paused live Ref
 Agent.continue(ref, expected_version, decision, command_id)
+# Pure APIs; normalized data only, no Repo/reader callback:
+Core.Reducer.decode(event) # :ok | {:error, reason}
+Core.Reducer.reduce(control, event) # {:ok, control} | {:error, reason}
+Core.Reducer.replay(control, events) # {:ok, control} | {:error, reason}
+Core.Context.start(control) # {:ok, accumulator} | {:error, reason}
+Core.Context.append(accumulator, material) # {:ok, accumulator} | {:error, reason}
+Core.Context.messages(accumulator) # {:ok, messages} only after all sources
+Core.Context.finish(accumulator, catalogue) # {:ok, %{request:, sources:, policy:}}
+Core.Context.build(control, catalogue, materials) # same result as finish
+Core.Decision.reply_position(reply) # "completed" | "reply_recorded" | error
+Core.Decision.resume(position) # :idle | :advance | :replay_reply | :pending | error
 ```
 
 Durable.restore returns `{:ok, %{durable: d, alias: alias, control: control}}`;
@@ -116,6 +127,9 @@ nested-delegation lifecycle behavior is retained; this is not durable recovery.
 | Boundary | Result |
 | --- | --- |
 | Unknown event version / missing seq | schema_unsupported / invalid_history |
+| Normalized payload exceeds root depth32 / malformed inherited shape | invalid_history in decode/reduce/replay |
+| Missing, extra, reordered or substituted context material / incomplete accumulator | invalid_reference |
+| Invalid historical model reply before a later missing source | invalid_reply; no read of later source |
 | Invalid input shape, encoding, >64 KiB | invalid_data before commit |
 | Malformed stored JSON refused by Ecto's Storage.JSON type | invalid_data on read; no repair |
 | Missing/invalid checkpoint | full-history fallback |
@@ -164,9 +178,57 @@ stable across inputs/arguments/credentials, including metadata on actual prepare
 model/Tool requests. Keep Agent/Node actual helper DOWN
 regressions while infrastructure stays suspended and the named distributed suite.
 
+Core regressions live in `apps/beamlet_agent_core/test/core_test.exs`; adapter
+parity and read-order assertions live in Agent's `core_adapter_test.exs` and
+`context_read_order_test.exs`. Run these with `mix test --no-start` as well as the
+ordinary Agent suite. Assert payload root31/32 acceptance and root33 refusal
+through decode/reduce/replay, independent of wrappers; description/result roots
+have independent depth budgets. Exercise nonempty inherited input/result and
+resolved-result manifests, missing/extra fields, UUID/digest/sequence errors and
+resolution-kind mismatches. Assert context_limit at the overflowing prefix before
+any missing/corrupt/valid suffix read, and invalid_reply before a missing suffix.
+Exact JSON list byte tests include brackets, commas, escaping and multibyte UTF-8;
+1 MiB accepts and one byte over refuses. Do not validate incomplete tool prefixes
+as complete requests before all selected sources are converted.
+
 ## 7. Wrong vs Correct
 
 Wrong: trust an accepted body merely because the reference has not been consumed,
 or let a post-commit reducer discover an input limit.
 Correct: verify the committed acceptance digest even for pending output, and reject
 unsupported input at the write boundary. Checkpoints do not repair bad history.
+
+Wrong: preload all context materials, then convert them, or count event/replay
+wrappers against the payload depth limit. Correct: verify and append one source
+before reading the next, and validate each domain value from its own depth root.
+An overflow at a valid prefix must win over a missing later source.
+
+## Agent Core boundary
+
+`beamlet_agent_core` owns `Beamlet.Agent.Core.Reducer`, `Context` and `Decision`.
+Core has no Agent/Runtime/Storage/Ecto dependency or external effects. The Agent
+Reducer facade validates persisted envelopes with Storage.Codec/Events and passes
+the canonical input digest as transient normalized data; persisted state keys and
+versions remain unchanged. Payload depth32 is measured from the payload root,
+independently of event and replay containers. Inherited input/result entries have
+exact normalized shapes and validated UUIDs/digests/sequences/resolutions.
+An inherited input has exactly `type`, `artifact_id`, `digest`, `event_id`, `seq`
+and `source_agent_id`. An inherited result has exactly `type`, `source_agent_id`,
+`description_digest`, `reference` and `resolution`; its reference has exactly
+`operation_id`, `accepted_digest` and `consumption_kind`. UUIDs are canonical
+lowercase strings, digests are 64 lowercase hex characters, and sequences are
+positive integers. Consumption kind is model_result/tool_result/evidence_resolution;
+only evidence_resolution requires a nonnil resolution with exactly `resolution`,
+`decision_event_id`, `seq` and a confirmed_failed/confirmed_executed value.
+Materials bind `source` to the next selected timeline occurrence and carry either
+`input` (exactly `%{"text" => utf8}`) or `operation` plus optional `resolution`.
+ContextBuilder loads and verifies each ordered source-bound material, then calls
+the pure incremental context accumulator before reading the next source. Conversion
+and exact message/byte limits therefore preserve first-error and read-stop behavior;
+current catalogue/request validation waits until the selected timeline completes.
+Core checks ordered membership, completeness, operation identity and resolution
+association; digest, ownership and
+inherited closure verification remain in the loader. Historical model replies use
+the stored catalogue. Explicit repeated selected timeline occurrences retain the
+existing exact-limit behavior. Server and Durable call pure continuation/fork
+decisions while retaining transactions, lifecycle and fixed request recovery.

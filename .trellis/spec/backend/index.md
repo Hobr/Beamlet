@@ -1,6 +1,6 @@
 # Backend Development Guidelines
 
-Beamlet has a ten-application Elixir Mix umbrella with implemented generic Actions
+Beamlet has an eleven-application Elixir Mix umbrella with implemented generic Actions
 contracts, an opt-in distributed Runtime and independent native Harness providers.
 Agent implements bounded asynchronous orchestration with one immutable Agent-owned
 model binding; Harness owns neutral model/history contracts and explicit provider

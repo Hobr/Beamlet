@@ -2,6 +2,7 @@ defmodule Beamlet.Agent.Durable do
   @moduledoc "Agent-owned input and reference orchestration over authority format 2."
   import Kernel, except: [inspect: 1, inspect: 2]
   alias Beamlet.Agent.{ContextBuilder, Loader, Reducer, Resources}
+  alias Beamlet.Agent.Core.Decision
   alias Beamlet.Runtime.Persistence
   alias Beamlet.Storage.{AgentRecords, Codec}
 
@@ -377,10 +378,9 @@ defmodule Beamlet.Agent.Durable do
   end
 
   defp safe_fork(control) do
-    if control["pending"] == [] and is_nil(control["blocked"]) and
-         control["continuation"] in ~w(await_input await_model_result completed),
-       do: :ok,
-       else: {:error, :unsafe_position}
+    if Decision.safe_fork?(control),
+      do: :ok,
+      else: {:error, :unsafe_position}
   end
 
   def restore(locator, expected, command) when is_integer(expected) and expected >= 0 do

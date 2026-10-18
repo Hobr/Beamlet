@@ -4,12 +4,13 @@
 
 Root `mix.exs` sets `apps_path: "apps"`. There is no root `lib/`, `test/`, or
 `priv/`; application code and tests live under each child app (for example,
-`apps/beamlet_app_web/`). All ten child manifests share root build, dependency,
+`apps/beamlet_app_web/`). All eleven child manifests share root build, dependency,
 lockfile, and configuration paths.
 
 | Application | Implemented source today |
 | --- | --- |
 | `beamlet_actions` | `Beamlet.Actions` data validation; Operation, Execution, Result, live refs and Handler under `lib/beamlet/actions/` |
+| `beamlet_agent_core` | Pure Agent event reducer, source-bound conversation policy and continuation decisions; no Application callback |
 | `beamlet_agent` | Explicit-authority facade; Server/Ref/AuthoritySupervisor, Agent-owned bounded Discovery (local reads/erpc, no query endpoint), lifecycle/Resources, delegation and integration adapters |
 | `beamlet_harness` | Native Model/Tool/Context/Environment, catalogue/schema validation, OpenAICompatible and WorkspaceRead under `lib/beamlet/harness/` |
 | `beamlet_runtime` | `Beamlet.Runtime` submit/status/cancel/ack facade; opt-in supervision, discovery, admission and lifecycle under `lib/beamlet/runtime/` |
@@ -25,7 +26,7 @@ Harness declares exact Req 0.7.5 and direct Jason; it has no sibling dependencie
 Actions declares no siblings; dedicated credentials use OTP JSON and generic Runtime
 forwarding. Harness.Model owns independent neutral validation/registration; Agent's
 ModelBinding separates portable child validation from authority adapter validation.
-Agent declares Actions/Runtime/Harness; Node declares
+Agent declares Core/Actions/Runtime/Harness; Core declares Harness/Jason only; Node declares
 Actions/Runtime/Harness/Agent. Neither core closure includes Phoenix. Actions, Agent,
 Harness, Runtime and Node have no Application callback. CLI, server and Web declare
 callbacks in their own `mix.exs`. CLI directly declares Node/Agent, and test-only

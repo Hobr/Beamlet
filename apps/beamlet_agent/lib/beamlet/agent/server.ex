@@ -3,6 +3,7 @@ defmodule Beamlet.Agent.Server do
   @moduledoc false
   use GenServer, restart: :temporary
   alias Beamlet.Actions.{Operation, Result}
+  alias Beamlet.Agent.Core.Decision
   alias Beamlet.Agent.{Delegation, Integration.Caller, OperationOwner, Ref}
   alias Beamlet.Harness.{Catalogue, Context}
   alias Beamlet.Harness.Model
@@ -379,8 +380,6 @@ defmodule Beamlet.Agent.Server do
         {:reply, {:error, :not_subscribed}, s}
     end
   end
-
-  @resume_positions ~w(await_input completed blocked await_model_result reply_recorded model_prepared await_tool_results)
 
   defp control({:continue, version, decisions, command_id}, %{status: :paused} = s) do
     continue(s, version, decisions, command_id)
@@ -887,7 +886,7 @@ defmodule Beamlet.Agent.Server do
     with %{"status" => "ok", "value" => value} <- op["accepted_result"],
          {:ok, reply} <- ContextBuilder.reply(value),
          :ok <- Model.validate_reply(reply, s.catalogue),
-         position = if(reply.kind == :text, do: "completed", else: "reply_recorded"),
+         position = Decision.reply_position(reply),
          {:ok, durable} <- Durable.consume(s.durable, [op["id"]], position) do
       complete_reply(%{s | durable: durable}, reply)
     else
@@ -1221,7 +1220,7 @@ defmodule Beamlet.Agent.Server do
         {:reply, {:error, :owners_retiring}, s}
 
       # A position the Server cannot resume is refused before the decision commits.
-      s.durable_continuation not in @resume_positions ->
+      not Decision.resumable?(s.durable_continuation) ->
         {:reply, {:error, {:unsupported_continuation, s.durable_continuation}}, s}
 
       true ->
@@ -1243,25 +1242,25 @@ defmodule Beamlet.Agent.Server do
   defp resume(s, durable) do
     s = %{s | durable: durable, durable_continuation: durable.control["continuation"]}
 
-    case durable.control["continuation"] do
-      position when position in ~w(await_input completed) ->
+    case Decision.resume(durable.control["continuation"]) do
+      :idle ->
         {:reply, {:ok, view(%{s | status: :idle})}, publish(%{s | status: :idle, turn: nil})}
 
-      "await_model_result" ->
+      :advance ->
         s = %{s | status: :running, turn: durable.turn_id, terminal_turn: nil}
         send(self(), {:advance, s.turn})
         {:reply, {:ok, view(s)}, publish(s)}
 
-      "reply_recorded" ->
+      :replay_reply ->
         s = replay_reply(%{s | status: :running, turn: durable.turn_id})
         {:reply, {:ok, view(s)}, s}
 
-      position when position in ~w(model_prepared await_tool_results) ->
+      :pending ->
         s = resume_pending(%{s | status: :running, turn: durable.turn_id})
         {:reply, {:ok, view(s)}, publish(s)}
 
-      position ->
-        {:reply, {:error, {:unsupported_continuation, position}}, s}
+      {:error, reason} ->
+        {:reply, {:error, reason}, s}
     end
   end
 

@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"Current backend ownership and evidence rules"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Application dependency and opt-in startup contracts"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Required verification and behavior-equivalent refactor gates"}
+{"file":".trellis/spec/backend/agent-durable.md","reason":"Reducer, committed-event, uncertainty and fixed request contracts"}
+{"file":".trellis/spec/backend/durable-references.md","reason":"Inherited sources, fork risk and history/export compatibility"}
+{"file":".trellis/spec/backend/harness-providers.md","reason":"Provider-neutral model/history contracts"}
+{"file":".trellis/spec/backend/operation-runtime.md","reason":"Preparation/acceptance/consumption ownership"}
+{"file":".trellis/tasks/10-18-agent-core-extraction/research/recreation.md","reason":"Missing-work incident and current baseline evidence"}
