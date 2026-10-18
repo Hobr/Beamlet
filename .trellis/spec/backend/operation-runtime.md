@@ -1,18 +1,17 @@
 # Operation Runtime
 
-**Integration status:** Storage authority format 2 and Runtime B now support atomic
-Agent-owned request preparation and independent Operation acceptance. The
-[revised durable target](../../../docs/architecture/agent-operation-persistence.md)
-assigns fixed LLM/Tool requests to Operations and outputs to accepted Results.
-Agent reducer/model preparation call sites and reference delivery remain C/D work;
-this intermediate code is not complete product acceptance.
+**Integration status:** format3 foundation/Actions persistence supports generic durable
+Runtime independently of Agent. Agent owns its associations and composes atomic
+preparation; trace export remains format2. See [State and Persistence](./database-guidelines.md)
+for installation/ownership and [Agent durability](./agent-durable.md) for orchestration.
 
 ## Scenario: submit generic work to an eligible connected node
 
 ### 1. Scope / Trigger
 
 Use this contract when adding Runtime consumers, local handlers or Node composition.
-Actions owns data validation and Handler; Runtime depends only on Actions and OTP.
+Actions owns data validation and Handler with no storage dependency. Runtime
+directly uses Actions, Actions Storage, foundation Storage and Ecto/OTP.
 No Agent, Harness or Phoenix dependency belongs in either application. Sources are
 under `apps/beamlet_actions/lib/beamlet/` and `apps/beamlet_runtime/lib/beamlet/`;
 behavioral tests mirror them.
@@ -122,11 +121,29 @@ remaining budget. Stale reports can shorten short operations. Discovery reserves
 no capacity. Tombstones/lease watermarks reject old dispatches. Ephemeral operation
 still has no durable execution deduplication or public retry permission.
 
-## Durable execution mode (opt-in, stage B)
+## Durable execution mode (opt-in)
+
+Actions persistence exposes `OperationRecords.prepare(repo, %{operation: op, attempt: attempt})`
+and the same-Repo participant `prepare_in_transaction/2`. Operation attributes are
+exactly `id`, `description`, optional `dispatch_scope_id`/`dispatch_epoch`; attempt
+attributes are `attempt_id`, `executor_id`, `executor_boot_id`, `budget`. Agent-shaped
+owner/role/step/sources attributes refuse as invalid_data. Description allows only
+string keys `kind`, `protocol_version`, `payload`, `refs`, `budget`, `claims`, `safety`;
+Runtime's description uses protocol_version1 and excludes invocation credentials.
+Prepare returns string-key `operation_id`, `description_digest`, `attempt_id`,
+`attempt_version: 0`, `lock_version: 0`, `dispatch_state: "prepared"` and scope/epoch.
+Exact immutable replay succeeds; changed description/attempt identity conflicts.
+`record_evidence/2` requires atom keys `id`, `operation_id`, `attempt_id`,
+`executor_id`, `evidence_id`, `content`, with optional `resolution`.
+`accept_result/2` requires `operation_id`, `expected_version`, `result`, with
+optional `evidence_id`, `artifact_ids`; repeated identical acceptance preserves the
+original Result and conflicting acceptance refuses. Both return safe tuples through
+the owning transaction facade. Actions owns these APIs and journal/terminal artifacts.
 
 `Runtime.submit/2` accepts `persistence: %Beamlet.Runtime.Persistence{}` carrying the
-authority repo, journal repo, authority/executor identities and optional owned
-Agent/turn data. Without it nothing changes: no Repo is started, no environment is
+authority_repo, journal_repo, authority_id, executor_id, executor_boot_id and optional
+paired dispatch_scope_id/dispatch_epoch. Scope is an opaque UUID/epoch, never an
+Agent owner or callback. Both nil is valid; a partial binding is invalid. Without it nothing changes: no Repo is started, no environment is
 read and no persisted identity is required. With it:
 
 - the immutable Operation and one `prepared` attempt commit before any coordinator
@@ -160,13 +177,36 @@ journal could not be read; neither proves the handler never ran.
 Enabling persistence on an executor therefore requires every submitter to pass a
 `%Persistence{}`; a durable gateway rejects the ephemeral admit form instead of
 silently degrading. The struct is authoritative input, so an invalid one raises
-rather than returning an error tuple. Format-2 owned requests use Storage's atomic
-`AgentRecords.prepare_operations/2` and pass the exact returned member to
-`Runtime.submit/2` as `prepared:`. Runtime validates the stored description and
-attempt/executor/boot identity; it never creates another owned Operation. Optional
-Persistence owner metadata is `{agent_id, turn_id, step_id}` only. Acceptance uses
-Operation CAS independently of Agent position, with explicit Agent consumption
-left to the orchestration layer. Failed/duplicate claims cannot accept Results;
+rather than returning an error tuple. Already committed requests pass a string-key
+`prepared:` map with `operation_id`, `attempt_id`, `description_digest`,
+`lock_version` (Operation), `attempt_version`, `dispatch_scope_id`, `dispatch_epoch`.
+Public submit fetches Actions facts and compares actual `Persistence.description/1`,
+both IDs/versions/digest, executor/boot, prepared state, absent acceptance and scope
+binding against Persistence and prepared identity before starting a coordinator.
+It never creates a replacement request for a supplied identity.
+
+Coordinator calls Actions `OperationRecords.claim_dispatch(repo, attrs)` with
+`operation_id`, `attempt_id`, `expected_version` (attempt), and `expected_operation`
+containing exact atom keys `description_digest`, `lock_version`, `dispatch_scope_id`,
+`dispatch_epoch`. The latter binding is checked again under the claim lock; public
+validation alone cannot fence continuation between check and dispatch.
+PG claim locks scope FOR SHARE before Operation FOR UPDATE and holds both through
+commit; SQLite immediate writes serialize. Rotation/reauthorization lock scope
+before Operation; Agent composition adds Agent first. Acceptance locks/CASes only
+Operation, never Agent/scope. Restore-before-claim rejects stale epoch; claim-first
+retains already-claimed semantics. Rotation cannot retract network sends/effects.
+
+Actions `DispatchScopes.create(repo, %{id: uuid})` starts epoch0;
+`rotate(repo, %{id: uuid, expected_epoch: epoch})` advances it, with transaction
+participants `create_in_transaction/2`, `rotate_in_transaction/2` and
+`reauthorize_in_transaction/2`. Reauthorization requires `scope_id`, `from_epoch`,
+`to_epoch`, `operation_id`, `attempt_id`, `description_digest`, `expected_version`
+and `attempt_version`; only unaccepted prepared attempts at the old binding qualify.
+The returned Operation lock_version/epoch must replace stale prepared bindings.
+There is no business retry or exactly-once promise.
+
+Acceptance uses Operation CAS independently of Agent position, with explicit Agent
+consumption left to orchestration. Failed/duplicate claims cannot accept Results;
 late receipts preserve evidence without replacement or a second sink completion.
 See [Runtime integration API](../../../apps/beamlet_runtime/README.md).
 
@@ -195,6 +235,9 @@ fail startup. These bounds do not enforce a hard RSS cap or hostile-node sandbox
 | Unrelated crash, even after cancel request | error / `:worker_lost` |
 | Accepted racing success | remains successful |
 | Malformed/oversize handler output | explicit invalid-result error |
+| Malformed supplied prepared identity/changed description or versions at submit | `:invalid_operation`; no new prepare |
+| Scope epoch rotated before claim | Actions `:stale_epoch`; no dispatch |
+| Locked expected Operation or attempt CAS mismatch | Actions `:conflict`; no dispatch |
 | Ref expired/shared infrastructure restarted | status unavailable; no reconstruction |
 
 ### 5. Good/Base/Bad Cases
@@ -208,6 +251,11 @@ accept a late mismatched Result, or describe worker death as external rollback.
 ### 6. Tests Required
 
 Preserve Actions validation and Runtime lifecycle/composition/review tests. Assert
+Actions-only authority schema and generic non-model/tool Handler execution through
+journal/evidence/accept and reopened facts. Assert forged prepared fields and stale
+refreshed bindings refuse. Control actual PG locks to cover restore-first/claim-first
+and acceptance-before-claim; preserve no-Agent dependency and fresh-VM no-Repo checks.
+Assert
 whole-envelope byte limits, all-pool capacity, task-start failures, live auxiliary
 progress/helper cleanup, membership leave invalidation, malformed reports,
 idempotent cancellation and unrelated-crash distinction, terminal identity/races,

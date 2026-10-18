@@ -4,7 +4,10 @@
 
 `.editorconfig` specifies UTF-8, LF, two-space indentation, final newline, and no
 trailing whitespace. Root `.formatter.exs` includes root Mix/config/benchmark
-files and delegates to `apps/*`. Child formatters cover Elixir source/tests;
+files and delegates to `apps/*`. Each new child MUST have its own `.formatter.exs` for root delegation to cover it.
+Both persistence domain apps import Ecto/SQL and use the established Storage input
+patterns. A passing root check with a missing child formatter proves no coverage
+of that child (independent review F2). Child formatters cover Elixir source/tests;
 `apps/beamlet_app_web/.formatter.exs` imports Phoenix and uses
 `Phoenix.LiveView.HTMLFormatter` for HEEx. Use those formatters rather than
 reformatting by hand.
@@ -20,8 +23,7 @@ domain typing or documentation policy. Web setup belongs in
 ## Commands and Their Scope
 
 Check executables and dependencies before promising a passing check. `README.md`
-uses `nix develop`; `flake.nix` selects OTP 29 and Elixir 1.20. The five non-web
-manifests require Elixir `~> 1.20`; the web manifest still says `~> 1.17`.
+uses `nix develop`; `flake.nix` selects OTP 29 and Elixir 1.20. Backend manifests require Elixir `~> 1.20`; the web manifest still says `~> 1.17`.
 Use the umbrella toolchain rather than assuming the web lower bound suffices.
 
 Run these from the repository root unless noted:
@@ -79,14 +81,34 @@ exit 0 with no findings. Keep it that way, and keep the remedy a refactor:
   `@moduledoc false` on test-support modules is expected.
 - Refactoring must be behaviour-equivalent: no schema/migration, transaction/CAS/
   admission, public function signature, error reason or test-assertion change.
-  Test counts are the guard (umbrella 439 passed/49 excluded, storage suite 59/13);
-  a lower count or a removed assertion means the refactor changed the contract.
+  Audit assertion ownership when splitting suites; a changed count alone cannot
+  establish parity. Historical cleanup counts were umbrella439/49 excluded and
+  Storage59/13; current ownership/accounting is in the independent review.
 - Verify with `mix format --check-formatted`, `mix compile --warnings-as-errors`,
   `mix test --seed 631927`, `mix credo`, `mix credo --strict --all`, `mix sobelow`,
   `mix gettext.extract --check-up-to-date`, `mix dialyzer` and
   `bash scripts/deployment/durable-e2e.sh`; the initial cleanup run recorded
   44 findings under the default profile (exit 12) and 106 under `--strict --all`
   (exit 14) before the refactor.
+
+## Checked format3 migration evidence
+
+The authoritative [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md)
+records the corrected full candidate, exact per-app/adapter accounting, commands,
+retained logs and AC1–AC8 assessment. Ordinary552/37 excluded, named587/2 excluded
+(the separately executed E2E phase tags), and actual Agent PG109 passed. Foundation:
+10 SQLite +2 PG +4 codec +1 fresh-VM; Actions:5 SQLite authority +7 PG authority +5
+SQLite journal; Agent Storage:17 dataset +23 SQLite domain +24 PG domain. These are
+executed owning suites, not inferred coverage or a union of partial runs.
+Warning-fatal compile, expanded root format, strict Credo, existing-PLT Dialyzer
+(0 errors/0 skipped), Sobelow/catalogue, fresh releases and two-process E2E passed.
+F1 requires strict JSON safe normalization in both read AND write facades; see
+[Error Handling](./error-handling.md#scenario-strict-persisted-json-failure). F2 is
+child formatter coverage above. Neither has a remaining blocker. Failed original
+logs remain failures; earlier evidence in this file is historical to its stage.
+No LSP-clean, physical-host, power-cut or provider-execution claim follows.
+Markdown-only synchronization checks links/source signatures/whitespace and does
+not manufacture new application gate runs.
 
 ## Tests to Follow and Limits to Preserve
 

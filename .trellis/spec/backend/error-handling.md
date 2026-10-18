@@ -93,3 +93,60 @@ and client/server disconnection notices with reconnect text. Those UI notices ar
 separate from HTTP status responses and have no focused component tests today.
 When changing them, add a test for the changed behavior rather than inferring
 coverage from the renderer tests.
+
+## Scenario: strict persisted JSON failure
+
+### 1. Scope / Trigger
+
+Use when changing Ecto JSON types or domain read/write facade exception boundaries.
+Corrupt stored bytes can cause Ecto to raise an ArgumentError containing field data.
+A write transaction can READ those bytes during prepare replay, claim, evidence or
+accept; read-only normalization alone leaves the write facade unsafe (review F1).
+
+### 2. Signatures
+
+`Beamlet.Storage.Transaction.read(fun)` recognizes foundation JSON loads.
+`Beamlet.Actions.Storage.Read.read(fun)` adds Actions JSON.
+`Beamlet.Agent.Storage.Read.read(fun)` adds Agent and Actions JSON.
+Both domains' `Records.transact(repo, fun)` rescue ArgumentError through the local
+Read classifier, reraising with the original stacktrace for precise recognition.
+
+### 3. Contracts
+
+Normalize only if the FIRST frame matches
+`{Ecto.Repo.Queryable, :struct_load!, _, _}`, message starts `"cannot load "`, and
+contains the exact own parameterized-type prefix `" as type #Beamlet.Storage.JSON<"`,
+`" as type #Beamlet.Actions.Storage.JSON<"`, or `" as type #Beamlet.Agent.Storage.JSON<"`
+as permitted by the classifier above. Foundation must not name domain JSON types.
+Return safe `{:error, :invalid_data}` without raw field bytes; writes roll back.
+Preserve unrelated ArgumentError/RuntimeError programmer exceptions and stacktraces.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Exact Ecto struct-load failure for supported strict JSON type | `{:error, :invalid_data}`; no raw data or repair |
+| Same exception during write facade read | same safe result; entire write rolled back |
+| Unrelated frame, type or programmer ArgumentError | reraises original exception |
+| Driver read or uncertain write failure | existing storage_unavailable/storage_outcome_unknown contract |
+
+### 5. Good/Base/Bad Cases
+
+Good: corrupted description or budget returns invalid_data from both fetch and
+transactional replay. Base: valid JSON roundtrips unchanged. Bad: broadly rescue
+all ArgumentError or match only the message without the exact Ecto frame/type.
+
+### 6. Tests Required
+
+Actions `test/actions_contract_test.exs` shared SQLite/PG regression corrupts stored
+description and checks prepare replay/claim/accept; corrupt attempt budget checks
+evidence. Assert rollback, safe atoms and unrelated ArgumentError propagation.
+Preserve Agent malformed-read/write coverage and optional checkpoint fallback.
+See the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md)
+for the original failing reproduction and final fixed gates.
+
+### 7. Wrong vs Correct
+
+Wrong: wrap only read APIs, or rescue every ArgumentError as invalid_data.
+Correct: both read and write facades use the same narrowly scoped owning classifier,
+with the original stacktrace and transaction rollback intact.

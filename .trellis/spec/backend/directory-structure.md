@@ -4,7 +4,7 @@
 
 Root `mix.exs` sets `apps_path: "apps"`. There is no root `lib/`, `test/`, or
 `priv/`; application code and tests live under each child app (for example,
-`apps/beamlet_app_web/`). All eleven child manifests share root build, dependency,
+`apps/beamlet_app_web/`). All thirteen child manifests share root build, dependency,
 lockfile, and configuration paths.
 
 | Application | Implemented source today |
@@ -17,18 +17,24 @@ lockfile, and configuration paths.
 | `beamlet_node` | Explicitly supervised role composition, Routes/Provider/Runtime; shared trusted-name/connect/filter API in `Beamlet.Node.Cluster`, bounded discovery in `Beamlet.Node.Agents`; no Application callback |
 | `beamlet_cli` | Opt-in interaction host, terminal Client and bounded Command/Session/Renderer/Runner; foreground release |
 | `beamlet_app_server` | Opt-in Application, startup configuration policy and owned one-shot peer bootstrap; authority/executor server release |
-| `beamlet_storage` | Opt-in Ecto datasets, transactional Agent/Operation records, executor journal, history and explicit migration/operator tooling; no Application callback |
+| `beamlet_storage` | Generic opt-in Ecto resources, format3 installation, transactions, canonical JSON and artifacts; no Application callback |
+| `beamlet_actions_storage` | Neutral Operation/attempt/evidence/accepted Result, Operation events, dispatch scopes and executor journal; no Application callback |
+| `beamlet_agent_storage` | Agent/control/events/commands/checkpoints, immutable associations, inheritance/history and read-only Operation projection; no Application callback |
 | `beamlet_i18n` | Shared Gettext backend `Beamlet.I18n`, `Beamlet.I18n.Locale` canonicalisation/default, `Beamlet.I18n.Vocabulary` and the `Beamlet.I18n.Catalogue` declaration of shared msgids; `priv/gettext` shared catalogue |
 | `beamlet_app_web` | Phoenix endpoint, router, page/error renderers, components, telemetry; opt-in Host/Bootstrap, immutable Presets, Agents adapter and ephemeral Handles; `Beamlet.Web.Locale` request/LiveView locale resolution |
 
-Runtime declares `{:beamlet_actions, in_umbrella: true}`, `{:beamlet_storage, in_umbrella: true}` and OTP `:crypto`.
+Runtime directly declares Actions, Storage, Actions Storage and Ecto, plus OTP `:crypto`; it has no Agent dependency.
 Harness declares exact Req 0.7.5 and direct Jason; it has no sibling dependencies.
 Actions declares no siblings; dedicated credentials use OTP JSON and generic Runtime
 forwarding. Harness.Model owns independent neutral validation/registration; Agent's
 ModelBinding separates portable child validation from authority adapter validation.
-Agent declares Core/Actions/Runtime/Harness; Core declares Harness/Jason only; Node declares
-Actions/Runtime/Harness/Agent. Neither core closure includes Phoenix. Actions, Agent,
-Harness, Runtime and Node have no Application callback. CLI, server and Web declare
+Agent directly declares Core/Actions/Runtime/Harness, Agent Storage, Storage, Ecto and Jason;
+Core declares Harness/Jason only. Node directly declares Actions/Runtime/Harness/Agent,
+all three persistence libraries and Ecto. Actions Storage depends on Actions and
+Storage; Agent Storage depends on Actions Storage and Storage, never Agent/Core/
+Runtime/Node/hosts. Both domain libraries directly declare Ecto/SQL/drivers/Jason.
+No backend library closure includes Phoenix. Actions, Agent, Core, Harness, Runtime,
+Node and all three persistence libraries have no Application callback. CLI, server and Web declare
 callbacks in their own `mix.exs`. CLI directly declares Node/Agent, and test-only
 Runtime/Harness/Jason dependencies for its migrated HTTP integration fixture.
 Server directly declares Node; it calls business APIs only through Node composition.
@@ -51,23 +57,22 @@ cross-physical-host acceptance was removed by the user; physical execution is un
 [Operation Runtime](./operation-runtime.md) and [Native Harness](./harness-providers.md)
 for actual APIs. Do not infer other callable APIs from the architecture.
 
-## Storage App
+## Persistence Libraries
 
-`apps/beamlet_storage` is an internal Ecto library owned by stage A of the
-[persistence plan](../../../docs/architecture/persistence-delivery.md). It declares
-`ecto`, `ecto_sql`, `ecto_sqlite3`, `postgrex` and `jason` directly (no sibling
-dependency and no override) and has **no** Application callback: loading it starts
-no Repo, creates no database file and runs no migration. Repos are started
-explicitly through `Beamlet.Storage.Dataset` by an embedding supervisor or a test.
+Foundation `apps/beamlet_storage` declares Ecto/SQL/SQLite/Postgrex/Jason directly,
+with no sibling dependency. `lib/beamlet/storage/` contains neutral Repos, Dataset,
+Installation, Migrations, Connections, Transaction, Codec/JSON, Artifacts/References,
+Host and Admission. Foundation migration code is in `migrations.ex`; domain
+migration modules live under each owning library's `lib/beamlet/*/storage/migrations/`.
+Foundation owns no domain schema, events or profile selection.
 
-Layout: `lib/beamlet/storage/*.ex` (Repos, `Dataset`, `Connections`,
-`Transaction`, `Codec`/`JSON`, `Migrations`, `Artifacts`, `TerminalArtifacts` and
-the record facades `AgentRecords`/`OperationRecords`/`ExecutorJournal`),
-`lib/beamlet/storage/schema/` (Ecto schemas), `priv/{authority,journal}_migrations/`,
-and `test/beamlet/storage/` plus `test/support/contract_fixture.ex`. The shared
-adapter contract suite is `test/beamlet/storage/storage_contract_test.exs`; it needs
-an isolated PostgreSQL cluster via `BEAMLET_PG_SOCKET_DIR`/`BEAMLET_PG_PORT` and must
-not be reported as passing when that adapter did not run.
+Actions and Agent persistence use `lib/beamlet/actions/storage/` and
+`lib/beamlet/agent/storage/`, each with local schemas/codecs/records/profiles and
+owning tests. Agent `Schema.Operation` reads the Agent-owned SQL projection;
+neutral Operation writes belong to Actions. Product profile selection, Runtime
+wiring and the explicit operator/Mix task belong to `Beamlet.Node.Storage`.
+Loading any library starts no Repo. See [State and Persistence](./database-guidelines.md)
+for executable descriptors, installation, ownership and adapter test contracts.
 
 ## OTP Ownership
 

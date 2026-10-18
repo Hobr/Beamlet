@@ -159,8 +159,8 @@ raw errors or config. Failure leaves local service available. Task/controller/he
 ownership is cleaned on host loss/deadline; an initiated OTP handshake may complete
 later. No background reconnect or business replay exists.
 
-BEAMLET_BACKEND_BUILD=1 compiles the seven backend libraries (five core,
-`beamlet_storage` and `beamlet_i18n`) plus both hosts under isolated _build/backend,
+BEAMLET_BACKEND_BUILD=1 compiles ten backend libraries (Actions, Core, Agent,
+Harness, Runtime, Node, the three persistence libraries and i18n) plus both hosts under isolated _build/backend,
 excluding Web. Each release excludes the other host. All three releases use Mix's
 default bundled `config/runtime.exs` (`releases/<version>/runtime.exs`); there is no
 custom runtime_config_path, config provider, external-config discovery, CLI
@@ -207,18 +207,31 @@ physical deployment or paid provider evidence is implied.
 
 `storage:` is optional server application configuration in shared config or the
 packaged release's bundled `runtime.exs`; it is not a separate external document.
-The server release ships `beamlet_storage`/Ecto/Exqlite/Postgrex in its
-closure and opens exactly the datasets the configured roles need. The CLI host is
+The server release ships all three callback-free persistence libraries plus Ecto/Exqlite/Postgrex in its
+closure. `Beamlet.Node.Storage` selects explicit Agent authority and Actions journal
+format3 profiles and opens exactly the datasets the configured roles need. Generic
+Storage.Host manages only explicit descriptors/owned resources; default Admission
+covers both authority and required journal. See [State and Persistence](./database-guidelines.md)
+for profile identities and exact error contracts. The CLI host is
 fixed interaction-only: no database, no storage key, release entrypoint unchanged.
-`Beamlet.Storage.Host.status/1` reports durable admission (a live format check plus
+`Beamlet.Node.Storage.status/1` reports durable admission (a live format check plus
 a real rolled-back write) separately from Node/Repo readiness; durable
 submit/accept are refused while it is off, and recovery re-admits on a fresh probe
 without a restart. Migration is the explicit `mix beamlet.storage.migrate` (or
-`Beamlet.Storage.Operator.initialize/2` via release `eval`) operator action; boot
+`Beamlet.Node.Storage.Operator.initialize/2` via release `eval`) operator action; boot
 never migrates, creates or repairs a dataset. `$REL start` is foreground;
 `$REL rpc`, `pid`, and `stop` are the native controls. The durable e2e fixture
 also uses a separate Erlang RPC node; its historical control-port workaround
 does not replace the native copied-release controls gate.
+
+Fresh copied artifacts must include `beamlet_storage`, `beamlet_actions_storage`
+and `beamlet_agent_storage` with no Application callbacks and no removed Storage
+domain facade/Repo beam files. Actions-only dependency startup excludes Agent/Node/
+hosts; Agent Storage excludes Agent/Core/Runtime/Node/hosts. Neither starts a Repo.
+Dataset format3 does not change Agent trace format2. Full fresh Server/CLI/Web
+release, named native controls and two-process durable E2E results are recorded in
+the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md).
+Earlier gate logs/counts below remain historical evidence for their stated stages.
 
 ## 6. Tests and evidence boundaries
 

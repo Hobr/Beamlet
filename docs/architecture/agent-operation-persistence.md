@@ -1,6 +1,6 @@
 # Agent / Operation 持久化设计
 
-状态：已由 durable-rebuild 总任务完成代码实现与独立验收。authority 格式 2、journal 格式 1；Agent 事件归约、引用上下文、模型/工具统一关联、暂停恢复、引用式 fork 和离线导出已接入。实际 API、预算及验证边界见[存储指南](../../.trellis/spec/backend/database-guidelines.md)、[Agent 契约](../../.trellis/spec/backend/agent-durable.md)与[引用契约](../../.trellis/spec/backend/durable-references.md)。
+状态：Storage/Actions/Agent 持久化已分层实施，整体集成验证与独立 Check 结果见任务 evidence。数据集统一 format3；Agent trace envelope 保持 format2。旧 authority2/journal1 明确拒绝，不迁移、不修复、不清空。
 
 本设计取代上一版“自足消息检查点为主要恢复依据”的方案。项目处于早期，实现不兼容旧 API、检查点或数据格式；旧 authority 迁移和兼容路径已删除，已有数据库只拒绝、不自动转换或删除。采用历史记录与检查点，沿用 Agent / Operation / Execution / Result，不引入通用 Workflow、Task、Branch、Document 或图执行引擎。
 
@@ -57,7 +57,7 @@ flowchart LR
 - Harness 定义原生模型、Tool、消息契约及提供者实现，不管理持久编排或节点放置。
 - Agent 拥有输入、配置、上下文选择、编排、纯 reducer、fork 和继续策略。
 - Runtime 拥有 Operation/Execution 状态、目标选择、本地/远端执行、取消、证据核对与 Result 采纳。
-- Storage 提供 AgentRecords、OperationRecords、ExecutorJournal 等具体事务入口和严格 codec；不调用模型、Tool、网络或解释 prompt。
+- 基础 Storage 提供中立数据集、连接、事务、canonical JSON 和共享内容；Agent Storage 提供 AgentRecords/来源/继承，Actions Storage 提供 OperationRecords/ExecutorJournal 与各自领域 codec。所有持久化入口不调用模型、Tool、网络或解释 prompt。
 - Node 与 Server/Web/CLI 宿主显式接线；加载库不启动 Repo、创建数据集或执行 migration。
 
 Agent 依赖稳定 Operation 身份、accepted Result 和统一不确定性语义，不依赖 Gateway PID、节点发现、报告租期、executor_boot_id 或具体路由。模型/Tool 的能力和环境需求由集成层映射，目标选择归 Runtime。
@@ -105,20 +105,23 @@ Agent 的事件 seq 是提交顺序，不预留尚未提交的结果事件位置
 
 ## 5. 数据布局与身份
 
-优先复用已有八张权威业务表，而不是为图、请求快照、上下文再建并行事实库：
+format3 权威数据集按所属组件安装以下事实表；不增加平行 transcript 事实库：
 
 | 表 | 目标职责 |
 | --- | --- |
 | agents | 身份、definition 版本、generation、lock_version、已提交 history_seq、可选投影/检查点指针 |
-| events | Agent 自身输入与编排事件；独立 Operation 的历史可使用其自身 scope |
+| agent_events | Agent 自身输入与编排事件 |
+| operation_events | 中立 Operation 的准备与采纳历史 |
+| dispatch_scopes | 不透明 scope 身份与单调 epoch |
+| agent_operations | Agent owner/turn/step/role/ordinal、generation、prepared_seq 与有序 sources |
 | checkpoints | 绑定 through_seq 的可丢弃控制投影缓存 |
-| operations | 所有 LLM/Tool 的不可变请求及来源、owner/turn/step、accepted Result |
+| operations | 中立不可变请求、scope/epoch、accepted Result 与版本 |
 | executions | 稳定 attempt、executor/boot、prepared/send_claimed、预算和观察 |
 | execution_evidence | 执行回执、内容/摘要、来源与显式核对信息 |
 | commands | scope/command_id、参数摘要与提交响应，保证命令幂等 |
 | artifacts | 被输入、Operation、Result 引用的不可变内容及摘要 |
 
-executor 保留 journal_attempts；两类数据集另有 storage_metadata 与迁移版本表。表数不是形式约束，最终 schema 由实现任务证明；不能重复维护 messages 表、event 正文和 Agent transcript。
+executor 保留 journal_attempts；所有数据集共享 artifacts 内容表，另有 storage_metadata 与迁移版本表。表数不是形式约束，最终 schema 由实现任务证明；不能重复维护 messages 表、event 正文和 Agent transcript。
 
 所有业务身份使用不可复用稳定字符串 ID。PID、monitor、timer、端口、闭包、provider session、活 Ref 和节点本地容量账本不落库。内容遵守字符串键 JSON、版本、深度/大小限制；大内容引用 artifact；摘要验证与引用提交保持同库原子。秘密字段检查不是通用文本秘密扫描器，备份和内容权限仍需保护。
 
@@ -212,3 +215,23 @@ Fork 仍从安全控制位置创建独立新 Agent，不创建 Branch，不重�
 Ecto.Multi 仍是本地提交屏障；不照搬 JSONL SessionHandle/flush。借鉴 DeepSeek-Harness 的事件优先、先记后做和显式中断，但其信息来自用户提供的总结，未核验源码或故障保证。外部系统不能替代 Beamlet 的双库和分布式证据。
 
 实际 API、schema、事件枚举和预算已在实现任务中收敛，见[交付验收](./persistence-delivery.md)与各应用 README。普通上下文策略已实现；检索/摘要策略、自动 GC、跨权威内容迁移及图 UI 仍是未来独立需求。新格式初始化保持显式运维操作。
+
+## 数据集 format3 与职责边界
+
+基础 Storage 只拥有连接、事务、显式 descriptor 安装核验与共享 artifact 内容。
+`Beamlet.Actions.Storage` 拥有 neutral Operation/attempt/evidence/result、scope/epoch 和 journal；
+它不依赖 Agent。`Beamlet.Agent.Storage` 拥有 Agent/events/checkpoint/command、
+agent_operations 关联、来源授权和继承。Agent 与 Actions 通过同一 Repo 的事务 participant
+联合提交；prepare 任一参与者失败全部回滚。restore 同事务推进 generation/epoch，
+claim 只查询中立 scope；锁序 Agent -> scope -> Operation。晚到证据不改变已采纳结果。
+
+`Beamlet.Node.Storage` 显式选择 Agent authority profile（migrations1/100/300）和
+Actions journal profile（migrations1/200），再交给 generic Host 管理资源。
+`Beamlet.Node.Storage.Operator.initialize/2` 和保留名称的
+`mix beamlet.storage.migrate` 是唯一产品显式新库初始化入口。Server 可选启用，Node 无 callback，
+普通加载不启动 Repo。Host 不迁移，不自动重开或恢复；缺失与拒绝保持可见安全原因，
+停止的 Repo 报 unavailable；默认 Admission gate 覆盖本 VM 所有配置的数据集。
+
+Actions-only 嵌入者直接使用 Actions profiles，不需要 Node/Agent。Agent Storage 库不依赖
+Agent/Core/Runtime/Node/host。Dataset manifest 精确冻结 profile、组件版本和有序 migration
+ID/module identity，不保存 migration 源码 hash；已发布 migration 必须保持不变。

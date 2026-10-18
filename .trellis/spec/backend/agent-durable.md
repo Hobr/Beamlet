@@ -1,14 +1,16 @@
-# Event-reduced Agent orchestration (C)
+# Event-reduced Agent orchestration
 
 ## 1. Scope / Trigger
 
-Use for authority format 2 Agent input, preparation, consumption, inspect and
-paused continuation. Sources: `apps/beamlet_agent/lib/beamlet/agent/{durable,
-reducer,loader,context_builder,server}.ex`. C replaces the old durable message
-checkpoint adapter. D adds [direct reference fork/history/export](./durable-references.md)
-and format2 host e2e integration. The reducer now also owns a flat inheritance
-manifest, fork provenance and environment_risk, without inherited consumption.
-Independent product acceptance remains separate from implementation-stage gates.
+Use for format3 Agent persistence, input, preparation, consumption, inspect and
+paused continuation. Agent Storage owns records, events, commands, sources and
+associations; Actions Storage owns neutral execution facts. Sources include
+`apps/beamlet_agent/lib/beamlet/agent/{durable,reducer,loader,context_builder,server}.ex`
+and `apps/beamlet_agent_storage/lib/beamlet/agent/storage/`. See
+[State and Persistence](./database-guidelines.md) for profiles/installation and
+[direct reference fork/history/export](./durable-references.md) for trace format2.
+Independent final evidence is in the
+[independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md).
 
 ## 2. Signatures
 
@@ -44,7 +46,13 @@ executor_boot_id: uuid}`. Credentials remain transient in the live model binding
 
 ## 3. Contracts
 
-Reducer version 1 consumes Storage event schema version 1. State owns references,
+`AgentRecords.prepare_operations(repo, attrs)` requires exact atom keys `command_id`,
+`position`, `turn_id`, `operations`, `orchestration`. Position is the Agent CAS
+identity below; operations is1..8 `%{operation: attrs, attempt: attrs}` members.
+Domain schemas/codecs validate the association fields and body-free control;
+Actions validates its neutral portion again inside the participant.
+
+Reducer version 1 consumes Agent Storage event schema version 1. State owns references,
 turn/step/continuation/generation, pending ordinal/step identities, consumed refs,
 resolutions and pause/block facts; it owns no request/reply bodies. Live Durable
 projects only returned committed events. Unknown writes read command_response by
@@ -55,7 +63,7 @@ checks payload keys, digest shape, envelope linkage, first creation event, step/
 ordinal/turn identity, pause state and role-specific continuation/consumption.
 
 Input is exactly `%{"text" => utf8}` at most 65536 bytes, checked before the
-Storage transaction and in replay. Preparation is the atomic AgentRecords batch
+Agent Storage transaction and in replay. Preparation is the atomic `Beamlet.Agent.Storage.AgentRecords.prepare_operations/2` batch
 API for both model and tool work. Only after commit may OperationOwner call public
 Runtime.submit with `prepared: member`. Acceptance does not advance Agent seq.
 Consumption reads full accepted Results from authority, then commits references
@@ -63,6 +71,14 @@ and join position. Tools join by original ordinal, independently of acceptance
 order. Complete model replies and full sibling batches validate before dispatch.
 The executable byte ceiling includes configuration and policy metadata; recheck
 that full model Operation before preparation, not only the earlier bare request.
+
+Agent Storage `Schema.Operation` is a read-only projection through its
+`agent_operation_projections` SQL view, joining Agent `agent_operations` with
+Actions `operations`. Owner/turn/step/role/ordinal/tool-call/generation/prepared_seq
+and ordered sources belong to the association. No projection writes may substitute
+for Actions APIs. Agent events are `agent_events`; preparation/acceptance facts
+are separate `operation_events`. Agent Storage `History.operation_event/3` projects
+an Actions event with scope_id for trace readers; it never merges the logs.
 
 ContextBuilder ordinary policy 1 materializes original inputs and previously
 consumed accepted Results in timeline order. Its policy metadata fixes policy/
@@ -102,9 +118,21 @@ fencing local helpers is not proof of remote/upstream termination. An identical
 Durable.restore command at the same activation head returns the same paused
 control without another generation. Live continuation returns owners_retiring
 without committing while the previous Server-owned groups remain inventoried.
-Explicit continuation adopts only the pending prepared/accepted identities into
-the new generation transactionally; claimed unresolved attempts refuse. Old
-prepared generations cannot claim. Late acceptance cannot itself advance Agent.
+Agent create/fork create an opaque dispatch scope in the same transaction. Restore
+locks Agent then rotates scope as generation advances. Global lock order is
+Agent -> scope -> Operation; Actions claim never reads/locks Agent. Preparation
+uses Actions `prepare_in_transaction/2` on the SAME Repo, validates sources/control,
+and writes neutral Operation/attempt/event, immutable Agent association, Agent events
+and original command response in one outer commit. A failure in any batch member
+rolls everything back; participant errors must propagate to outer rollback.
+
+Explicit continuation adopts accepted output by updating association eligibility
+only; it does not reauthorize accepted execution. Pending prepared work calls
+Actions reauthorization at the new scope epoch in that same transaction. Claimed
+unresolved attempts refuse. Fetch refreshed Operation lock_version and scope/epoch
+after continuation for Runtime's exact prepared binding; command replay still
+returns its original saved response. Ordered sources and logical description stay
+fixed. Old prepared generations cannot claim. Late acceptance cannot itself advance Agent.
 Uncertain/cancelled/deadline/unknown accepted results require an explicit decision
 naming the pending operation and confirmed_failed/confirmed_executed; consumption
 then uses evidence_resolution without changing the accepted Result. A decision
@@ -131,7 +159,7 @@ nested-delegation lifecycle behavior is retained; this is not durable recovery.
 | Missing, extra, reordered or substituted context material / incomplete accumulator | invalid_reference |
 | Invalid historical model reply before a later missing source | invalid_reply; no read of later source |
 | Invalid input shape, encoding, >64 KiB | invalid_data before commit |
-| Malformed stored JSON refused by Ecto's Storage.JSON type | invalid_data on read; no repair |
+| Malformed stored JSON refused by owning strict JSON type | invalid_data on read and write facade; rollback, no repair |
 | Missing/invalid checkpoint | full-history fallback |
 | Corrupt accepted/body/source digest | invalid_reference |
 | History count/bytes/gap | history_limit_or_gap |
@@ -157,7 +185,7 @@ only after reducer failure; that leaves persisted and live positions inconsisten
 `durable_agent_test.exs` runs SQLite by default; set
 `BEAMLET_AGENT_TEST_ADAPTER=postgres`, `BEAMLET_PG_SOCKET_DIR`, optional
 `BEAMLET_PG_PORT/BEAMLET_PG_USER` for actual isolated PostgreSQL datasets. It shares
-Storage's throwaway database fixture and uses a real SQLite executor journal.
+Agent Storage's throwaway database fixture and uses a real SQLite executor journal.
 Assert zero model calls during inspect/replay, accepted resume without reexecution,
 claimed refusal, consumed reply/tool resume, exact 64 KiB and native message/byte
 limits, unconsumed-source exclusion, corrupt-acceptance refusal, multi-page replay,
@@ -172,7 +200,7 @@ Cover definite model-error continuation, changed dependencies with zero sibling
 dispatch, memory unknown model/Tool blockers, suspended old owner fencing and
 actual inventoried group DOWN before activation. Malformed stored JSON must return
 a safe error, not Ecto's raw field-bearing ArgumentError; normalize only the strict
-Storage.JSON struct-load failure and re-raise unrelated programmer errors. Assert
+owning JSON struct-load failure (see [Error Handling](./error-handling.md#scenario-strict-persisted-json-failure)) and re-raise unrelated programmer errors. Assert
 effective configuration versions change for model/schema/profile changes but stay
 stable across inputs/arguments/credentials, including metadata on actual prepared
 model/Tool requests. Keep Agent/Node actual helper DOWN
@@ -207,7 +235,7 @@ An overflow at a valid prefix must win over a missing later source.
 
 `beamlet_agent_core` owns `Beamlet.Agent.Core.Reducer`, `Context` and `Decision`.
 Core has no Agent/Runtime/Storage/Ecto dependency or external effects. The Agent
-Reducer facade validates persisted envelopes with Storage.Codec/Events and passes
+Reducer facade validates persisted envelopes with foundation Codec and Agent Storage Events and passes
 the canonical input digest as transient normalized data; persisted state keys and
 versions remain unchanged. Payload depth32 is measured from the payload root,
 independently of event and replay containers. Inherited input/result entries have

@@ -1,6 +1,6 @@
 # Backend Development Guidelines
 
-Beamlet has an eleven-application Elixir Mix umbrella with implemented generic Actions
+Beamlet has a thirteen-application Elixir Mix umbrella with implemented generic Actions
 contracts, an opt-in distributed Runtime and independent native Harness providers.
 Agent implements bounded asynchronous orchestration with one immutable Agent-owned
 model binding; Harness owns neutral model/history contracts and explicit provider
@@ -14,11 +14,10 @@ These English guidelines describe checked-in behavior; source paths below are
 relative to the repository root.
 
 The revised [durable design](../../../docs/architecture/agent-operation-persistence.md)
-has format2 Storage/Runtime, event-reduced Agent control and direct reference
-fork/history/export integration. See [Event-reduced Agent](./agent-durable.md) and
+uses format3 explicit foundation/Actions/Agent installations, event-reduced Agent
+control and direct reference fork/history/export with trace format2. See [Event-reduced Agent](./agent-durable.md) and
 [Durable references](./durable-references.md). No message-checkpoint/transcript-copy
-API or old-format fallback exists. Final independent product acceptance is separate
-from the implementation gates recorded in D's handoff.
+API or old-format fallback exists. Checked migration results and evidence limits live in the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md).
 
 ## Pre-Development Checklist
 
@@ -49,7 +48,7 @@ commands for the change are identified.
 | [Directory Structure](./directory-structure.md) | Actual app boundaries, supervision, Phoenix request flow, file placement |
 | [Operation Runtime](./operation-runtime.md) | Generic contracts, opt-in supervision, admission, events, limits and failure semantics |
 | [Native Harness](./harness-providers.md) | Model/Tool contracts, schema/history validation, HTTP and trusted workspace boundaries |
-| [Event-reduced Agent](./agent-durable.md) | Format 2 pure reducer, bounded loader, fixed-source context, paused continuation and C validation |
+| [Event-reduced Agent](./agent-durable.md) | Agent-owned persistence, pure reducer, bounded loader, fixed-source context and paused continuation |
 | [Durable references](./durable-references.md) | Same-authority fork, immutable closure, risk, fixed history/export and offline verification |
 | [Agent and Node](./agent-orchestration.md) | Explicit authority, bounded orchestration, lifecycle ownership, subscriptions and roles |
 | [Web Management](./web-management.md) | Read-only nodes/presets/diagnostics, bounded refresh and explicit unknown facts |
@@ -58,7 +57,7 @@ commands for the change are identified.
 | [Internationalisation](./i18n.md) | Shared vs surface catalogues, locale precedence, default Chinese, extraction and ownership invariants |
 | [Live Observation](./live-observation.md) | Opt-in Agent display/metadata, safe report ages, Node readiness and bounded aggregation |
 | [Backend CLI and Release](./backend-release.md) | CLI bounds, isolated packaging/config, named control ports and deployment evidence |
-| [State and Persistence](./database-guidelines.md) | Stage-A `beamlet_storage` tables/transactions, cookie sessions, configuration and storage pitfalls |
+| [State and Persistence](./database-guidelines.md) | Format3 descriptors/profiles, foundation vs domain ownership, transactions, host composition and sessions |
 | [Error Handling](./error-handling.md) | OTP startup propagation, status renderers, component feedback and gaps |
 | [Quality Guidelines](./quality-guidelines.md) | Formatting, build/test/static-analysis commands, test examples and coverage limits |
 | [Logging and Telemetry](./logging-guidelines.md) | Request IDs, formatter, Phoenix/VM metrics, development diagnostics |

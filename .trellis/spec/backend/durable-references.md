@@ -2,10 +2,11 @@
 
 ## 1. Scope / Trigger
 
-Use when changing Agent/Storage inheritance, source validation, history cursors,
+Use when changing Agent/Agent Storage inheritance, source validation, history cursors,
 TraceSnapshot/TraceExport/TraceVerifier, or the durable Server e2e fixture. The
 [Agent README](../../../apps/beamlet_agent/README.md) is the detailed API inventory.
-A/B/C still own preparation/acceptance/consumption/no-replay semantics. This spec
+[Runtime](./operation-runtime.md) and [Agent durability](./agent-durable.md) own
+preparation/acceptance/consumption/no-replay semantics. This spec
 does not authorize another transcript, graph store, retries or old-format path.
 
 ## 2. Signatures
@@ -22,6 +23,14 @@ TraceExport.verify(directory) # offline, execution_authority="none"
 ```
 
 ## 3. Contracts
+
+Dataset container format3 is independent of the unchanged trace envelope format2.
+Agent Storage owns History/Inheritance, associations and the read-only SQL projection;
+Agent owns Loader/TraceSnapshot/TraceExport/TraceVerifier/offline verification.
+Actions owns neutral Operations and their separate preparation/acceptance event log.
+Trace readers use Agent Storage's projection and `History.operation_event/3` rather
+than the removed foundation domain facades. Core remains unchanged and performs no
+IO. See [State and Persistence](./database-guidelines.md) for installed table owners.
 
 Fork appends child created/forked/context.inherited only. It validates the selected
 reference timeline against source events transactionally, with source position
@@ -81,7 +90,7 @@ count inherited tokens as new usage, or overwrite an existing package to redact 
 ## 6. Tests Required
 
 Run fork_test/history_export_test on SQLite and the isolated PostgreSQL adapter
-(`BEAMLET_AGENT_TEST_ADAPTER=postgres` plus Storage fixture variables). Assert
+(`BEAMLET_AGENT_TEST_ADAPTER=postgres` plus Agent Storage fixture variables). Assert
 unchanged source rows, no cloned execution/dedupe, safe replay/changed-command
 refusal, retired-parent/chained fork, default risk/stale decision/exact acceptance,
 late output isolation, missing content, fixed history/Operation cutoffs across

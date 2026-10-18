@@ -1,6 +1,6 @@
 # State and Persistence
 
-Authority format2 / journal format1 contracts live in the Storage/Runtime app
+Dataset format3 foundation/domain contracts live in the Storage/Runtime app
 READMEs and [Event-reduced Agent](./agent-durable.md). Agent checkpoints contain
 control/references, never messages/assistant. Original input is committed before
 requests; acceptance digests are checked even for pending outputs. Reference fork
@@ -33,65 +33,177 @@ Runtime refs address live coordinators; status is unavailable after expiry or
 shared infrastructure loss. Do not turn retained Results/tombstones into replay or
 durable deduplication promises.
 
-## Implemented Storage Foundation (Stage A)
+## Scenario: explicit format3 installation and domain composition
 
-`apps/beamlet_storage` is an Ecto library for the persistence contract;
-Agent/Runtime durable transitions and server host wiring build on this foundation.
-Read `apps/beamlet_storage/README.md` before changing it. Established facts:
+### 1. Scope / Trigger
 
-- Authority tables: `agents`, `checkpoints`, `events`, `operations`, `executions`,
-  `execution_evidence`, `commands`, `artifacts`, plus the singleton
-  `storage_metadata` installation row and Ecto's `schema_migrations`. The executor
-  journal database has `journal_attempts` + `storage_metadata`.
-- Migrations are explicit and versioned: `Dataset.initialize/2` runs
-  `priv/authority_migrations/2_authority_v2.exs` (format2) or
-  `priv/journal_migrations/1_journal_v1.exs`; `Dataset.open/2` never migrates and
-  refuses a missing dataset, identity/role mismatch, backup marker, or newer
-  `format_version`/migration version. Downgrade raises by design.
-- Write entries are `Beamlet.Storage.{AgentRecords, OperationRecords,
-  ExecutorJournal}` only; each is one transaction (`Transaction.write/2`) with CAS
-  on `lock_version`, unique constraints as the concurrency fact, command identity
-  replay and no automatic retry. Do not expose Repos or raw SQL upward.
-- SQLite runs pool size 1, WAL, `synchronous=FULL`, `foreign_keys=ON`, immediate
-  write transactions, and a 2000 ms Exqlite busy handler; `PRAGMA busy_timeout`
-  reads 0 by design. PostgreSQL runs pool size 4 with `after_connect` checks of
-  `synchronous_commit`/`fsync`.
-- Contract tests: `apps/beamlet_storage/test/beamlet/storage/storage_contract_test.exs`
-  runs one shared assertion set on real SQLite files and on a real PostgreSQL
-  dataset (`test/support/contract_fixture.ex`); SQLite-only suites cover the
-  executor journal, codec and installation. Never report a skipped adapter as
-  passing.
+Use for dataset/schema, transaction, content or host changes. Foundation is
+`Beamlet.Storage`; Actions persistence is `Beamlet.Actions.Storage`; Agent
+persistence is `Beamlet.Agent.Storage`. Foundation knows neither domain.
+Read [Storage README](../../../apps/beamlet_storage/README.md) and
+[Agent Storage README](../../../apps/beamlet_agent_storage/README.md).
 
-## Implemented Durable Host Wiring (Stage F)
+### 2. Signatures
 
-`Beamlet.Storage.Host` is the only host wiring. `Beamlet.Server.configuration/1`
-accepts an optional trusted `storage:` block (`:adapter` `:sqlite` default or
-`:postgres`, `:database`, `:dataset_id`, `:journal` `[:database, :dataset_id,
-:peer_database]`, `:executor_id`); it opens only the datasets the configured roles
-need, mints one `executor_boot_id` per boot and exposes the durable wiring through
-`Host.runtime/1`. Absent `storage:` means no Repo and no database. Loading the
-library and the interaction-only/CLI hosts start nothing.
+```elixir
+Installation.validate(%{profile: "actions-authority", format_version: 3,
+  components: [Installation.foundation_component(), Profiles.authority_component()],
+  migrations: [Installation.foundation_migration(), Profiles.authority_migration()]})
+# :ok | {:error, :invalid_data}; Profiles = Beamlet.Actions.Storage.Profiles
+Dataset.initialize(repo, descriptor: descriptor, dataset_id: uuid, database: path,
+  peer_database: other_path) # {:ok, linked_pid} | {:error, reason}
+Dataset.open(repo, opts)   # same successful return; caller owns Repo shutdown
+Dataset.verify(repo, opts) # :ok | {:error, reason}; no installation
+Transaction.write(repo, fun_or_multi)
+Transaction.participate(repo, fun) # requires existing transaction on this Repo
+Codec.encode(value, max_bytes) # {:ok, canonical_json} | {:error, :invalid_data | :limit}
+Codec.decode(bytes, max_bytes)
+Codec.digest(value, max_bytes) # {:ok, lowercase_sha256_hex} | {:error, reason}
+Host.start_link(datasets: [%{key: :resource, repo: repo, options: opts}])
+Host.handles(host)
+Host.status(host)
+Admission.start_link([repo: repo, resources: [{other_repo, other_opts}]] ++ opts)
+Admission.status(gate) # fresh verification and rollback write probes
+Admission.consult(gate) # honors recorded failures
+Beamlet.Node.Storage.configuration(roles, storage)
+Beamlet.Node.Storage.datasets(roles, storage)
+Beamlet.Node.Storage.runtime() # {:ok, %{authority_repo:, journal_repo:, executor_id:, executor_boot_id:}}
+Beamlet.Node.Storage.Operator.initialize(roles, storage)
+# {:ok, %{authority: :installed | nil, journal: :installed | nil}} | {:error, reason}
+```
 
-`Beamlet.Storage.Admission` is durable admission, distinct from Node/Repo
-readiness: every `status/1` call re-runs `Dataset.verify/2` plus a real
-rolled-back write probe, `Failure/2` turns it off after a failed durable write, and
-the durable submit (`Beamlet.Runtime.submit/2` with `persistence:`) and accept
-(`OperationCoordinator`) paths refuse with `:unavailable` / `:durable_unavailable`
-while it is off. Never report admission from a cached observation or from `ready`.
+### 3. Contracts
 
-Migration stays an explicit operator action (`mix beamlet.storage.migrate` or
-`Beamlet.Storage.Operator.initialize/2` inside a release). Boot, Agents and
-`Dataset.open/2` never migrate, create or repair a dataset: missing, newer-format,
-identity-mismatched and `restored_backup` datasets are refused. Consistent database
-backups only (SQLite `.backup`/`VACUUM INTO`, `pg_dump`/`pg_basebackup`); a
-restored dataset pauses admission until an operator resolves the marker.
+Descriptors are trusted compiled code, never module names selected from disk/network.
+Exact keys are `profile`, `format_version: 3`, ordered `components` and `migrations`.
+Components have exact `name`/positive `version`; migrations have exact positive
+`id`/`component`/compiled Ecto migration `module`. Foundation is first/version1/ID1;
+component names and migration modules are unique, IDs unique and strictly ordered,
+and every component has migrations. Invalid descriptors refuse before file creation
+or Repo startup. Installed migration implementations must remain immutable; the
+manifest binds module identities, not source hashes.
+
+| Profile constructor | Profile | Ordered components (all version1) | Ordered migration IDs/modules |
+| --- | --- | --- | --- |
+| Actions `Profiles.authority/0` | `actions-authority` | foundation, actions-authority | 1 Storage.Migrations.FoundationV1; 100 Actions.Storage.Migrations.AuthorityV1 |
+| Actions `Profiles.journal/0` | `actions-journal` | foundation, actions-journal | 1 FoundationV1; 200 Actions.Storage.Migrations.JournalV1 |
+| Agent `Profiles.authority/0` | `agent-authority` | foundation, actions-authority, agent | 1 FoundationV1; 100 AuthorityV1; 300 Agent.Storage.Migrations.AgentV1 |
+
+Module identities above have prefix `Beamlet.`. Foundation installs only `artifacts`,
+`storage_metadata` and Ecto `schema_migrations`. Metadata singleton ID1 records
+`dataset_id`, `profile`, `format_version`, `restored_backup`, exact JSON `manifest`
+and `installed`. Manifest includes ordered component name/version and migration
+id/component/module strings. Initialization writes installed=false, runs the complete
+list, then marks installed=true. Open/verify require that marker and the exact ordered
+IDs from `schema_migrations`; partial installs never become usable.
+
+Actions authority owns `operations`, `executions`, `execution_evidence`,
+`operation_events`, `dispatch_scopes`; journal owns `journal_attempts`. Agent owns
+`agents`, `agent_events`, `commands`, `checkpoints`, `agent_operations` and the
+read-only `agent_operation_projections` view. Agent associations hold owner/turn/
+step/role/tool-call/ordinal/generation/prepared_seq/ordered sources; neutral Operations
+hold none of these fields or Agent FKs. Foundation artifacts have no domain FK.
+
+Define Repos with `use Beamlet.Storage.Repo, adapter: :sqlite | :postgres` or use
+explicit neutral/domain instances; never infer a profile from a Repo name.
+Dataset UUID must be canonical. SQLite requires absolute distinct `database` and
+`peer_database`, detects path aliases, checks format read-only before writable
+startup, and uses pool1/WAL/FULL/FK, immediate writes, 2000ms Exqlite busy handler
+(`PRAGMA busy_timeout` reads0). PG uses pool4, a provisioned empty database and
+explicit connection options, checking fsync/synchronous_commit. PG refusal uses
+read-only queries. No new multi-authority-instance promise is implied.
+
+`Transaction.write/2` owns the one commit/rollback. Participants require the same
+Repo's already-open transaction, validate domain inputs and neither commit nor
+perform external effects; caller must roll back any returned error. Agent composes
+Actions participants, associations, Agent events and command response atomically.
+See [Agent durability](./agent-durable.md) and [Runtime](./operation-runtime.md)
+for lock order, dispatch and acceptance contracts. Product callers receive facades,
+not raw Repo/SQL. No automatic write/effect retry follows an unknown outcome.
+
+Foundation Codec takes positive numeric byte bounds (default4194304), not domain
+kind atoms. Canonical sorted UTF-8 JSON preserves integer/float spelling and SHA-256
+bytes; duplicate keys, invalid UTF-8, live data, structs and structured credential
+fields refuse, with depth32/node100000 budgets. Strings are not a secret scanner.
+Foundation JSON requires `max_bytes:`; domain codecs/JSON own kind policies.
+Artifacts stay digest-deduplicated, bounded to16MiB and verified by References.
+
+Generic Host opens only explicit descriptors, retains refused reasons, owns only
+successfully opened Repos and never automatically reopens. Generic Admission probes
+its primary resource and every `resources: [{repo, opts}]` dependency; failure turns
+admission off until a fresh successful probe. Repo registration/Node ready is no
+writability evidence. Node.Storage explicitly selects Agent authority and Actions
+journal for configured roles, supplies fresh boot identity and starts the default
+Admission gate covering both resources. Optional trusted server `storage:` retains
+adapter/database/dataset_id/journal/executor_id and PG connection fields; SQLite
+journal keys are database/dataset_id/peer_database as applicable. `runtime/1` grants
+no admission itself. Absent storage and interaction-only Node composition start no
+Repo/gate. Loading libraries starts nothing.
+
+Explicit `mix beamlet.storage.migrate` belongs to Node, calling Node.Storage.Operator.
+Operator stops only Repos acquired by successful initialization; existing owners
+survive conflict. Boot/open/verify never initialize, migrate, convert or repair.
+Old authority2/journal1 safely refuse without writes; there are no old facades or
+automatic conversions. Use fresh paths; rollback uses old code with its untouched
+old dataset. Consistent SQLite `.backup`/`VACUUM INTO` or PG dump/basebackup only;
+restored_backup is an explicit operator marker, not automatic rollback detection.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required observation |
+| --- | --- |
+| Invalid descriptor/config/UUID | `:invalid_data` before installation |
+| SQLite same/aliased peer path | `:path_alias` |
+| Missing open/file/metadata table | `:dataset_missing`; no creation |
+| Installed target on initialize | `:dataset_exists`; no overwrite |
+| Already registered same Repo | `:conflict` before file access |
+| Wrong dataset identity/profile | `:dataset_mismatch` |
+| Old/new format, incomplete/changed component manifest or migration list | `:schema_unsupported`; no writes |
+| Backup marker | `:restored_backup` |
+| Participant outside transaction | `:transaction_required` |
+| Deterministic unique / check, FK or invalid type violation | `:conflict` / `:invalid_data`; rollback |
+| Read driver failure/stopped Repo | `:storage_unavailable`, never absence |
+| Unclassified write/connection failure | `:storage_outcome_unknown`; reconcile stable IDs |
+| Codec malformed data / bounds exceeded | `:invalid_data` / `:limit` |
+| Invalid Node storage block | `:invalid_storage_configuration` |
+| Node storage absent / missing role dataset | `:storage_not_configured` / `:authority_not_configured` / `:journal_not_configured` |
+
+Strict JSON struct-load normalization must apply to reads AND write facades;
+see [Error Handling](./error-handling.md#scenario-strict-persisted-json-failure).
+
+### 5. Good/Base/Bad Cases
+
+Good: explicitly initialize Actions-only authority+journal and run a generic
+Handler with no Agent tables/config. Base: loading all persistence libraries starts
+no Repo. Bad: open an old dataset hoping to install missing components, silently
+interpret read failure as no row, or stop an existing host Repo after init conflict.
+
+### 6. Tests Required
+
+Foundation `foundation_test.exs`, codec and fresh-VM tests assert descriptor failure
+before creation, exact metadata/completion/IDs, old2/old1 byte/schema/business-content
+preservation, read-only refusal and numeric bounds. Actions owning contracts assert
+exact Agent-free schemas, prepare/claim/evidence/accept/reopen and journal restart
+semantics. Agent dataset/domain suites retain installation, connections, contention,
+rollback and projection assertions on SQLite and actual PG. Node host tests cover
+both-resource admission, stopped journal, owned shutdown and interaction-only mode.
+Use private PG via BEAMLET_PG_SOCKET_DIR/BEAMLET_PG_PORT/BEAMLET_PG_USER; never count
+excluded adapters as passed. Exact final counts and reviewed assertion transfer are
+in the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md).
+
+### 7. Wrong vs Correct
+
+Wrong: foundation selects Agent migrations or domain byte limits from a Repo/kind;
+perform Agent prepare and Actions prepare in separate commits.
+Correct: composition supplies a complete trusted descriptor; domain codecs supply
+numeric bounds and same-Repo participants share a single outer rollback boundary.
 
 ## Architecture and Delivery Contract
 
 The [Agent / Operation design](../../../docs/architecture/agent-operation-persistence.md)
-is implemented through the format2 Storage/Runtime and event-reduced Agent path.
-Agent owns original input/decisions/control, Operation owns fixed logical request
-and sources, and accepted Result owns output. Replay performs no effects; caches
+is implemented through the format3 foundation/domain Storage and Runtime and event-reduced Agent path.
+Agent owns original input/decisions/control, Operation owns the fixed logical request; Agent associations own ordered
+sources, and accepted Result owns output. Replay performs no effects; caches
 are optional and currently revalidate their history prefix. There is no Branch,
 transcript-copy fork, graph authority table or source-parent history recursion.
 
@@ -106,8 +218,7 @@ usage as new execution. Redaction explicitly prevents restoration claims.
 Durable writes remain business transitions, not snapshots/subscriptions. First stop
 trigger and actual termination are separate evidence; cancel/deadline never rewrite
 accepted Results. Admission is checked independently of Repo/Node registration.
-Real adapter, process-window, named-peer and release results belong in the current
-D handoff, not inferred from archived Stage A–F's old representation. No physical
+Real adapter, process-window, named-peer and release results belong in the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md), not inferred from archived Stage A–F's old representation. No physical
 host, power-cut, paid provider or external exactly-once guarantee is claimed.
 
 ## Existing State Boundaries
@@ -142,8 +253,7 @@ generated module documentation, but its actual setup only returns
 `{:ok, conn: Phoenix.ConnTest.build_conn()}`. No SQL sandbox is configured.
 `apps/beamlet_app_web/lib/beamlet_web/components/core_components.ex` accepts
 `Phoenix.HTML.FormField` and translates error tuples; that UI helper is not proof
-of Ecto changesets or persisted models. `priv/` currently contains static and
-translation resources, not database migrations.
+of Ecto changesets or persisted models. Web `priv/` contains static and translation resources, not database migrations.
 
 When changing state behavior, trace its real owner first and specify lifetime,
 visibility, and failure behavior in the task. Do not add database setup or
