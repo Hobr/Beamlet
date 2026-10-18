@@ -337,3 +337,45 @@ Delivered immutable Agent-owned provider/config/credentials/placement bindings, 
 ### Next Steps
 
 - 活动任务清空；`dev` 领先 `origin/dev` 20 个提交，未推送。
+
+
+## Session 10: 撤回自定义配置需求，回归默认 Mix Release 部署
+<!-- trellis-session: v=2 fp=f003dd25cc6b69fd -->
+
+**Date**: 2026-10-18
+**Task**: 撤回自定义配置需求，回归默认 Mix Release 部署
+**Branch**: `dev`
+
+### Summary
+
+用户放弃此前全部外部配置需求，改为按 Mix Release 默认方式部署：只保留共享 config/runtime.exs，按原生 RELEASE_NAME 选择宿主，不新增应用、文件、依赖或环境变量。
+
+### Main Changes
+
+- 删除本次任务产生的 beamlet_config 应用、Config.Provider、宿主 Release 适配层、启动包装脚本及其测试。
+- 删除 config/daemon_runtime.exs、config/cli_runtime.exs 与自定义 rel/env.sh.eex，取消 BEAMLET_CONFIG 启动要求、--config、FHS/XDG 发现和固定 9100 端口策略。
+- 三个 Release 统一打包共享 config/runtime.exs；仅 RELEASE_NAME 激活对应宿主。daemon/CLI 生产 Release 不再配置 Web 或要求 SECRET_KEY_BASE，Web 与源码生产运行仍缺密钥即失败。
+- 保留隔离依赖闭包、宿主校验、可选存储且启动不建库/不迁移、CLI 前台入口与既有 create Agent-options 业务命令。
+- 部署文档、示例与既有检查脚本改为编辑复制件内的 bundled runtime.exs；check-release.sh 新增复制 Web 产物的缺密钥拒绝、真实 HTTP 200 与 CSS/JS 校验。
+- 同步 spec: backend-release、directory-structure、error-handling、i18n 中过时的自定义加载器、BEAMLET_CONFIG 与固定端口描述。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6041b20` | refactor(release): use default Mix runtime configuration |
+
+### Testing
+
+- [OK] [OK] 实现方（独立检查按用户要求跳过）：伞项目 441 通过 / 49 排除（HEAD 基线 439），format、警告即错误编译、credo --strict --all、sobelow、Dialyzer（未刷新 PLT）、gettext 全通过。
+- [OK] [OK] 34 项命名分布式实际通过；daemon/CLI/Web 三个隔离 Release 重建完成；复制产物验证 daemon 三种角色与远程 turn、CLI 前台身份/PTY、缺失数据集不创建、Web 缺密钥拒绝后 HTTP 200 与 CSS/JS 200。
+- [OK] [!] 用户明确跳过独立检查，以上为实现方报告而非父会话复现；LSP 诊断因语言服务器依赖失败未确认，PostgreSQL 适配器测试按设计排除，未做物理部署或付费 provider 验证。
+- [OK] [!] 行为契约变更：撤掉自定义读取器后，原生 Config 脚本异常不再由 Beamlet 脱敏；--overwrite 可能残留旧产物，升级需用全新产物目录。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 活动任务已清空并归档；dev 本地领先 origin/dev，未推送。
