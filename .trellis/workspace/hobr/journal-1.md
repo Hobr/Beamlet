@@ -441,3 +441,39 @@ Completed and independently reviewed all four durable rebuild children; archived
 ### Next Steps
 
 - Implementation complete on refactor/durable-rebuild. Review or integrate work commits when desired; no in-scope blocker remains.
+
+
+## Session 13: 提取 Agent 纯业务内核并完成独立复查
+<!-- trellis-session: v=2 fp=3afc667572e8fd4a -->
+
+**Date**: 2026-10-18
+**Task**: 提取 Agent 纯业务内核并完成独立复查
+**Branch**: `refactor/agent-core-extraction`
+
+### Summary
+
+提取 beamlet_agent_core，保留 Agent 持久化与执行边界；修复首错读取顺序、payload 深度和继承来源校验，独立复查通过，用户确认后提交并归档。
+
+### Main Changes
+
+- Core owns pure reducer, incremental context conversion and continuation decisions; Agent retains effects, canonical digests, transactions and lifecycle.
+- Recorded F1-F3 fixes, independent review, acceptance and executable backend contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `00b8871` | refactor(agent): extract pure agent core |
+
+### Testing
+
+- [OK] Final Core10+Agent109; no-start10+5; isolated Core10; final-fix PostgreSQL78 logs inspected by reviewer; four independent differential probes passed.
+- [OK] Format, warning-fatal compile, strict Credo and existing-PLT Dialyzer passed. Initial umbrella512/37 excluded and named35/release/e2e gates were not rerun after fixes.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Implementation complete and archived; branch remains local, ready for integration review.
