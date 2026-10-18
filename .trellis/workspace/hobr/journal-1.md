@@ -263,3 +263,40 @@ Delivered immutable Agent-owned provider/config/credentials/placement bindings, 
 ### Next Steps
 
 - 活动任务列表已清空；后续工作（durable action、账号/授权集成、Web release 打包）需另行立项。
+
+---
+
+## Session 8: Web 与 CLI 中英双语（共享集 + 各自集）
+
+**Date**: 2026-10-18
+**Task**: Web 与 CLI 文案 Gettext 中英双语（默认中文）
+**Branch**: `dev`
+
+### Summary
+
+新增只依赖 Gettext 的叶子应用 `beamlet_i18n`，集中维护两端共用的状态/原因词、通用动作与表头、locale 规范化与默认语言；Web 与 CLI 各自只保留本面文案，五套 catalogue（共享 default/errors、Web default/errors、CLI default）的 msgid 两两互斥并由测试强制。共 229 个 msgid 全部有中文，`en` 以英文 msgid 兜底。默认中文：Web 走 `?locale=` → 会话 → 配置 → `zh_CN`，布局提供整页「中文／English」切换且不写客户端存储；CLI 走 `:locale` → `BEAMLET_LANG` → `:default_locale` → `zh_CN`，`Runner` 启动时安装一次。实现中发现根配置恒设 `:default_locale` 会让环境变量永远失效，因此把 `BEAMLET_LANG` 提到它之上，并在规范、CLI moduledoc、部署文档与测试中四处对齐。
+
+未改变业务语义：CLI 语法/列/边界/退出码与英文输出逐字节不变，Web 事件、状态机、CSP/CSRF 与错误页保持。独立检查发现并修复一个真实验证缺口：daemon 闭包守卫原本检测不到新引入的 `beamlet_i18n/gettext/expo`；父会话又加强了共享查找守卫（同时扫描声明模块）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b643579` | feat(i18n): add shared Gettext catalogues for Web and CLI (default Chinese) |
+| `51d3a11` | docs(trellis): document i18n contracts and record acceptance |
+| `b0aba29` | chore(task): archive 10-18-i18n-web-cli |
+
+### Testing
+
+- [OK] Web 73 通过 / 5 排除；CLI 25 / 1 排除；i18n 15；根全量 318 通过 / 34 排除。
+- [OK] format、warning-fatal compile、strict Credo、Sobelow、复用既有 PLT 的 Dialyzer、`mix gettext.extract --check-up-to-date`、`git diff --check` 全部通过。
+- [OK] `check-release.sh` 完整通过（加固前后同一 artifact 哈希一致）：daemon 闭包无 `beamlet_i18n/gettext/expo`，CLI 闭包含之；已构建 CLI release 实测默认中文与 `BEAMLET_LANG=en` 英文布局一致。
+- [!] 未执行浏览器走查；release 级中文覆盖目前依赖手动检查（部署脚本固定英文以保留原断言）。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 活动任务列表为空。若要第三种语言或浏览器级语言切换验收，需另行立项。
