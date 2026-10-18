@@ -1,379 +1,214 @@
-# Agent / Operation 持久化设计提案
+# Agent / Operation 持久化设计
 
-状态：核心方向及两原语简化已获用户同意：历史记录 + 检查点；fork 从安全检查点复制有效上下文并创建新 Agent，不设独立 branches 模型。仅设计，尚未实现。
+状态：已由 durable-rebuild 总任务完成代码实现与独立验收。authority 格式 2、journal 格式 1；Agent 事件归约、引用上下文、模型/工具统一关联、暂停恢复、引用式 fork 和离线导出已接入。实际 API、预算及验证边界见[存储指南](../../.trellis/spec/backend/database-guidelines.md)、[Agent 契约](../../.trellis/spec/backend/agent-durable.md)与[引用契约](../../.trellis/spec/backend/durable-references.md)。
 
-本提案承接 [10-15 分布式架构归档](../../.trellis/tasks/archive/2026-10/10-15-distributed-agent-architecture/design.md) 中延期的持久化与恢复议题。它扩展而不改变 Operation / Execution / Result 的区分、显式权威、Harness 独立性、单次执行和不确定时不自动重试的原则。当前代码仍为内存实现；不得将这里的表、接口或保证解读为现有能力。
+本设计取代上一版“自足消息检查点为主要恢复依据”的方案。项目处于早期，实现不兼容旧 API、检查点或数据格式；旧 authority 迁移和兼容路径已删除，已有数据库只拒绝、不自动转换或删除。采用历史记录与检查点，沿用 Agent / Operation / Execution / Result，不引入通用 Workflow、Task、Branch、Document 或图执行引擎。
 
-配套材料：[术语](../../GLOSSARY.md)、[实施与验收计划](./persistence-delivery.md)、[外部机制调研与简化决策](./research/durable-agent-mechanisms.md)。
+配套：[术语](../../GLOSSARY.md)、[实施验收](./persistence-delivery.md)、[机制研究及证据边界](./research/durable-agent-mechanisms.md)。
 
 ## 1. 目标与保证边界
 
-需要支持：
+- Agent 保存自身输入、配置与编排关系，通过追加历史重建控制状态。
+- LLM 和 Tool 都是 Operation。确定请求归 Operation，业务输出归权威采纳的 Result；Agent 只引用，不另存请求/回复或聊天 transcript。
+- 上下文由策略沿引用构建；提交后成为新 LLM Operation 的不可变输入。
+- 历史、恢复、导出、fork 和因果图使用同一组事实，不依赖活跃 Agent、远端执行器在线或可丢失展示事件。
+- Ecto 权威存储默认 SQLite、可选 PostgreSQL；执行端使用本地 SQLite 证据日志。
+- 不承诺共识、自动切主、跨库原子事务、环境迁移、外部副作用 exactly-once、模型确定性重现或撤销现实改变。
 
-1. Agent 及其 Operation 的持久身份、已接受输入、完整业务历史和有效上下文。
-2. 权威进程或同一权威节点重启后恢复；显式继续未完成轮次。
-3. 无须启动 Agent 即可审阅历史、检查执行证据、导出轨迹。
-4. 回到安全检查点创建独立的新 Agent，复制有效上下文后继续推理；原 Agent 的历史始终可审阅。
-5. 使用 Ecto；权威库默认 SQLite，可选 PostgreSQL；执行节点的本地日志默认 SQLite。
-6. 持久数据全部是可版本化的数据，禁止 PID、reference、闭包、端口、进程字典、任意 struct 和客户端对象。
+一个 authority 数据集只能由一个活动主机拥有。version/generation 防止本地并发与旧实例写入，不是跨分区 fencing。PostgreSQL 可以是权威专属的外置数据库；执行节点不直接访问权威库。磁盘丢失且无备份时，executor 日志不能重建完整 Agent 历史。
 
-不承诺：分布式共识、自动故障转移、数据库跨节点复制、跨库原子事务、外部副作用 exactly-once、环境迁移、模型逐 token 的确定性重现、撤销文件/数据库/API 等外部真实改变。
+## 2. 事实归属：正文只拥有一次
 
-单个逻辑权威及其数据库是唯一业务事实源。PostgreSQL 可以是权威专属的数据库服务；“存储在权威节点”指权威拥有并独占写入该数据集，执行节点不直接访问它。SQLite 则使用权威本机持久卷。若要求 PostgreSQL 物理同机，部署为本机实例即可。
+| 事实 | 权威归属 | Agent 保留什么 |
+| --- | --- | --- |
+| 用户输入、显式继续/风险决定 | Agent 输入或决定事件，正文内联或引用不可变 artifact | 输入身份、内容引用及因果 |
+| 默认模型/工具策略、指令、环境与 secret 引用 | 版本化 Agent definition | 配置版本与显式变更记录 |
+| LLM 的确定 prompt、工具 schema、有效非敏感模型参数 | Operation 不可变描述或其内容引用 | operation_id、步骤角色、来源与顺序 |
+| Tool 确定参数 | Operation 描述 | 调用 ID、operation_id、ordinal、join |
+| LLM/Tool 业务输出、usage、可用 provider request ID | Operation 的 accepted Result 或其不可变内容引用 | 消费引用与结果摘要校验值 |
+| 启动意图、终止观察、回执 | Executor journal / execution evidence | 不复制；通过 Runtime 核对 |
+| 轮次、等待/汇合、停止、结果消费 | Agent 编排事件 | reducer 得到的控制状态 |
+| 展示、token 进度、节点报告 | 有界临时投影 | 不作恢复依据 |
 
-部署必须保证同一个 `authority_id` 同时只有一个活动主机写入，禁止同时启动原节点和数据库副本。库内版本检查用于本地并发与旧进程隔离，不是跨分区 fencing 或自动接管协议。失去磁盘或数据库且无可用备份时，不能凭执行节点日志重建全部 Agent 历史。
+Result 仍是值，不新增独立可调度实体。Executor final result 只是执行观察，不能绕过权威采纳成为 Agent 输入。接受 uncertain 后到来的 success 保留为证据；显式决定可以引用它，但不覆盖旧 accepted Result。
 
-## 2. 已核对的现状与必要变化
+Agent 不维护第二份 user/assistant/tool transcript。用户原始输入必须在模型调用前独立保存，不能只藏在后来生成的 prompt 中。内存消息数组可作为可丢弃缓存；检查点和 Agent 事件不得复制 Operation 请求/回复正文。
 
-| 当前实现 | 本提案要求 |
-| --- | --- |
-| Agent.Server 的 messages、turn、pending、results 等在内存中 | 显式领域记录、检查点、输入与结果消费记录 |
-| Agent.Ref 含 PID 和 VM 内 reference；Discovery 只列活跃实例 | 新增持久 ID；活跃 Ref 仍只定位一个进程实例；历史查询独立于 Discovery |
-| Runtime 的 Operation ID 为数据；Execution 还含 endpoint PID、incarnation、handle | 保留业务 ID，新增持久 attempt ID、executor ID、运行代次；句柄绝不落库 |
-| Coordinator 在内存中接受一次终态，保留期后消失 | 一次终态接受改由数据库条件更新与唯一约束保证 |
-| Operation.credentials、ModelBinding.credentials 为显式临时输入 | 可恢复定义必须使用 secret/profile 引用，凭据仅在调用时解析 |
-| Gateway 的 admission、tombstone、worker 账本均不持久 | 执行前本地落盘；重启后能回答既有 attempt 的证据查询 |
-| Agent Display 是有界 live-context 投影，允许截断、省略，注解使用运行态 reference | 只从完整业务数据写历史/检查点；恢复后重建展示，不保存投影或其身份 |
-| Node/Runtime observations 是非原子的建议性观察；Node services ready 仅表示本地注册存在 | 保留现有观察语义；持久准入另受数据库提交与日志可用性约束 |
-| Gateway 按首个停止触发原因分类已观察的 worker 停止；Coordinator 保留执行来源终态 | 执行日志与证据保留停止原因及观察结果，不用取消请求重写 deadline/success |
-| Agent/provider/gateway 失效后不重放业务 | 维持该原则；恢复基础设施和状态不等于重执行 handler |
+这里消除的是重复事实源，不承诺所有字节物理只存一次：多个模型请求可能共享文本；executor 日志和权威库可能为断连可靠性各存一份结果。可使用不可变 artifact 共享内容，但不能为节省空间依赖远端 journal 永久在线，也不在本轮引入去重/GC 框架。
 
-兼容性核对基线为 `a078aa3`，覆盖 `e9bd6b4`（停止原因）、`8eb3683`（Runtime observation）、`0a1b1de`（Agent display）及 `0c316bc`（Node observation）。这些变化未改变业务状态归属，也未新增 durable 能力；两个新增原语及现有表数保持不变。
-
-证据文件：`apps/beamlet_agent/lib/beamlet/agent/server.ex`、`model_binding.ex`、`ref.ex`、`display.ex`，`apps/beamlet_runtime/lib/beamlet/runtime/operation_coordinator.ex`、`executor_gateway.ex`，`apps/beamlet_node/lib/beamlet/node.ex`、`observation.ex`，以及 [当前存储指南](../../.trellis/spec/backend/database-guidelines.md)、[Runtime 契约](../../.trellis/spec/backend/operation-runtime.md)。
-
-当前 `turn`、peer request、delegation group 等使用 `make_ref()` 的关联，必须获得独立的持久字符串 ID，不能对 reference 编码后保存。已有进程无法事后承诺历史完整；切换前启动的 Agent 只能保持临时模式，或在显式静止点导入上下文并标记 `history_complete=false`。
-
-## 3. 架构选择：事务状态与追加历史
-
-采用“规范化当前状态 + 不可变业务事件 + 可恢复检查点”。不把完整 GenServer state 序列化，也不要求通过从头重放事件运行整个业务系统。
-
-- 当前状态负责查询、约束和决策，事件负责审阅、追因和导出。
-- 每次领域转换在一个权威数据库事务中同时写状态、事件和必要检查点。提交前不得对外声称成功。
-- 检查点携带有效上下文和明确的继续位置；加载时只核对其引用和已有 Operation 状态，任何纯数据转换都不能调用模型、Tool 或网络。
-- 所有会影响恢复的事实必须可靠落盘。流式 token、临时展示进度允许有界抽样或丢弃，最终模型回复和完整合法 Tool 参数必须保存。
-- 每次改变 Agent 可恢复位置时，同事务保存一个完整的检查点描述；完整指逻辑自足，可以引用不可变 message/artifact，而不必复制全部消息内容。Operation 的观察变化保存在其当前记录和事件中，结果消费时再推进 Agent 检查点。
-- 恢复直接读取检查点及其引用的 Operation/证据，不要求从头重放事件。首版检查点或引用损坏则明确阻塞；从旧检查点重建属于可选修复工具，不是运行时的另一条恢复路径。
-
-这比只存快照多了审计能力，又避免全面 event sourcing 的事件归约器、重放与代码版本约束。需要兼容的是检查点与历史数据格式，不是旧 handler 的执行环境。
+## 3. 职责与正交性
 
 ```mermaid
 flowchart LR
-    UI[交互端] --> A[权威 Agent / Runtime]
-    A --> S[Storage 事务接口]
-    S --> DB[(权威库 SQLite 或 PostgreSQL)]
-    A -->|一次派发| G[执行节点 Gateway]
-    G --> J[(本地 SQLite 执行日志)]
-    G --> W[临时 Worker / Harness]
-    G -->|完成证据 / 证据查询响应| A
-    DB --> H[历史 / 导出 / 恢复规划]
+    I[Agent 输入与编排事件] --> S[纯数据归约：控制状态]
+    S --> C[上下文构建策略]
+    I --> C
+    R[权威已采纳 Result] --> C
+    C --> O[不可变 LLM Operation]
+    O --> RT[Runtime：放置与准入]
+    RT --> EX[Executor：本地日志与 Worker]
+    EX --> E[执行证据]
+    E --> R
+    R --> U[Agent 幂等消费引用]
+    U --> I
 ```
 
-### 3.1 应用职责及依赖
+- Actions 定义 Operation / Execution / Result / Handler，不依赖存储或 Agent。
+- Harness 定义原生模型、Tool、消息契约及提供者实现，不管理持久编排或节点放置。
+- Agent 拥有输入、配置、上下文选择、编排、纯 reducer、fork 和继续策略。
+- Runtime 拥有 Operation/Execution 状态、目标选择、本地/远端执行、取消、证据核对与 Result 采纳。
+- Storage 提供 AgentRecords、OperationRecords、ExecutorJournal 等具体事务入口和严格 codec；不调用模型、Tool、网络或解释 prompt。
+- Node 与 Server/Web/CLI 宿主显式接线；加载库不启动 Repo、创建数据集或执行 migration。
 
-建议新增一个 `beamlet_storage` 应用，集中 Ecto Repo、schemas、迁移、严格 JSON codec 与具体存储函数。它不启动 Agent、不派发 Operation、不依赖 Runtime / Agent / Harness / Phoenix。不另外建立通用 Storage behaviour、Document 系统或事务 bundle DSL。
+Agent 依赖稳定 Operation 身份、accepted Result 和统一不确定性语义，不依赖 Gateway PID、节点发现、报告租期、executor_boot_id 或具体路由。模型/Tool 的能力和环境需求由集成层映射，目标选择归 Runtime。
 
-```text
-beamlet_actions -> []
-beamlet_storage -> [Ecto, ecto_sql, ecto_sqlite3, postgrex]
-beamlet_runtime -> [beamlet_actions, beamlet_storage]
-beamlet_harness -> []
-beamlet_agent -> [beamlet_actions, beamlet_runtime, beamlet_harness, beamlet_storage]
-beamlet_node -> [上述组合所需应用]
-beamlet_web / beamlet_cli -> [Agent 公共命令与历史接口]
-```
+本地/分布式与内存/durable 是两个维度。内存模式可采用相同编排和上下文模型，但不提供持久恢复保证；durable 模式必须同时满足权威提交和执行端证据协议。本地 durable 工作也走 Gateway，不绕过日志。写库失败不得降级为内存。
 
-Runtime 拥有 Operation/Execution 转换规则和本地证据协议，Agent 拥有上下文、fork、委派与恢复策略。Storage 内部分为 AgentRecords、OperationRecords、ExecutorJournal 三组具体函数；调用方传入已验证的数据与版本，内部使用现成的 Ecto.Multi 完成必要的跨表事务。它们不是三个可插拔框架，不提供任意 SQL/Repo 给 UI，也不解释 Tool 或模型语义。Agent 与 Runtime 使用同一个权威 Repo，结果接受和消费仍可分成两个各自原子的事务。
+正交不意味着无协调：准备 Operation 与推进 Agent 必须有同一个权威提交点；结果接受与 Agent 消费可以是两个独立事务。跨节点、跨数据库和外部副作用之间仍然非原子。
 
-### 3.2 原语预算
+## 4. Agent 历史、归约与上下文
 
-新增的 durable 原语只有两项：**历史记录、检查点**。Agent、Operation、Execution 与 Result 沿用原架构；执行证据是带身份的记录值。fork/回撤是从检查点创建新 Agent 的操作，不是独立实体。secret ref、command_id、代次和继续位置均为已有对象的字段，不是新的可调度实体。
+### 4.1 事件契约
 
-不增加独立 Branch 实体、父前缀递归解析、Task/Workflow、Effect、通用 Document、replay-safe 分类、独立 stream、inbox/outbox、lease、通用调度器或恢复引擎。恢复是现有 Agent 状态机的加载路径；证据核对是 Runtime 的查询路径；导出是历史记录的序列化。物理表与私有辅助函数不等于公共原语，增加它们仍须说明具体用途。
+事件具有稳定 ID、scope/agent_id、连续的已提交 seq、类型/版本、turn_id、可选 operation_id、因果引用、payload 或内容引用、去重键。事件名称是设计词汇，最终 API/枚举在实现任务中确定。
 
-SQLite 与 PostgreSQL 是同一 SQL 实现上的两种 Ecto adapter，不另建两套领域 backend。显式定义 SQLiteAuthorityRepo / PostgresAuthorityRepo（adapter 在编译时确定），由组合层在启动时选择一个；ExecutorJournalRepo 独立。库的加载不自动启动 Repo、创建文件或执行 migration。临时模式继续可用，但持久 Agent 必须运行在持久 Runtime 上；不得在写库失败时偷偷降级到内存。
-
-### 3.3 Live display / observation 不进入恢复事实源
-
-`Agent.Display` 只展示 `live_context` 的有界替换式投影，不是 transcript，也不能作为模型输入。entries、activities、字段内容以及整个 display 都可能因预算省略；缺失 display 不能理解为保留上次快照。活动 `pending` 只说明取得 Runtime Ref，不证明 executor 已接纳或启动；placement 未被实际观察时仍为 unknown。
-
-因此不订阅 display/snapshot 再落库，不把 `display_entries`、activities、subscriber credits 或注解 reference 放进检查点。历史、恢复、导出与 fork 使用完整规范化业务数据；恢复/fork 后为展示重新生成注解和运行身份。可选 `display_metadata` 的公开 title/preset/option 标签若需保存，须转成受严格 codec 校验的字符串键数据；这些标签不是配置、授权或 secret 保护，不能替代实际模型/Tool/环境定义及其引用。
-
-Node/Runtime observation 同样只用于当前观察：报告可能过期、不可达或不完整，可用容量不是资源预约；它们不能证明旧执行未发生或已停止，不能授权恢复重发。保持现有非原子、有界只读语义，不增加 observation 历史表或恢复调度器。持久准入与运行注册状态的区分见第 11 节。
-
-## 4. 数据契约与身份
-
-### 4.1 持久身份和运行身份分离
-
-- `authority_id`：安装/数据集的稳定 UUID；BEAM node name 只是可变化的路由配置。
-- `agent_id`：不可复用的 UUID；现有可读 id 保留为 authority 内的别名。删除后旧记录不得误指同名新 Agent。
-- `turn_id`、`operation_id`、`attempt_id`、`command_id`、`checkpoint_id`、`message_id`：不透明 UUID。Operation ID 继续使用不可复用随机 ID 即可，不要求改名其领域概念。
-- `executor_id`：执行节点磁盘数据集稳定 ID；`executor_boot_id` 每次 Gateway 运行生成，编码为字符串。
-- `agent_generation`：同一 Agent 每次激活/冻结后的本地写入代次，结合 `expected_version` 拒绝旧实例写入。
-- PID、monitor、timer、当前 endpoint、资源槽占用、subscriber credits、活跃 Ref：只在内存重新建立。
-
-调用方可保存持久 locator，但须通过显式 `restore` / `lookup` 获取新的活跃 Ref。旧 Ref 永远不会自动指向新进程。将 node name 从磁盘读为字符串后只通过受信任部署映射解析，禁止 `String.to_atom`。
-
-### 4.2 可持久化数据
-
-独立的严格 codec 接受字符串键的 JSON 数据、有限数值、布尔、null、数组；校验 UTF-8、深度、总字节和 schema version。二进制大对象进入 artifact；枚举保存约定字符串。禁止通过 Erlang external term、`inspect`、`term_to_binary` 或任意 struct dump 绕过约束。
-
-Operation 的持久描述包含 kind、protocol version、业务 payload、能力/环境引用、claims、预算和安全 metadata；不含 credentials、handler MFA、settings 里的活对象。原始执行参数不可静默截断。若其内容无法在策略允许下持久保存，则拒绝持久提交，不能仅存 hash 后声称可恢复。
-
-Agent 定义保存 provider/profile ID、版本化非秘密配置、catalogue/tool schema 快照及 digest、context policy/version、environment ref、secret ref。恢复时重新解析本地受信任注册表和凭据；缺少依赖或 schema 不兼容进入 `blocked`。配置变化不可静默改变未完成工作的语义；必须经显式重绑定命令记录差异。secret ref 不含密钥值，凭据轮换不保证重现原模型结果。
-
-上下文需要保留实际发给模型的规范化 messages、Tool schema、策略输出及其 digest；保存规范化模型完整回复和用量/可用 provider request ID。私有思维链不作为所需轨迹；仅保存系统本来可观察的数据。通用数据校验无法识别嵌在文本中的所有秘密：持久模式必须使用明确内容策略，保护数据库/备份，并由提供者避免把凭据写入输出。
-
-## 5. 最小数据模型
-
-以下为首版八张权威表的职责草案，不要求为了每个领域名词建立表。Result 仍是共享值，turn/message/关系保存在历史中，继续位置保存在检查点中。不设 branches 表，Agent 直接拥有 head checkpoint。
-
-| 表 | 核心内容及约束 |
+| 事件示例 | 内容 |
 | --- | --- |
-| `agents` | 稳定 ID、authority_id、alias、定义、head_checkpoint_id、generation、lock_version、history_seq；可空 forked_from_agent_id/forked_from_checkpoint_id 只记录来源；authority+alias 唯一 |
-| `checkpoints` | agent/turn ID、消息引用、pending Operation/有序 join/消费集合、继续位置、数据版本、digest、safe_to_fork；不可变 |
-| `events` | scope_id、seq、type/version、turn/operation/因果 ID、payload、可空 dedupe_key、recorded_at；继承消息可含 source_agent_id/source_event_id；唯一(scope_id, seq)及(scope_id, dedupe_key) |
-| `operations` | immutable description、可空 owner agent/turn、tool_call_id/ordinal、accepted_result、版本；独立 Operation 另有 history_seq |
-| `executions` | attempt_id、operation_id、目标 executor/boot ID、prepared/send_claimed、观察状态、预算；已取得的停止原因及终止观察由证据/事件留痕；operation_id 唯一，最多一次尝试 |
-| `execution_evidence` | receipt 身份、digest、内容和解决决定；来源+evidence_id 唯一，明确区别于 accepted_result |
-| `commands` | scope、command_id、请求 digest、可重读响应；同 ID 同参数幂等，不同参数冲突 |
-| `artifacts` | 内容/digest/media type/size；与引用同库提交；初版不自动 GC |
+| input.accepted | 原始输入或其内容引用、输入身份 |
+| model.request_prepared | 模型 operation_id、step、上下文来源与顺序 |
+| model.reply_observed | operation_id、已采纳 Result 引用；不复制回复 |
+| tool.batch_prepared | 模型来源、调用/Operation 映射、ordinal、汇合规则 |
+| operation.result_consumed | operation_id、已采纳结果标识/摘要、消费角色 |
+| turn.interrupted / agent.continue_decided | 中断原因、未决引用、显式决定与依据 |
+| agent.config_changed / context.selected | 配置版本、固定的来源选择及变换规则 |
+| agent.forked / context.inherited | 派生来源、继承引用及风险 |
 
-`authority_id` 保存在数据库安装元数据中，不需要 authority 领域实体。首版每个数据库另有一张**非业务的单例安装元数据表** `storage_metadata`（`id=1`、不可变 `dataset_id`、`role`、`format_version`、`restored_backup`），只用于安装身份、格式版本和恢复标记，不建身份/控制框架，也不把元数据塞进 Ecto 的 `schema_migrations`。因此物理表数是：权威 8 张业务表 + 1 张安装元数据表，executor 1 张 attempt 日志表 + 1 张安装元数据表，另加各自 Ecto 自有的迁移版本表。打开已有数据集时，元数据缺失、身份/role 不符、格式较新或 `restored_backup=true` 一律 fail closed；恢复标记是运维核查开关，不是自动备份回退检测，也不能被自动清除。Agent 的 history_seq 或独立 Operation 的 history_seq 通过同事务 CAS 分配历史序号，不设 streams 表。Agent 所属 Operation 共用 Agent 的历史顺序；多个 Agent 没有全局顺序。事件包含完整业务内容，message 是其中具有角色/内容的记录；轮次列表按 turn_id 建索引查询。委派/peer 关系也使用带双方稳定身份的事件，未决集合保存在检查点中。
+控制状态 `reduce(state, event)` 是版本化纯函数。它只归约已提交事件；读取引用由有界加载层完成，不在 reducer 中执行 I/O 或副作用。重建不能读取“当前最新配置”改写既有含义。未知版本、事件缺口、内容缺失/摘要不符明确阻塞，不静默跳过。
 
-结果消费的去重键为 `agent_id + operation_id + consumption_kind`，由 events 唯一约束和检查点 CAS 一起保证。除有去重需求的转换外，dedupe_key 为空；两库均须验证该唯一约束行为。每个 Agent 只允许一个活动轮次，通过 Agent 版本更新实现。
+Agent 的事件 seq 是提交顺序，不预留尚未提交的结果事件位置。并发 Tool 的 ordinal/join 决定业务消费顺序，不代表实际完成顺序；Runtime 的完成顺序独立。多个 Agent 没有全局序号；跨节点时间戳不能推导全序或精确耗时。
 
-事件覆盖输入、实际模型请求/完整回复、Tool 请求/结果、派发与执行观察、终态接受/消费、暂停/恢复/回撤决定及委派观察。可丢失 progress 不是必需恢复事实。统计/轮次/消息列表先用这些记录查询；测量证明确有必要时再加投影，不能同时维护第二份权威 transcript。
+### 4.2 上下文是构建产物
 
-执行节点首版仅需 `journal_attempts`：以 authority_id+attempt_id 唯一，保存 operation ID、描述 digest、executor/boot ID、start_intent/terminal/unknown、已记录的首个停止触发原因（deadline/cancelled，可空）、终止观察、终态值和稳定 receipt_id、权威持久接收确认。终态重复上报用相同 receipt_id；不建立通用证据流或独立队列。日志不能修改权威 Result 或上下文。
+`build_context(control, eligible_sources, policy, budget)` 按固定高水位和明确来源读取 Agent 输入、Operation 描述及 accepted Result，产生本次逻辑模型请求。策略可以选择窗口、检索、摘要，但不能将未采纳执行证据当成功结果，或擅自解除未知副作用 blocker。
 
-## 6. 事务与提交顺序
+来源清单包含记录/Operation/结果引用、顺序、选择截止点、策略/指令版本及摘要/截断等变换。清单由新 Operation 的来源元数据拥有；Agent 准备事件只引用 Operation 和必要的编排身份，不再维护第二份清单。跨引用必须同权威可验证。
 
-持久写入接在业务转换处，而非 `publish`、`publish_activity` 或观察订阅处。当前 `Agent.Server.complete/3`、`complete_tool/3`、`batch/2` 负责模型回复、结果汇合及批次推进；durable 接入须在对应状态转换中组织事务。Coordinator 的 `accept/2` 必须提交终态后再通知 sink；Gateway 必须在启动 worker 前和上报终态前分别完成本地提交。展示发布只读取提交后的业务状态，可合并或丢弃，不参与恢复正确性，也不替代输入确认或 durable Result 通知。
+生成的完整逻辑请求（messages、工具 schema、有效非敏感模型参数）保存到 Operation。只有摘要/哈希不足以还原请求。凭据调用时解析，绝不持久化。逻辑请求不是原始 HTTP 报文；如未来要求报文字节审阅，需要另行约定 adapter 版本和去认证请求体采集，不能虚称现有快照已提供。
 
-### 6.1 输入及 Tool 批次
+已准备的请求不可因历史增加、配置更新或策略变化而重建成不同内容。摘要需要 LLM 时，摘要自身也是 Operation，其 Result 被明确消费后参与新请求；重放不能重新生成摘要。普通消息格式仅在 Harness/adapter 调用边界出现。
 
-输入接受事务同时写 command 去重、输入 message、turn、事件和继续位置。仅在提交后返回“已接受”。响应丢失时调用方以同 command_id 查询/重试，仅重读既有提交，不再次调用模型。
+### 4.3 检查点
 
-模型完整回复必须先落盘，再完整验证整个 Tool 批次；任何一个 Tool 参数不合法均为零派发。合法批次在一次事务中创建全部 Operation 和 tool ordinal/join manifest，然后才允许各自派发。先存模型回复可以在崩溃后重新做纯验证，但不能重新请求模型来获取这份回复。
+检查点是控制投影的加速缓存：agent_id、through_seq、状态/reducer 版本、投影摘要、continuation、输入/上下文引用、pending Operation、join/order、消费引用、阻塞和来源信息。不保存正文 transcript、活对象或远端进程状态。
 
-### 6.2 权威派发
+支持的事件版本内，完整历史和不可变引用闭包必须足以重新归约状态。缺失或坏检查点可丢弃后从历史有界重建；坏历史/内容不能靠猜测修复。实现需约束分页、批次、内存、取消和总恢复预算，超限可报告待继续加载，不能丢弃前缀。
 
-1. 将 Operation、attempt、目标及 Execution 的派发状态在权威库提交为 `prepared`。没有可选目标可提交 coordinator-origin `no_target`，无 Execution。
-2. 协调器以 CAS 将 Execution 从 `prepared` 改为 `send_claimed`，提交后才发送一次 admit。不得在数据库事务内发消息或调用外部系统。
-3. admit 带稳定 authority/operation/attempt ID、目标 boot 关联及描述 digest。凭据在发送前临时解析，不写 Execution 记录。
-4. `send_claimed` 后崩溃，无法证明发送与否；恢复只查询该 attempt，不能自动重发。`prepared` 尚未 claim 表示尚未发送，恢复后可由显式 continue 继续该步骤。
-5. admission 观察、取消请求、接受终态均在权威库提交，再通知 Agent/UI。
+## 5. 数据布局与身份
 
-数据库事务和网络发送之间的缝隙无法消除。这里主动选择可能暂停一项尚未执行的工作，避免自动重发一项可能已产生副作用的工作。Execution 上的派发状态只解决“提交前不能发送”和可审阅性，不是独立 outbox，不提供 exactly-once。
+优先复用已有八张权威业务表，而不是为图、请求快照、上下文再建并行事实库：
 
-### 6.3 执行节点：本地日志是持久模式的默认要求
-
-权威库只能证明自己保存过什么，无法保留执行节点完成但尚未上报的结果，因此持久执行模式默认要求本地 SQLite 日志。单机组合角色也走相同协议、独立日志接口；不增加绕过路径。
-
-1. Gateway 在本地串行准入中验证，暂占内存容量，落盘 admission 和 `start_intent`；写失败则释放容量并明确拒绝，零 handler 调用。
-2. 提交 `start_intent` 后才启动 worker。worker 不承担“启动前第一笔写库”的责任。
-3. 同 attempt 重复消息只返回既有证据，不启动第二个 worker。状态只到 admission/start_intent 的旧记录也不允许重启后补跑。
-4. worker 返回规范化 Result 后，Gateway 将终态值/输出 artifact 与 receipt 原子落盘，之后才上报。大输出以现有 `journal_attempts` 上的版本化 JSON 附件字段内联保存（稳定 artifact ID → digest/类型/原始大小/规范 base64），不另建日志 artifact 表或自有二进制格式：单附件与每 attempt 附件解码后合计各限 16 MiB，编码字段限 24 MiB，同事务逻辑总量限 32 MiB，base64 规范性与 digest/大小须在解码后校验，超限或不完整即拒绝，绝不静默截断。若写入失败，不能上报为 durable completion；保留有界内存重试写入并撤下持久就绪能力，进程丢失后保持 unknown。
-5. 权威收到 receipt 后先持久化 evidence，再按终态接受规则处理；持久 ACK 只证明证据已存入权威库。执行节点可重传 receipt，这是数据传输重试，不是 handler 重执行。
-6. Gateway/VM 重启后原活跃 start_intent 记录变为 `unknown_after_restart`；不重建 worker、不按历史占用恢复容量。只有当前 worker 实际占用本机槽位。
-
-权威收到的证据必须匹配保存的 authority/operation/attempt/executor ID 与描述 digest，经可信 executor 路由验证；损坏、冲突或身份不匹配的 receipt 不可参与自动接受，留下安全错误和有界诊断。恢复时重新发现的 endpoint 只能承载稳定身份的查询，不代表旧 worker 仍存在。
-
-从真实外部改变到本地终态提交之间仍可能崩溃。即使有本地日志，也不能从 start_intent 推断“未执行”，不能承诺副作用和日志原子性。`not_found` 仅是该日志的数据观察，尤其磁盘丢失/备份回退时不能作为安全重试证明。
-
-停止原因沿用当前 Gateway 契约：第一个由 Gateway 处理的 deadline/cancel 触发原因拥有停止 provenance；后续触发不覆盖它。只有观察到与本次停止请求相符的 worker 终止，才能形成 execution-origin 的 `deadline/worker_stopped` 或 `cancelled/worker_stopped`。无关崩溃仍为 `error/worker_lost`，竞态中的正常返回仍可为 success，不能因为已经请求停止就改写结果。规范化终态连同已观察的停止原因、终止事实与 receipt 同事务保存；已记录的停止观察也保留在日志中。日志写失败或终态保存前崩溃仍按 unknown 处理，不能由请求记录推断“已经停下”，也不能为等待写库而取消尽力停止措施。
-
-### 6.4 终态接受与消费
-
-权威事务以 `accepted_result IS NULL`、expected_version、当前写入代次作为条件更新 Operation，并写 `result.accepted` 事件。影响行数为零时重读既有值；同证据幂等返回，冲突证据留审阅记录，不能覆盖已接受终态。
-
-若先接受了 uncertain/deadline，而后得到真实 success，保留原 Result；新增 evidence/resolution。用户可以显式采纳该证据推进仍暂停的上下文，记录决定与来源；历史上当时接受的 Result 不变。已经停止的轮次或 fork 的源 Agent 绝不因迟到证据自行继续，源 Agent 的证据也不能推进新 Agent。
-
-当前内存实现会将 Tool 的不同 Result 状态编码成观察，再交给模型继续；持久接入不能无条件复用这一推进路径。Coordinator-origin 的 `deadline/termination_unconfirmed` 和 `uncertain/cancel_unconfirmed` 不是 executor 已停证明，与 execution-origin 的已观察停止须明确区分。
-
-持久模式默认将涉及外部效果的 uncertain、未确认停止或日志缺失设为轮次 blocker，不把它伪装成普通 Tool failure 交给模型自动再做一次。用户可显式选择采纳已核实证据、放弃该步并保存中断观察，或承担风险发起关联的新 Operation。若 uncertain 尚未消费，resolution 决定最终进入上下文的观察；若已经显式消费过中断观察，后续证据只能作为新的带来源纠正消息加入，不能覆盖旧 message 或重复占用原 Tool result 槽位。
-
-Agent 消费 Result 的事务同时保存 Tool message、consumed 标记、join 顺序和检查点/下一继续位置。唯一(agent_id, operation_id, consumption_kind) 防止重复进入上下文。消费时必须校验 Operation 的 owner Agent/turn，源 Agent 的 Operation 不可作为新 Agent 的待消费工作；fork 复制的旧返回值是继承消息，不再次触发消费转换。保存 Result 后 Agent 崩溃，恢复只完成尚未消费的数据转换。并发 Tool 结果按原 ordinal 构造上下文，不按到达顺序。
-
-取消首先保存 request，冻结该轮次后续派发，再发尽力停止消息。取消请求不是 worker 已停、也不是撤销外部改变。即使取消成功，已接受的成功结果仍保持成功。
-
-## 7. 恢复模型与继续位置
-
-区分三个动作：`inspect` 只读恢复计划，`restore` 建立新的暂停实例，`continue` 显式推进。启动角色树仅恢复 Repo、发现与查询能力；默认不批量启动所有历史 Agent，不自动调用 handler。
-
-### 7.1 恢复流程
-
-1. 核对 authority_id、schema、备份恢复标记和独占部署；数据库不可用则禁止相应持久输入/派发准入，不以 Node services 的注册 ready 代替此判断。
-2. 读取当前 head checkpoint，验证其数据版本、消息/artifact 引用，并核对其中 pending/consumed 集合与权威 Operation/证据。无需重放历史事件。
-3. 返回普通恢复说明数据（RecoveryPlan），列明 pending Operation、终态未消费、未决派发、缺少 secret/profile/environment、子 Agent/peer 不可达等事项。它不是持久实体或独立执行计划 DSL。
-4. 激活时在权威事务内增加 generation，保存恢复事件；本地恢复控制器串行化同 Agent 激活，以 Registry/监视确认旧本地进程已经退出，再建立新暂停实例。仅 CAS 不能阻止旧进程在提交之后发送消息。
-5. 对未决 attempt 可自动做只读证据查询；查询使用 executor_id/attempt_id，不重新 admit，不恢复原 PID。目标不可达保持 blocked/uncertain。
-6. `continue(expected_version, decisions, command_id)` 检查 Agent/相关 Operation 版本、配置兼容与 pending 风险；提交决定后推进明确的继续位置。冲突返回新的恢复说明，不隐式采纳用户未见的新证据。
-
-恢复并非强制重新生成所有消息；有效历史和上下文已经在权威库中。必须维护以下可版本化继续位置：
-
-| 位置 | 恢复动作 |
+| 表 | 目标职责 |
 | --- | --- |
-| `await_input` | 暂停实例等待新输入 |
-| `model_prepared` / `tool_batch_prepared` | 显式继续后可 claim 尚未发送的派发 |
-| `await_model_result` / `await_tool_results` | 查询证据/等待，绝不重新发送已 claim 的 attempt |
-| `reply_recorded` / `results_to_consume` | 仅做纯数据验证/上下文转换，按消费键幂等 |
-| `ready_for_next_step` | 显式继续后创建下一项新 Operation |
-| `await_delegation` / `await_peer` | 查询远端历史或等待显式解决；不重建子 Agent、不重发消息 |
-| `interrupted` / `blocked` / `completed` | 不自动推进；展示原因和允许的显式动作 |
+| agents | 身份、definition 版本、generation、lock_version、已提交 history_seq、可选投影/检查点指针 |
+| events | Agent 自身输入与编排事件；独立 Operation 的历史可使用其自身 scope |
+| checkpoints | 绑定 through_seq 的可丢弃控制投影缓存 |
+| operations | 所有 LLM/Tool 的不可变请求及来源、owner/turn/step、accepted Result |
+| executions | 稳定 attempt、executor/boot、prepared/send_claimed、预算和观察 |
+| execution_evidence | 执行回执、内容/摘要、来源与显式核对信息 |
+| commands | scope/command_id、参数摘要与提交响应，保证命令幂等 |
+| artifacts | 被输入、Operation、Result 引用的不可变内容及摘要 |
 
-最终模型回复的消费可以触发下一轮 Tool，但只有持久化的完整参数经全批验证后才能如此做。已有 Operation Result 与未生成的新 Operation 之间必须由继续位置区别，避免“恢复消息”变成重执行。
+executor 保留 journal_attempts；两类数据集另有 storage_metadata 与迁移版本表。表数不是形式约束，最终 schema 由实现任务证明；不能重复维护 messages 表、event 正文和 Agent transcript。
 
-### 7.2 预算、环境、委派与重试
+所有业务身份使用不可复用稳定字符串 ID。PID、monitor、timer、端口、闭包、provider session、活 Ref 和节点本地容量账本不落库。内容遵守字符串键 JSON、版本、深度/大小限制；大内容引用 artifact；摘要验证与引用提交保持同库原子。秘密字段检查不是通用文本秘密扫描器，备份和内容权限仍需保护。
 
-运行中的 budget 使用本 VM 单调时钟，永不持久化绝对 monotonic timestamp。保存原预算、已观察 elapsed 和 UTC 审计时间；停机后不尝试恢复原 timer。已 claim 的工作默认按 interrupted/uncertain 处理；需要新工作时显式给新 Operation 新预算，并记录 predecessor。跨机 UTC 不用于证明 worker 已停。
+Operation/Result 内容和历史引用默认保留；不能先删除被引用的结果再宣称 Agent 可恢复。首版无自动 GC。未来 GC 需涵盖 fork、导出和请求来源引用，不依赖简单的“Agent 已结束”。
 
-环境引用不是环境快照。Shell session/provider instance 不能重新绑定到同路径的新环境；恢复必须由 provider 校验稳定环境身份/版本，可选返回 `unavailable` / `changed`。环境缺失不会触发其他节点或沙箱回退。
+## 6. 事务与执行协议
 
-父子 Agent 可能在不同权威库中，关系事件仅记录本方观察和因果关联。父 Agent 恢复不会启动/继续/关闭远端历史子 Agent；逐个显式恢复。peer 消息首版不提供可靠投递和自动重发；未完成请求恢复为 interrupted，显式新请求使用新 message_id。不得重建过期 TTL 或复活旧收件箱。
+### 6.1 Agent 接受、准备和消费
 
-同一 Operation 首版仍最多一个 attempt。人工决定重试时创建新 Operation（`retry_of` 关联和明确风险接受事件），不改原 Operation、不给原 attempt 第二次机会。provider 的无副作用读取/receipt 传输重试与业务 handler 重执行必须分开。
+1. 输入事务保存原始输入、事件、command 响应及 version/seq；提交后才确认输入并更新内存投影。
+2. 上下文构建和纯参数校验可在事务外进行；提交时重新校验 Agent version/generation、来源截止点和引用。
+3. 一个权威事务创建完整 LLM Operation/attempt，追加准备事件并推进等待状态。Tool batch 同理，整批 Operation、ordinal/join 和事件原子提交；非法批次零派发。
+4. 提交后 Runtime 才可取得派发权。返回已准备身份，禁止 submit 再创建无关 Operation。模型和 Tool 统一拥有 Agent/turn 关联。
+5. 消费事务校验 Operation 归属、turn/generation、accepted Result 标识/摘要，追加唯一消费事件并推进状态。不复制 Tool message 或模型回复；上下文从引用投影。
 
-## 8. 历史审阅与轨迹导出
+消费去重依据 agent_id + operation_id + consumption_kind，重复命令返回原响应，部分重叠/身份不符拒绝。并发结果分别采纳，不通过预留 Agent 事件槽位解决竞争；消费/汇合以明确事务和版本校验推进。
 
-历史查询以持久 locator、turn、operation、事件 cursor 为入口，不依赖活跃 Agent/Coordinator，也不返回活跃 PID。至少支持：轮次列表、有效上下文、fork 来源、每步模型输入输出、Tool 请求与结果、执行证据、取消/不确定性、恢复/重绑定/回撤决定、委派因果关系。
+数据库通知或进程消息只是唤醒。通知丢失时可从已提交记录读取未消费结果；在 Agent 未记录消费前不能自动将其纳入新上下文。展示仅发布提交后的投影，丢失展示不影响事实。
 
-区分三种视图：某时刻保存的事实、某 Agent 的有效上下文、当前运行观察。提供 `as_of_seq`、继承消息来源和 artifact 完整性状态，避免把源 Agent 的迟到结果显示为新 Agent 的当前上下文。
+### 6.2 Runtime 与 Executor
 
-默认导出格式为版本化 manifest + JSONL events + checkpoints + artifacts。Operation 的历史描述、执行证据与终态来自指定高水位内的不可变事件；messages 是 events 的消息视图，不再导出一套独立权威记录。manifest 包含 export version、authority/Agent IDs、fork 来源、范围、各 scope 的固定高水位、内容 digest、缺失项、脱敏策略及 `history_complete`。每条事件有 scope/seq、causation ID 和原始 recorded_at；不伪造跨 Agent 全局顺序。
+- 权威先保存 Operation 和一次 prepared attempt，再 CAS prepared → send_claimed，之后发送一次 admit；不在数据库事务内发送网络消息。
+- 执行端验证 authority/operation/attempt/executor/boot 与请求摘要，提交本地 start_intent 后才启动 Worker；重复身份不再启动。
+- 完成后本地原子保存终态、附件与稳定 receipt，再上报；保存失败不能宣称 durable completion。
+- 权威保存证据，再以 accepted_result 为空和版本条件采纳终态；accepted Result 提交成功后通知 Agent。
+- 同一 receipt 的数据重传可以幂等；它不是重新执行 Handler。持久 ACK 证明权威保存了内容，不证明外部进程已停止。
+- 重启后的遗留 start_intent 标为 unknown_after_restart，不补跑、不重建原 Worker 或容量占用。
 
-大数据先固定高水位，再用短事务 keyset 分页读取不可变记录；不能混入当前可变状态。首版不自动删除历史/artifact，因此无需导出 pin、租期、GC 协调或导出调度服务；显式删除数据集须由运维在停止导出后执行。未来确需在线删除再设计保留协调。避免长事务拖住 SQLite WAL checkpoint。
+默认每 Operation 最多一次尝试。send_claimed 后崩溃无法证明是否发出；start_intent 无法证明副作用发生与否；not_found 无法证明未执行。LLM 同样有费用和未知窗口，不默认安全重试。显式决定新工作时使用新 Operation，并关联原因/旧身份。
 
-默认导出只含所选 Agent 及其已经复制的初始上下文；不追溯加载祖先来拼接历史。原 Agent 的完整审计事实不随 fork 复制，来源仅为 provenance：新 Agent 的上下文/恢复可自足，但不能声称包含来源路径的完整执行轨迹。跨 Agent/权威的原始执行或委派轨迹以 external reference/未包含状态表示，另行显式查询。导出不执行代码，不自动包含 executor 整库或 secret refs 的解析值。导入（将包变成可执行 Agent）延期；读取/验证导出包不等于导入授权。
+权威必须独立持有 accepted Result 所需内容，不能只保留指向远端 journal 的地址。executor 与权威的可靠性副本允许存在；同一权威内可共享 immutable content。跨库传输不是原子事务。
 
-轨迹反映已观察行为与规范化输入输出，可重建上下文，但不能保证重新调用模型得到相同内容。脱敏导出允许丢失内容并标记，不再承诺可恢复。
+首个 deadline/cancel 停止原因及实际终止观察分别保留。取消请求、deadline、DOWN、节点断连都不能证明外部副作用不存在；正常返回不能被后来取消改写。未知外部效果默认阻塞下一步，包括阻止模型自动换 ID 请求同类工作；风险接受或证据解决必须显式留痕。
 
-### 8.1 轨迹的具体用途
+## 7. 恢复与活跃读取
 
-| 用途 | 必需事实 | 首版处理 |
-| --- | --- | --- |
-| 恢复与继续 | checkpoint、请求身份、已接受结果及消费状态 | 核心能力；不依赖可丢失 span/token |
-| 故障复盘与审阅 | 实际模型输入输出、Tool 参数/结果、因果、执行证据和用户决定 | 核心查询；区分当时事实与后来证据 |
-| 回撤与方案比较 | 复制的上下文、来源检查点、配置版本 | 保留原 Agent；比较两条独立路径 |
-| 成本与性能分析 | provider/model、usage、已知费用、各节点本地 duration | 查询/导出字段；费用未知标 null，跨机时钟不直接相减 |
-| 评测与回归样本 | 输入、实际配置、预期结果/人工标签、Tool 轨迹 | 允许离线导出，执行评测需独立 fake/sandbox，不重放真实副作用 |
-| 上下文策略改进 | 原 messages、实际发送的 context manifest、压缩/重置来源 | 可检验遗漏与 token 开销；压缩不删除原事实 |
+- 热 Agent 的普通观察读取已提交投影；未提交内存事件不能作为 durable 事实。精确审阅指定 generation/through_seq，不承诺跨对象原子实时快照。
+- 冷 Agent 可以在 executor 全部离线时只读历史、归约、导出。恢复控制状态与恢复执行是两件事。
+- 激活前核对数据集身份、版本、备份标记、内容引用和所有权；以 CAS 增加 generation，串行化本地激活并退役旧发送者。CAS 本身不能收回旧进程已取得的派发权。
+- 通过 checkpoint + 后续事件或完整历史归约，恢复为 paused；派发、模型或 Tool 不能由重放触发。
+- 对遗留轮次追加幂等中断/核对事件，而不是修改旧事件或伪造失败 Result。只读检查不写修复事件。模型协议需要未知 Tool 观察时，它是有来源的投影，不授权继续副作用。
+- Runtime 按稳定身份查询已有证据；已采纳未消费可由显式继续完成消费，确认未 claim 的 prepared 可首次派发；已 claim 未决保持 blocked/uncertain，不自动重新 admit。
+- 恢复未发出工作所需的 provider/profile、指令版本、环境和 secret 引用；依赖缺失或版本改变必须阻塞或显式重绑定。缺少执行依赖不应妨碍只读历史。预设名称相同不证明配置相同。
 
-恢复记录与可观测 tracing 可以使用相同稳定 ID，但 span 不是恢复事实源。当前不建 span 存储、评分器、训练平台或采集私有思维链。评分、人工标签和训练集转换可在导出后完成，不增加核心调度原语。后续接 OpenTelemetry 等应是可丢失的派生投影，失效不能阻塞结果持久提交。
+## 8. Fork、历史、导出与图
 
-## 9. 回撤：从检查点复制上下文并创建新 Agent
+Fork 仍从安全控制位置创建独立新 Agent，不创建 Branch，不重执行历史。继承的是明确选择的输入/Operation/accepted Result 内容引用和配置，不复制 prompt/transcript 正文到新 Agent，不把源 Operation 改成新 Agent 所执行。
 
-回撤通过 `fork(checkpoint) → new Agent` 实现。不在同一个 Agent 内切换 active branch，不设 branches 表、branch_id 或祖先前缀解析。原 Agent 的消息、Operation、Result 与事件不删除、不修改；新 Agent 获得独立 ID、历史序号和 head checkpoint。旧 locator/Ref 始终指向原 Agent，调用方须显式使用返回的新 locator，不能偷偷重定向别名。
+首版同权威 fork 物化继承清单和 provenance，直接引用同库不可变内容闭包；新 Agent 不需要递归读取父 Agent 的事件前缀或启动父进程。源事实保留，引用必须在事务中验证。独立指编排/生命周期独立，不承诺删除源内容后仍能恢复；删除/跨库搬迁需要未来明确的引用保留或内容复制协议。
 
-只从 `safe_to_fork=true` 的检查点复制：完整消息边界，Tool-call/result 配对完备，无未消费模型回复/Tool 结果，无在该检查点之前尚待决的 Operation、委派或 peer 请求。任意 token/任意事件点回撤延期。原 Agent 在此检查点之后可能仍有活跃工作，继续前仍需核对共享环境风险。
+安全边界要求无待消费或未决工作，完整调用配对；冻结源发送者不等于远端已停。原 Agent 在所选位置之后仍可能改变共享环境，默认阻止新 Agent 执行，直到确认或显式接受风险。新 Agent paused/await_input，新的工作使用新身份，不继承 pending、消费去重、命令、取消状态或 provider session。继承输出不计为新执行或新费用。
 
-复制范围与身份规则：
+历史和导出固定高水位，keyset 分页并遍历所需引用闭包，区分 performed/inherited。完整导出包含输入、Operation/Result、事件、配置、artifacts 和摘要；脱敏/缺失引用必须标注，不能再承诺完整恢复。只读导出不授予执行权限，不采集模型私有思维链。
 
-| 内容 | fork 行为 |
+执行因果图与上下文来源图是同一事实的投影。边区分触发、请求来源、执行、采纳、消费、汇合和继承；并行节点保持偏序，unknown 不能画成失败或已停。图不拥有第二份可修改业务状态，也不作为新的执行 DSL。
+
+## 9. 存储、错误与运维约束
+
+- SQLite 使用本机持久卷、WAL、synchronous=FULL、FK ON、短 immediate 写事务、有界连接/锁等待；不能用网络文件系统 WAL。Exqlite busy handler 与 PRAGMA busy_timeout 回读不同，按当前[存储指南](../../.trellis/spec/backend/database-guidelines.md)核查真实争锁。
+- PostgreSQL 使用同步持久提交、有限连接池、CAS 与唯一约束；不依赖某一 adapter 的 RETURNING、advisory lock 或通知保证业务正确性。
+- 数据集显式 initialize/migrate，boot/open 不创建或修复；拒绝身份/角色不符、新格式或 restored_backup。备份恢复后暂停核对，不能把丢失派发记录当未派发。
+- 存储事务禁止网络/Handler/文件副作用，失败无部分业务提交；不自动重试写事务或外部工作。提交结果未知通过稳定 command/Operation 身份重新读取。
+- 明确区分 invalid_data/conflict、stale_generation、schema_unsupported、artifact_missing、storage_unavailable、storage_outcome_unknown、dependency_missing 和 unresolved_execution；错误不泄露 SQL 或秘密。
+- Node/Repo 注册 ready 不等于 durable 准入；真实提交失败关闭相应准入，不能降级。无法写库仍尽力停止工作，不等待写库制造停止保证。
+- SQLite 使用一致性备份而非复制单个活跃 db 文件；PostgreSQL 使用一致性备份。未确认回执与 attempt 去重身份不得静默清理，配额满停止新准入。
+- 保留当前协议的完整 envelope 大小限制，不以 artifact 绕过 Operation/Result wire cap；编码格式、分页、恢复/构建/事务字节、队列及超时均需有界并在实现任务验证。
+
+## 10. 故障与验收不变量
+
+| 切点 | 必须成立 |
 | --- | --- |
-| 有效用户/助手/Tool 消息、系统配置、Tool schema、压缩摘要 | 物化为新 Agent 的继承上下文记录，分配新记录 ID，保留来源标记 |
-| 不可变图片、大输出及其他 artifact | 允许共享同一权威库的内容引用；引用同事务验证，加载不需要读取父 Agent |
-| Operation / Execution / evidence | 不复制成新执行实体；旧 Tool 返回值只是继承的上下文，原证据仍归原 Agent |
-| command 去重、pending/join/consumption、取消与委派/peer 状态 | 不继承运行控制状态；新 Agent 从空的工作集合开始 |
-| PID、订阅、timer、provider session | 不继承；需要时建立新运行身份 |
+| 输入提交前/后响应丢失 | 未提交不确认；已提交按 command 重读，不重复工作 |
+| 请求构建后、准备提交前 | 没有可执行 Operation，不派发 |
+| 准备事务后 | Agent 等待身份与 Operation 同时存在 |
+| claim 前 / 后 | 前者显式继续可首次派发；后者不自动重发 |
+| start_intent 后、外部改变后终态前 | 保留未知，不补跑、不伪造失败 |
+| receipt 后、权威 accept 前 | 重传/查询证据，不能当 Agent 已采纳 |
+| accept 后、消费前 | 恢复消费一次，不再次执行 |
+| 消费后、下一步前 | reducer 重建相同控制位置，不重复引用 |
+| checkpoint 丢失 | 从受支持事件与内容重建；零副作用 |
+| 历史/内容损坏 | 明确阻塞，不拼接猜测内容 |
+| 恢复期间旧实例/迟到证据 | 旧写拒绝，原/新轮次和 fork 不被错误推进 |
+| 模型配置/策略更新 | 已准备请求保持原样，新请求明确记录新版本 |
 
-在 `agents` 上保存 `forked_from_agent_id`、`forked_from_checkpoint_id`，继承消息可保存 `source_agent_id` / `source_event_id`。这些是来源信息，不构成加载依赖。Tool-call 配对标识在新上下文内保持一致；后续新调用使用新的身份，不与继承消息混淆。新 Agent 的历史明确区分“继承的观察”和“本 Agent 实际执行”，不能把原执行伪装成新 Agent 的工作，也不能将继承的 usage 算作新费用。
+上述不变量已通过新的双库事务、重放/缓存等价、命令/消费幂等、反序结果、进程/VM 重启及断连调用计数测试取得证据，详见[交付验收记录](./persistence-delivery.md)。同主机 peer 与独立进程证据不代表物理主机、断电或付费提供者验收。
 
-流程：
+## 11. 取舍与后续工作
 
-1. 回撤原 Agent 时先冻结其当前轮次，提交禁止新派发，等待本地派发辅助进程退役，并增加 generation 拒绝旧写入。单纯复制历史用于审阅不要求停止原 Agent，但也不授予新 Agent 执行权限。
-2. 对原 Agent 后续已派发的工作请求取消/查询。确认本地冻结不等于远端停止；若不能确认可能改变共享环境的旧工作已停，默认禁止新 Agent 继续执行。
-3. 以源 Agent 的 expected_version 和不可变 checkpoint ID 校验，在一个权威事务内创建新 Agent、复制完整有效上下文、保存新的初始 checkpoint、fork 来源事件及 command 响应。新旧记录的映射在提交时确定；事务失败不留下部分可恢复的新 Agent，同 command 重试返回相同新 locator。首版 fork 留在同一权威，不增加跨库复制协议。
-4. 新 Agent 保持 paused，初始继续位置为 `await_input`，不复制源检查点的执行继续位置。返回新 locator 和复制内容摘要；用户显式输入后才发起新 Operation。恢复新 Agent 只读取自身上下文和共享 artifact，无需遍历父链。
-5. 继续前重新核对环境和未决风险；必要的风险接受通过显式命令留痕。provider 会话重新建立。原 Agent 的迟到证据只更新原历史，不自动追加到新 Agent；需要采纳时是新的显式上下文输入。
+选择 Agent 事件归约而不是消息快照主导，增加有限的事件版本维护成本，换取单一事实来源与上下文自由构建。旧事件读取使用明确版本分支，不建立通用 upcaster/确定性 workflow replay 框架。检查点只加速归约，Operation 状态仍由 Runtime 事务维护，不要求整个系统全面 event sourcing。
 
-复制成本是存储与事务大小的明确取舍。设置复制上下文/事务的大小上限，超限明确拒绝，不静默截断，不先引入 staging 作业框架。未来若确需同一 Agent 内切换大量路径，或测量证明复制成本不可接受，再单独讨论 Branch 实体或共享前缀。
+Ecto.Multi 仍是本地提交屏障；不照搬 JSONL SessionHandle/flush。借鉴 DeepSeek-Harness 的事件优先、先记后做和显式中断，但其信息来自用户提供的总结，未核验源码或故障保证。外部系统不能替代 Beamlet 的双库和分布式证据。
 
-即使确认旧 worker 已停，已经写入的文件、发送的请求、模型费用也不会撤销。需要文件系统快照/补偿操作属于 provider 或未来功能；fork 不能被描述为外部环境 rollback。
-
-## 10. 公共接口收敛
-
-沿用已有 Agent 生命周期/输入和 Runtime submit/status/cancel；持久化是显式启动配置及 locator 支持，不再另造一套 durable 工作接口。具体参数在实现任务中确定。
-
-| Interface | 语义 |
-| --- | --- |
-| 现有 `Agent.start` / `input` | 持久模式先提交定义/输入，以 command_id 幂等；凭据由引用解析 |
-| `Agent.restore(locator, expected_version, command_id)` | 创建新的暂停实例，返回恢复说明；不重新执行 |
-| `Agent.continue(ref, expected_version, decisions, command_id)` | 单一恢复决定入口；保存采纳/放弃/新工作决定后推进，内部核对 Operation 版本 |
-| `Agent.history(locator, filters, cursor)` | 查询检查点、消息视图、fork 来源和执行证据，不启动业务进程 |
-| `Agent.fork(locator, checkpoint_id, expected_version, command_id)` | 原子创建独立的新 Agent 并返回新 locator；复制上下文、来源及执行限制见第 9 节 |
-| `Agent.export(locator, scope, policy)` | 有界流式导出固定范围，返回 manifest；不引入导出任务系统 |
-| 现有 `Runtime.status` 的持久 locator 入口 | 返回 Operation 已接受 Result 和相关证据；协调器退出后仍可读 |
-
-证据核对与记录解决决定是 Runtime/Agent 的私有协作函数，不设独立 Reconciler、Resolver 服务。Storage 是内部实现，不提供公共 `commit(bundle)` 协议。Ecto.Multi 已满足组合事务需求。
-
-统一错误须区分 `storage_unavailable`、`storage_outcome_unknown`、`conflict`、`stale_generation`、`schema_unsupported`、`dependency_missing`、`evidence_unavailable`、`unsafe_checkpoint`、`unresolved_execution`、`artifact_missing` 和普通业务 error。提交结果未知时按 command_id/稳定事件 ID 重读确认；数据库可达前不重发外部工作。Storage 内部只允许对纯数据库事务进行有界竞争重试，不重复外部副作用。
-
-## 11. SQLite / PostgreSQL 实施约束
-
-| 方面 | SQLite 默认 | PostgreSQL 可选 |
-| --- | --- | --- |
-| Ecto | ecto_sqlite3，独立 authority / journal 文件 | Ecto.Adapters.Postgres + postgrex，authority 专属 schema/库 |
-| 持久化设置 | 本机持久卷、WAL、synchronous=FULL、foreign_keys=ON、有界锁等待；启动核查 WAL/FULL/FK 等实际回读值。锁定等待以驱动的可中断 busy handler（当前 Exqlite 0.42 的 NIF 实现）提供，`PRAGMA busy_timeout` 因此可能回读为 0，不得再用该 PRAGMA 覆盖 handler，须以真实争锁用例验证等待有界 | 普通持久表；保持 fsync/同步提交，不使用 unlogged 表替代事实 |
-| 写并发 | 单 writer，短事务；必要时 authority 内有界提交队列；不对 token 每次写库 | 行版本 CAS + 唯一约束，连接池有界 |
-| 事务 | Ecto.Multi；实现时验证 adapter immediate mode 的使用 | Ecto.Multi；Read Committed + 单行 CAS，不依赖先 SELECT 后无条件 UPDATE |
-| 类型 | UUID 逻辑上是规范字符串；JSON/map 按 codec 验证，BLOB 保存 artifact | 相同外部契约；可用 native JSONB/bytea 的 adapter 映射，不暴露差异 |
-| 查询 | 显式 B-tree 索引；有界 keyset 分页 | 相同查询语义，初版不要求 JSONB 查询/GIN/notify |
-| 测试 | 独立文件；写库 sandbox 用例不能假设 async 安全 | 相同契约套件 + 实际并发测试 |
-
-可移植迁移只依赖主外键、非空、唯一约束、索引和版本列。enum/版本范围等不能依赖某一 adapter 默认实现；通过 codec/changeset 与针对两库验证过的约束共同保证。不可依赖 PostgreSQL advisory lock、SKIP LOCKED、部分索引或 LISTEN/NOTIFY 才能保证正确性。查询更新以受影响行数和唯一冲突作为事实，不依赖所有 adapter 都支持相同 RETURNING。
-
-权威和 executor journal 各有 migration 目录/版本；部署显式迁移成功并核对存储状态后才开放相应持久准入。迁移是单一运维动作，不由每个 Agent 启动。升级采用 expand → 回填 → 校验 → 切换，破坏性删除另行安排；数据版本较新时旧代码拒绝写入。事件保留原 schema version，读取时用普通版本分支转换；不另造 upcaster 框架，不能通过升级重新执行旧 handler。
-
-当前 Node services `ready` 仅表示所需本地进程已注册，Runtime report readiness 也不提供磁盘提交保证。保留这些现有语义；持久准入须在实际 authority 事务及 Gateway 日志路径中强制检查，不能依赖 observation 快照。Repo 进程存在不等于数据库可写，启动检查通过也不能代替逐次提交。若对外展示存储状态，使用单独明确标注的 durable 准入状态及安全原因；该派生状态不授予执行权限，也不是新的持久实体。
-
-数据库忙/磁盘满/写失败：停止受影响角色的新持久输入接受和新派发，关闭相应 durable 准入。已在执行的外部工作未必能停止；尽力取消并保留 unknown。只读可行时仍提供历史。数据库恢复后先重读确认提交、reconcile，再允许显式继续。错误分类必须区分确定性与未知：被数据库拒绝并已回滚的约束/类型错误（SQLite constraint 文本、PostgreSQL 完整性/数据异常）可归为业务 invalid_data/conflict；连接丢失、调用中断和未分类驱动错误才是 `storage_outcome_unknown`，不得把确定回滚报成未知，也不得把未知报成未执行。
-
-SQLite 备份必须使用一致性备份能力或停写并正确处理 WAL，不直接复制正在写入的单个 `.db`。PostgreSQL 使用一致性备份流程。恢复旧备份可能丢失已提交 dispatch/去重记录：必须标记 `restored_backup` 并暂停业务，执行人工/证据核对，不能当成从未派发直接继续。
-
-初版 artifact 放数据库内以保持原子性。之后若改对象存储，必须另设 staging/commit/GC 协议与缺失语义，不让“上传成功但引用未提交”变成隐含保证。默认不自动清理业务事实；progress、已确认 executor receipts 可按策略清理。未确认 receipts 不静默删除，达到磁盘/配额水位则停止新 durable 准入。权威 ACK 后仍保留 journal_attempts 的去重身份；首版不删除 attempt 记录，也不增加 epoch/回收协议。日志丢失或从旧备份恢复后执行节点默认暂停准入，先完成运维隔离和核对，不能把缺失的旧 attempt 当新工作。
-
-## 12. 故障矩阵与不变量
-
-| 崩溃/故障位置 | 持久证据 | 恢复结果 |
-| --- | --- | --- |
-| 输入事务提交前 | 无 command | 未接受；重试 command 不产生旧工作 |
-| 输入提交后响应丢失 | command + turn | 重读同响应，不重复生成 |
-| prepared 后、send_claimed 前 | 未发送 intent | 暂停，显式继续可首次派发 |
-| send_claimed 后发送前/后 | 无法区分 | 查询；未找到也不自动重发 |
-| executor start_intent 后启动前/执行中 | 可能执行 | unknown；不补跑 |
-| 外部改变后、本地终态提交前 | start_intent | unknown；不能宣称无副作用 |
-| 本地终态提交后、上报前 | 完整 receipt | 查询/重传证据，权威接受一次 |
-| 权威终态提交后、Agent 消费前 | accepted_result | 纯数据消费一次，不重执行 |
-| 消费事务后、下一步前 | 消费键 + continuation | 从新位置继续，不重复 Tool message |
-| 先 accepted uncertain、后 receipt success | 两种观察均保留 | 显式 resolution，不能覆盖旧终态 |
-| 取消/回撤中收到迟到结果 | 原 agent/turn 身份 | 只补原历史，不推进新 Agent |
-| 首个 deadline/cancel 后收到竞争触发或正常返回 | 停止原因、终止观察及 receipt | 保留因果分类；正常返回不被请求改写，保存前崩溃保持 unknown |
-| 展示截断/全部省略或 observation 过期 | 完整历史和检查点独立存在 | 不影响恢复/fork，不以投影缺失推断业务未发生 |
-| authority DB 不可写但 Repo/Node 仍已注册 | 本地日志或未决证据 | 禁新持久输入/派发；不自动内存降级，注册 ready 不授予准入 |
-| executor 日志丢失/旧备份恢复 | 证据不完整 | 保持 unknown，不能以 not_found 证明未执行 |
-| 两个恢复请求/旧实例迟到写 | version + generation | 单实例激活，旧写拒绝；冻结时仍须退役旧本地发送者 |
-
-必须一直成立：已接受输入可找回；发送前有已提交的 dispatch claim；handler 启动前有本地 start_intent；对外 durable completion 前有持久终态；每 Operation 接受一个 Result；每 Agent 消费一次；旧 Ref 不复活；回撤不删除原历史；恢复不自动重执行；所有查询与缓存都有大小和时间上限。
-
-## 13. 设计取舍与一手依据
-
-关键取舍：
-
-- 选择事务状态 + 事件 + 检查点，而非纯快照或全面 event sourcing：同时满足审阅与恢复，又不把旧 handler 永久当作事件解释器。
-- 默认执行日志值得增加第二份数据库：它保留丢失回执后的完成证据，但不升级为第二个业务权威。
-- 不自动重发 dispatch：牺牲一部分无害情况下的自动继续能力，保留对真实副作用的诚实语义。
-- 回撤复制安全检查点的有效上下文并创建新 Agent：原历史保真，新路径独立加载，不引入父前缀解析或同 Agent 内的分支切换。
-- 首版 artifact 在库内：优先获得可验证的事务完整性，再按真实容量需求提取存储机制。
-
-先 uncertain 后 success 不覆盖已接受 Result。进一步的机制调研、可借鉴点和不采纳的抽象见[研究记录](./research/durable-agent-mechanisms.md)。
-
-文档核对依据（在线文档版本可能演进；实现时必须锁定依赖并重新验证）：
-
-1. [Ecto.Multi](https://hexdocs.pm/ecto/Ecto.Multi.html)：一组 Repo 操作进入单数据库事务，操作失败回滚；不覆盖网络副作用。
-2. [Ecto SQLite adapter](https://hexdocs.pm/ecto_sqlite3/Ecto.Adapters.SQLite3.html)：WAL、synchronous、busy_timeout、transaction mode 配置及 SQL Sandbox 并发限制。其 synchronous 默认 NORMAL，不能把 adapter 默认值直接当作本提案 FULL 的承诺。
-3. [SQLite WAL](https://www.sqlite.org/wal.html)：同一时刻单 writer；WAL 需要同主机；FULL 在每次事务提交同步 WAL；长读事务影响 checkpoint。上线前核对实际嵌入 SQLite 版本与官方已知缺陷，不以 Elixir adapter 版本代替引擎版本。
-4. [PostgreSQL isolation](https://www.postgresql.org/docs/current/transaction-iso.html)：Read Committed 下更新会在竞争后重新检查 WHERE；普通先读后写不提供跨行业务不变量。版本条件、唯一约束和共同事务不可省略。
-
-以上是设计依据，不是当前仓库或目标硬件上的耐久性测试结果。后续实现验收见配套计划。
+实际 API、schema、事件枚举和预算已在实现任务中收敛，见[交付验收](./persistence-delivery.md)与各应用 README。普通上下文策略已实现；检索/摘要策略、自动 GC、跨权威内容迁移及图 UI 仍是未来独立需求。新格式初始化保持显式运维操作。

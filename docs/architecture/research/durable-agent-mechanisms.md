@@ -1,10 +1,14 @@
 # Agent durable / 恢复机制与轨迹用途调研
 
-核查日期：2026-10-17。仅研究和设计，不实现代码。
+外部来源核查日期：2026-10-17。仅研究和设计，不实现代码。2026-10-18 新增已确认设计修订说明；未重新核验外部源码。
 
 问题：在 Beamlet 已有 Agent / Operation / Execution 模型上，哪些持久化机制是必要的，哪些只是其他框架为其不同目标引入的抽象？
 
-结论（已按用户同意的后续简化更新）：维持权威存储、执行证据、暂停恢复；durable 只新增**历史记录 + 检查点**两个原语。回撤通过复制安全检查点的有效上下文创建新 Agent，不设独立 Branch 实体或父前缀加载。不增加通用 Task、Document、Workflow 或确定性重放框架。会话记忆、执行恢复和观测 tracing 应区分保证，但可以共享记录内容和稳定身份。
+**当前结论以[修订主设计](../agent-operation-persistence.md)为准。** Agent 自身输入、配置与编排事件归 Agent，确定的 LLM/Tool 输入归 Operation，正文输出归 accepted Result。Agent 以纯事件归约恢复控制状态，检查点只加速，messages 仅是请求构建产物。正文不复制到 Agent 历史/检查点；fork 继承直接内容引用并保留来源，不重建父事件链。旧版“拒绝事件 reducer、复制消息检查点”决策已被替代；下文第 2–6 节保留前次研究与取舍，不应当作当前实施要求。
+
+DeepSeek-Harness：用户提供了事件日志、关键提交屏障、SessionHandle、显式中断、未知 Tool 不自动重试及预设校验的思想总结；未提供锁定源码，本次未核验具体实现、flush/fsync 或故障保障。只借鉴事件优先、先记后做与恢复显式化，不把总结当一手实测证据，不照搬 JSONL/flush 接口。Beamlet 保留 Ecto 事务和 executor 本地日志；Agent replay 是纯数据归约，不是 Temporal 式业务代码重跑。预设标识必须结合版本/内容核对，同名配置不等于旧请求。
+
+前次结论（历史决策，已被上述修订取代）：维持权威存储、执行证据、暂停恢复；durable 只新增**历史记录 + 检查点**两个原语。回撤通过复制安全检查点的有效上下文创建新 Agent，不设独立 Branch 实体或父前缀加载。不增加通用 Task、Document、Workflow 或确定性重放框架。会话记忆、执行恢复和观测 tracing 应区分保证，但可以共享记录内容和稳定身份。
 
 配套：[主设计](../agent-operation-persistence.md)、[实施验收](../persistence-delivery.md)。
 

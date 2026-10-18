@@ -8,7 +8,7 @@ Beamlet 是一个使用 Elixir/OTP 开发,可跨可信 BEAM 集群运行 AI Agen
 
 架构将三个关注点分开:**决定做什么,执行具体工作,呈现交互过程**.其中的分布式执行层是通用的,也可以服务于与 AI 无关的调用方.
 
-后续[Agent / Operation 持久化提案](docs/architecture/agent-operation-persistence.md)（核心方向已确认，附调研与简化修订）讨论 Ecto 存储、恢复、历史审阅、轨迹导出与回撤。该设计只新增历史记录和检查点两个 durable 原语，fork 复制有效上下文并创建新 Agent，不设置独立分支实体。它是本基线的扩展设计，不表示下述内存首版已具备这些能力。
+后续[Agent / Operation 持久化设计](docs/architecture/agent-operation-persistence.md)已修订为事件优先：Agent 保存自身输入、配置和编排引用，确定的 LLM/Tool 请求归 Operation，输出归权威采纳的 Result；上下文按策略构建，检查点仅加速控制状态归约，fork 继承内容引用。该设计已由独立重构任务实现，authority 使用格式 2，不兼容旧格式；下文保留早期内存架构基线，不作为当前实现清单。
 
 ## 目录
 

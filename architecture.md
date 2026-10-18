@@ -8,7 +8,7 @@ Beamlet is an Elixir/OTP system for running AI Agents across a trusted BEAM clus
 
 The architecture separates three concerns: **deciding what to do, executing the work, and presenting the interaction**. Its distributed execution layer is general-purpose and can also serve callers that have nothing to do with AI.
 
-The follow-up [Agent / Operation persistence proposal](docs/architecture/agent-operation-persistence.md) (Chinese; core direction accepted, research refinements documented) extends this baseline with Ecto storage, recovery, history, export, and rewind. It uses history records and checkpoints as its two added durable primitives; fork copies effective context into a new Agent rather than introducing a branch entity. Its scope and guarantees are separate from the in-memory first version below.
+The revised [Agent / Operation persistence design](docs/architecture/agent-operation-persistence.md) (Chinese; implemented in authority format 2) makes Agent history event-first: Agents own inputs, configuration and orchestration references; Operations own fixed LLM/Tool requests, and accepted Results own outputs. Context is constructed by policy, checkpoints accelerate control-state reduction, and fork inherits immutable content references. Old-format compatibility is not required. The opt-in Ecto durable implementation now follows this ownership and recovery model; the in-memory baseline below is historical scope, not a current implementation inventory.
 
 ## Contents
 
