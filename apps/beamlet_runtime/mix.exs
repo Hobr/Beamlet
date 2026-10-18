@@ -27,7 +27,9 @@ defmodule Beamlet.Runtime.MixProject do
   defp deps do
     [
       {:beamlet_actions, in_umbrella: true},
-      {:beamlet_storage, in_umbrella: true}
+      {:beamlet_storage, in_umbrella: true},
+      {:beamlet_actions_storage, in_umbrella: true},
+      {:ecto, "== 3.14.0"}
     ]
   end
 end

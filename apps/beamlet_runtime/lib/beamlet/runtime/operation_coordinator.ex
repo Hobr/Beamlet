@@ -2,8 +2,9 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   @moduledoc false
   use GenServer, restart: :temporary
   alias Beamlet.Actions.{Execution, ExecutionHandle, OperationRef, Result}
+  alias Beamlet.Actions.Storage.{Codec, OperationRecords}
   alias Beamlet.Runtime.{Directory, Persistence}
-  alias Beamlet.Storage.{Admission, Codec, OperationRecords}
+  alias Beamlet.Storage.Admission
 
   def start_link({_, _, owner, _, true, _} = args) do
     if Process.alive?(owner), do: GenServer.start_link(__MODULE__, args), else: :ignore
@@ -286,7 +287,13 @@ defmodule Beamlet.Runtime.OperationCoordinator do
     case OperationRecords.claim_dispatch(durable.persistence.authority_repo, %{
            operation_id: durable.operation_id,
            attempt_id: durable.attempt_id,
-           expected_version: durable.attempt_version
+           expected_version: durable.attempt_version,
+           expected_operation: %{
+             description_digest: durable.description_digest,
+             lock_version: durable.operation_version,
+             dispatch_scope_id: durable.persistence.dispatch_scope_id,
+             dispatch_epoch: durable.persistence.dispatch_epoch
+           }
          }) do
       {:ok, _claim} -> :ok
       {:error, _reason} -> {:error, :durable_unavailable}

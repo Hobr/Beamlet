@@ -10,12 +10,13 @@ defmodule Beamlet.Runtime.Persistence do
   and stable identities; PIDs, references, monitors, timers and worker handles
   stay in memory.
 
-  Owned model/tool work is prepared atomically by Storage AgentRecords. Runtime
+  Work may be prepared atomically by a caller-owned transaction. Runtime
   accepts its committed identity through `submit/2`'s `prepared:` option; Result
-  acceptance belongs only to the Operation and never advances Agent state.
+  acceptance belongs only to the Operation and does not advance caller orchestration state.
   """
   alias Beamlet.Actions.{Operation, Result}
-  alias Beamlet.Storage.{Admission, Codec, OperationRecords}
+  alias Beamlet.Actions.Storage.{Codec, DispatchScopes, OperationRecords}
+  alias Beamlet.Storage.Admission
 
   @enforce_keys [:authority_repo, :journal_repo, :authority_id, :executor_id, :executor_boot_id]
   defstruct [
@@ -24,7 +25,8 @@ defmodule Beamlet.Runtime.Persistence do
     :authority_id,
     :executor_id,
     :executor_boot_id,
-    :owner
+    :dispatch_scope_id,
+    :dispatch_epoch
   ]
 
   @type t :: %__MODULE__{
@@ -33,20 +35,28 @@ defmodule Beamlet.Runtime.Persistence do
           authority_id: binary(),
           executor_id: binary(),
           executor_boot_id: binary(),
-          owner: %{agent_id: binary(), turn_id: binary(), step_id: binary()} | nil
+          dispatch_scope_id: binary() | nil,
+          dispatch_epoch: non_neg_integer() | nil
         }
 
   def new(nil), do: nil
   def new(%__MODULE__{} = persistence), do: validate!(persistence)
 
   def new(opts) when is_list(opts) do
+    allowed =
+      ~w(authority_repo journal_repo authority_id executor_id executor_boot_id dispatch_scope_id dispatch_epoch)a
+
+    unless Keyword.keyword?(opts) and Enum.all?(Keyword.keys(opts), &(&1 in allowed)),
+      do: raise(ArgumentError, "invalid persistence configuration")
+
     validate!(%__MODULE__{
       authority_repo: opts[:authority_repo],
       journal_repo: opts[:journal_repo],
       authority_id: opts[:authority_id],
       executor_id: opts[:executor_id],
       executor_boot_id: opts[:executor_boot_id],
-      owner: opts[:owner]
+      dispatch_scope_id: opts[:dispatch_scope_id],
+      dispatch_epoch: opts[:dispatch_epoch]
     })
   end
 
@@ -72,14 +82,16 @@ defmodule Beamlet.Runtime.Persistence do
   @doc "Authority commit of the immutable Operation and one prepared attempt, before dispatch."
   def prepare(nil, _operation), do: {:ok, nil}
 
-  def prepare(%__MODULE__{owner: owner}, %Operation{}) when not is_nil(owner),
-    do: {:error, :invalid_operation}
-
   def prepare(%__MODULE__{} = persistence, %Operation{} = operation) do
     attempt_id = uuid()
 
     attrs = %{
-      operation: %{id: uuid(), description: description(operation), sources: []},
+      operation: %{
+        id: uuid(),
+        description: description(operation),
+        dispatch_scope_id: persistence.dispatch_scope_id,
+        dispatch_epoch: persistence.dispatch_epoch
+      },
       attempt: %{
         attempt_id: attempt_id,
         executor_id: persistence.executor_id,
@@ -169,19 +181,16 @@ defmodule Beamlet.Runtime.Persistence do
     valid =
       not is_nil(persistence.authority_repo) and not is_nil(persistence.journal_repo) and
         Codec.uuid?(persistence.authority_id) and Codec.uuid?(persistence.executor_id) and
-        Codec.uuid?(persistence.executor_boot_id) and owner?(persistence.owner)
+        Codec.uuid?(persistence.executor_boot_id) and scope?(persistence)
 
     unless valid, do: raise(ArgumentError, "invalid persistence configuration")
     persistence
   end
 
-  defp owner?(nil), do: true
-
-  defp owner?(owner) when is_map(owner) and not is_struct(owner) do
-    Enum.sort(Map.keys(owner)) == [:agent_id, :step_id, :turn_id] and
-      Codec.uuid?(owner[:agent_id]) and Codec.uuid?(owner[:turn_id]) and
-      is_binary(owner[:step_id]) and byte_size(owner[:step_id]) in 1..255
+  defp scope?(persistence) do
+    DispatchScopes.validate_binding(
+      persistence.dispatch_scope_id,
+      persistence.dispatch_epoch
+    ) == :ok
   end
-
-  defp owner?(_), do: false
 end

@@ -2,8 +2,8 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   @moduledoc false
   use GenServer
   alias Beamlet.Actions.{ExecutionHandle, Operation, Result}
+  alias Beamlet.Actions.Storage.{Codec, ExecutorJournal}
   alias Beamlet.Runtime.{NodeEndpoint, Persistence, Report, Worker, Workers}
-  alias Beamlet.Storage.{Codec, ExecutorJournal}
   def start_link(args), do: GenServer.start_link(__MODULE__, args, name: __MODULE__)
 
   def eligible?(op, r) do

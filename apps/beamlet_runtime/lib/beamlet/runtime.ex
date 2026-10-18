@@ -8,8 +8,9 @@ defmodule Beamlet.Runtime do
   behaviour exactly.
   """
   alias Beamlet.Actions.{Operation, OperationRef}
+  alias Beamlet.Actions.Storage.{Codec, ExecutorJournal, OperationRecords}
   alias Beamlet.Runtime.{Directory, Observation, Persistence, SharedSupervisor}
-  alias Beamlet.Storage.{Admission, Codec, ExecutorJournal, OperationRecords}
+  alias Beamlet.Storage.Admission
 
   @doc """
   Safe Directory-owned report observation, `{:ok, %{version: 1, source: node,
@@ -149,7 +150,10 @@ defmodule Beamlet.Runtime do
     row = stored["operation"]
     attempt = stored["attempt"]
 
-    owner_matches?(persistence.owner, row) and
+    row["dispatch_scope_id"] == persistence.dispatch_scope_id and
+      row["dispatch_epoch"] == persistence.dispatch_epoch and
+      prepared["dispatch_scope_id"] == row["dispatch_scope_id"] and
+      prepared["dispatch_epoch"] == row["dispatch_epoch"] and
       row["description"] == Persistence.description(operation) and
       row["description_digest"] == prepared["description_digest"] and
       row["lock_version"] == prepared["lock_version"] and
@@ -159,17 +163,12 @@ defmodule Beamlet.Runtime do
 
   defp attempt_matches?(persistence, prepared, attempt) do
     attempt["attempt_id"] == prepared["attempt_id"] and
+      attempt["operation_id"] == prepared["operation_id"] and
+      attempt["description_digest"] == prepared["description_digest"] and
       attempt["lock_version"] == prepared["attempt_version"] and
       attempt["dispatch_state"] == "prepared" and
       attempt["executor_id"] == persistence.executor_id and
       attempt["executor_boot_id"] == persistence.executor_boot_id
-  end
-
-  defp owner_matches?(nil, _row), do: true
-
-  defp owner_matches?(owner, row) do
-    owner.agent_id == row["owner_agent_id"] and owner.turn_id == row["turn_id"] and
-      owner.step_id == row["step_id"]
   end
 
   defp prepared(prepared) when is_map(prepared) and not is_struct(prepared) do

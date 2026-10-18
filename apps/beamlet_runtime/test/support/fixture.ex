@@ -55,8 +55,9 @@ end
 defmodule Beamlet.Runtime.TestPeer do
   @moduledoc false
   alias Beamlet.Actions.Operation
+  alias Beamlet.Actions.Storage.ExecutorJournalRepo
   alias Beamlet.Runtime.{Directory, SharedSupervisor}
-  alias Beamlet.Storage.{Dataset, ExecutorJournalRepo}
+  alias Beamlet.Storage.Dataset
 
   def boot(opts) do
     {:ok, pid} = SharedSupervisor.start_link(opts)

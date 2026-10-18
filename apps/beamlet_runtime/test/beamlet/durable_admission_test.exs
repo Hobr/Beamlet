@@ -16,9 +16,11 @@ defmodule Beamlet.Runtime.DurableAdmissionTest do
   use ExUnit.Case, async: false
 
   alias Beamlet.Actions.Operation
+  alias Beamlet.Actions.Storage.{ExecutorJournalRepo, SQLiteAuthorityRepo}
+  alias Beamlet.Actions.Storage.Profiles
   alias Beamlet.Runtime
   alias Beamlet.Runtime.Persistence
-  alias Beamlet.Storage.{Admission, Dataset, ExecutorJournalRepo, SQLiteAuthorityRepo}
+  alias Beamlet.Storage.{Admission, Dataset}
 
   setup do
     dir = Path.join(System.tmp_dir!(), "beamlet-admission-#{System.unique_integer([:positive])}")
@@ -27,12 +29,14 @@ defmodule Beamlet.Runtime.DurableAdmissionTest do
     journal = Path.join(dir, "journal.db")
 
     authority_opts = [
+      descriptor: Profiles.authority(),
       database: authority,
       peer_database: journal,
       dataset_id: Ecto.UUID.generate()
     ]
 
     journal_opts = [
+      descriptor: Profiles.journal(),
       database: journal,
       peer_database: authority,
       dataset_id: Ecto.UUID.generate()
@@ -75,9 +79,7 @@ defmodule Beamlet.Runtime.DurableAdmissionTest do
 
     start_supervised!(%{
       id: :admission,
-      start:
-        {Admission, :start_link,
-         [[repo: SQLiteAuthorityRepo, dataset_id: ctx.authority_opts[:dataset_id]]]}
+      start: {Admission, :start_link, [[repo: SQLiteAuthorityRepo] ++ ctx.authority_opts]}
     })
 
     assert :admitted = Admission.status()
@@ -115,14 +117,14 @@ defmodule Beamlet.Runtime.DurableAdmissionTest do
 
       start_supervised!(%{
         id: :admission,
-        start:
-          {Admission, :start_link,
-           [[repo: SQLiteAuthorityRepo, dataset_id: ctx.authority_opts[:dataset_id]]]}
+        start: {Admission, :start_link, [[repo: SQLiteAuthorityRepo] ++ ctx.authority_opts]}
       })
 
       assert :admitted = Admission.status()
       assert :ok = Admission.failure(:storage_outcome_unknown)
-      before_count = SQLiteAuthorityRepo.aggregate(Beamlet.Storage.Schema.Operation, :count)
+
+      before_count =
+        SQLiteAuthorityRepo.aggregate(Beamlet.Actions.Storage.Schema.Operation, :count)
 
       input =
         if @persistence_form == :keyword,
@@ -131,7 +133,7 @@ defmodule Beamlet.Runtime.DurableAdmissionTest do
 
       assert {:error, :unavailable} = Runtime.submit(operation(), persistence: input)
 
-      assert SQLiteAuthorityRepo.aggregate(Beamlet.Storage.Schema.Operation, :count) ==
+      assert SQLiteAuthorityRepo.aggregate(Beamlet.Actions.Storage.Schema.Operation, :count) ==
                before_count
 
       refute_receive {:handler_started, _, _}, 100

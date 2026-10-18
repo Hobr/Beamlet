@@ -22,20 +22,22 @@ end
 defmodule Beamlet.Runtime.DurableRuntimeTest do
   use ExUnit.Case, async: false
   alias Beamlet.Actions.Operation
+  alias Beamlet.Actions.Storage.Profiles
   alias Beamlet.Runtime
   alias Beamlet.Runtime.Persistence
 
-  alias Beamlet.Storage.{
-    AgentRecords,
+  alias Beamlet.Storage.Dataset
+
+  alias Beamlet.Actions.Storage.{
     Codec,
-    Dataset,
+    DispatchScopes,
     ExecutorJournal,
     ExecutorJournalRepo,
     OperationRecords,
     SQLiteAuthorityRepo
   }
 
-  alias Beamlet.Storage.Schema.JournalAttempt
+  alias Beamlet.Actions.Storage.Schema.JournalAttempt
 
   setup do
     dir =
@@ -49,12 +51,14 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
     journal = Path.join(dir, "journal.db")
 
     authority_opts = [
+      descriptor: Profiles.authority(),
       database: authority,
       peer_database: journal,
       dataset_id: Ecto.UUID.generate()
     ]
 
     journal_opts = [
+      descriptor: Profiles.journal(),
       database: journal,
       peer_database: authority,
       dataset_id: Ecto.UUID.generate()
@@ -355,11 +359,12 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
     assert journal["state"] == "terminal"
   end
 
-  test "owned model and tool siblings accept in reverse order without Agent CAS", context do
+  test "prepared siblings accept in reverse order without changing their dispatch scope",
+       context do
     persistence = persistence(context)
     boot(persistence)
     op = %{operation("hold") | claims: %{}}
-    {agent_id, position, [first, second]} = prepare_owned(persistence, [op, op])
+    {scope_id, persistence, [first, second]} = prepare_scoped(persistence, [op, op])
 
     assert {:ok, a} = Runtime.submit(op, persistence: persistence, prepared: first)
     assert_receive {:handler_started, worker_a, _}, 2000
@@ -370,9 +375,7 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
     send(worker_a, :release)
     assert_receive {:beamlet_operation, ^a, {:result, %{status: :ok}}}, 3000
 
-    assert {:ok, agent} = AgentRecords.fetch(SQLiteAuthorityRepo, agent_id)
-    assert agent["agent"]["lock_version"] == position.lock_version
-    assert agent["agent"]["history_seq"] == 4
+    assert {:ok, %{"epoch" => 0}} = DispatchScopes.current(SQLiteAuthorityRepo, scope_id)
 
     for ref <- [a, b] do
       assert {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, ref.id)
@@ -385,7 +388,7 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
     persistence = persistence(context)
     boot(persistence)
     op = %{operation("hold") | claims: %{}}
-    {agent_id, position, prepared} = prepare_owned(persistence, [op, op])
+    {scope_id, persistence, prepared} = prepare_scoped(persistence, [op, op])
 
     refs =
       Enum.map(prepared, fn member ->
@@ -401,9 +404,7 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
       assert_receive {:beamlet_operation, ^ref, {:result, %{status: :ok}}}, 3000
     end
 
-    {:ok, agent} = AgentRecords.fetch(SQLiteAuthorityRepo, agent_id)
-    assert agent["agent"]["lock_version"] == position.lock_version
-    assert agent["agent"]["history_seq"] == 4
+    assert {:ok, %{"epoch" => 0}} = DispatchScopes.current(SQLiteAuthorityRepo, scope_id)
   end
 
   test "racing submissions of one prepared identity run once and never accept a losing claim",
@@ -443,6 +444,15 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
     boot(persistence)
     op = %{operation("hold") | credentials: %{"api_key" => "transient-credential"}}
     {:ok, prepared} = Persistence.prepare(persistence, op)
+
+    assert_raise ArgumentError, fn ->
+      persistence
+      |> Map.from_struct()
+      |> Map.to_list()
+      |> Keyword.put(:owner, %{})
+      |> Persistence.new()
+    end
+
     changed = %{op | payload: Map.put(op.payload, "marker", "changed")}
 
     assert {:error, :invalid_operation} =
@@ -452,6 +462,20 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
 
     assert {:error, :invalid_operation} =
              Runtime.submit(op, persistence: persistence, prepared: wrong)
+
+    for {key, value} <- [
+          {"description_digest", String.duplicate("0", 64)},
+          {"lock_version", 1},
+          {"attempt_version", 1},
+          {"dispatch_scope_id", Ecto.UUID.generate()},
+          {"dispatch_epoch", 1}
+        ] do
+      assert {:error, :invalid_operation} =
+               Runtime.submit(op,
+                 persistence: persistence,
+                 prepared: Map.put(prepared, key, value)
+               )
+    end
 
     refute_received {:handler_started, _, _}
 
@@ -472,17 +496,14 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
     assert evidence.authority["operation"]["accepted_result"]["status"] == "ok"
   end
 
-  test "stale control generation cannot claim prepared work", context do
+  test "stale scope epoch cannot claim prepared work", context do
     persistence = persistence(context)
     boot(persistence)
     op = operation("hold")
-    {_id, position, [prepared]} = prepare_owned(persistence, [op])
+    {scope_id, persistence, [prepared]} = prepare_scoped(persistence, [op])
 
     assert {:ok, _} =
-             AgentRecords.restore(SQLiteAuthorityRepo, %{
-               command_id: Ecto.UUID.generate(),
-               position: position
-             })
+             DispatchScopes.rotate(SQLiteAuthorityRepo, %{id: scope_id, expected_epoch: 0})
 
     assert {:ok, ref} = Runtime.submit(op, persistence: persistence, prepared: prepared)
     monitor = Process.monitor(ref.pid)
@@ -635,7 +656,7 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
   defp wait_late_evidence(id, attempts) do
     {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, id)
 
-    if SQLiteAuthorityRepo.aggregate(Beamlet.Storage.Schema.ExecutionEvidence, :count) > 0 do
+    if SQLiteAuthorityRepo.aggregate(Beamlet.Actions.Storage.Schema.ExecutionEvidence, :count) > 0 do
       assert row["operation"]["accepted_result"]["status"] == "deadline"
       :ok
     else
@@ -670,60 +691,18 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
     end
   end
 
-  defp prepare_owned(persistence, operations) do
-    agent_id = Ecto.UUID.generate()
-    turn_id = Ecto.UUID.generate()
+  defp prepare_scoped(persistence, operations) do
+    scope_id = Ecto.UUID.generate()
+    {:ok, _} = DispatchScopes.create(SQLiteAuthorityRepo, %{id: scope_id})
+    persistence = %{persistence | dispatch_scope_id: scope_id, dispatch_epoch: 0}
 
-    {:ok, _} =
-      AgentRecords.create_agent(SQLiteAuthorityRepo, %{
-        command_id: Ecto.UUID.generate(),
-        id: agent_id,
-        authority_id: persistence.authority_id,
-        definition: %{}
-      })
-
-    position = %{agent_id: agent_id, lock_version: 0, generation: 0}
-
-    {:ok, input} =
-      AgentRecords.accept_input(SQLiteAuthorityRepo, %{
-        command_id: Ecto.UUID.generate(),
-        position: position,
-        turn_id: turn_id,
-        input: %{"text" => "original"}
-      })
-
-    members =
-      Enum.with_index(operations, fn op, ordinal ->
-        %{
-          operation: %{
-            id: Ecto.UUID.generate(),
-            owner_agent_id: agent_id,
-            turn_id: turn_id,
-            step_id: "step-#{ordinal}",
-            role: if(ordinal == 0, do: "model", else: "tool"),
-            ordinal: ordinal,
-            description: Persistence.description(op),
-            sources: []
-          },
-          attempt: %{
-            attempt_id: Ecto.UUID.generate(),
-            executor_id: persistence.executor_id,
-            executor_boot_id: persistence.executor_boot_id,
-            budget: %{"budget_ms" => op.budget_ms}
-          }
-        }
+    prepared =
+      Enum.map(operations, fn op ->
+        {:ok, prepared} = Persistence.prepare(persistence, op)
+        prepared
       end)
 
-    {:ok, prepared} =
-      AgentRecords.prepare_operations(SQLiteAuthorityRepo, %{
-        command_id: Ecto.UUID.generate(),
-        position: %{position | lock_version: input["lock_version"]},
-        turn_id: turn_id,
-        operations: members,
-        orchestration: %{}
-      })
-
-    {agent_id, %{position | lock_version: prepared["lock_version"]}, prepared["operations"]}
+    {scope_id, persistence, prepared}
   end
 
   @tag :distributed
