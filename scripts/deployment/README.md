@@ -215,6 +215,11 @@ at65536 UTF-8 bytes, watch at256 events/60s/4096 codepoints per event, and rejec
 overlong executable input as a whole. Overlong stdin ends the session. Stop is
 not an upstream cancellation/rollback promise; no automatic business replay occurs.
 
+`check-cli-release.py` pins `BEAMLET_LANG=en` for every copied CLI process, so its
+English copy assertions (`error: invalid_command`, no `error:` in a healthy
+session) stay deterministic now that Chinese is the shipped default; the language
+switch itself is covered by `apps/beamlet_cli/test/beamlet/i18n_test.exs`.
+
 `check-release.sh` now checks both rebuilt artifacts, including the same daemon
 copy in three modes and three independent foreground CLI stdin sessions. The
 first quits after create; the second discovers/attaches, operates and leaves via
@@ -231,6 +236,30 @@ total/shown/completeness/failure counts. Commands and identity handling remain
 application code. The narrow raw-byte reader remains because Owl.IO.input reads an
 unbounded line, trims executable text and retries required input/EOF. No full-screen
 terminal engine or dependency/version change is needed.
+
+### Terminal language
+
+Terminal copy is translated with Gettext and ships in Simplified Chinese
+(`zh_CN`, the default) and English (`en`). The CLI resolves its language once, in
+`Beamlet.CLI.Runner.run/2` before any stdin is read, so a session cannot mix
+languages mid-run. Precedence:
+
+1. `config :beamlet_cli, :locale` — trusted build-time application config; it wins
+   over everything and is *not* part of the `BEAMLET_CONFIG` host schema
+   (`enabled`/`allowed_nodes` only);
+2. `BEAMLET_LANG` — operator environment override, accepted spellings `zh`,
+   `zh-cn`, `zh_CN`, `cn`, `en`, `en-us`, `en_US`;
+3. `config :beamlet_cli, :default_locale` — shipped as `"zh_CN"`;
+4. the shared default `zh_CN`.
+
+`BEAMLET_LANG` deliberately outranks `:default_locale`, otherwise the shipped
+default would make the documented override unreachable. An unusable value at any
+step is skipped, so a typo falls back instead of disabling translation. The
+choice only changes presentation: command grammar, table columns/order, bounds
+and exit codes are identical in both languages, and a missing translation falls
+back to the English msgid. Shared status/reason words come from the
+`beamlet_i18n` catalogue; CLI-only text (help body, table headers, terminal
+notices) comes from `apps/beamlet_cli/priv/gettext`.
 
 ### CLI review repair: Unicode input and complete identity traversal
 

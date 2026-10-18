@@ -2,28 +2,36 @@
   <Layouts.flash_group flash={@flash} />
   <header class="flex flex-wrap items-center justify-between gap-4 mb-6">
     <.link patch={~p"/"} class="text-2xl font-bold">Beamlet</.link>
-    <nav aria-label="Workbench">
-      <.link navigate={~p"/admin/nodes"} class="btn">Nodes</.link>
-      <.link navigate={~p"/admin/presets"} class="btn">Presets</.link>
-      <.link navigate={~p"/admin/diagnostics"} class="btn">Diagnostics</.link>
-      <.link :if={@ref && @handle} navigate={~p"/admin/diagnostics?handle=#{@handle}"} class="btn">Current Agent diagnostics</.link>
-      <.link patch={~p"/agents/new"} class="btn btn-primary">New Agent</.link>
+    <nav aria-label={gettext("Workbench")}>
+      <.link navigate={~p"/admin/nodes"} class="btn">{gettext("Nodes")}</.link>
+      <.link navigate={~p"/admin/presets"} class="btn">{gettext("Presets")}</.link>
+      <.link navigate={~p"/admin/diagnostics"} class="btn">{gettext("Diagnostics")}</.link>
+      <.link
+        :if={@ref && @handle}
+        navigate={~p"/admin/diagnostics?handle=#{@handle}"}
+        class="btn"
+      >{gettext("Current Agent diagnostics")}</.link>
+      <.link patch={~p"/agents/new"} class="btn btn-primary">{gettext("New Agent")}</.link>
     </nav>
+    <Layouts.locale_switcher locale_options={@locale_options} />
   </header>
   <p role="status" class="mb-2">{@status}</p>
   <p role="alert" class="mb-4 break-words">{@feedback}</p>
   <p :if={@identity} class="text-sm break-all">
-    Creation identity: {@identity.id} · {Atom.to_string(@identity.authority)}. Caller timeout is not cancellation.
+    {gettext("Creation identity: %{id} · %{authority}. Caller timeout is not cancellation.",
+      id: @identity.id,
+      authority: Atom.to_string(@identity.authority)
+    )}
   </p>
   <div class="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
     <aside class="bg-base-100 rounded-box p-4 min-w-0">
-      <h2 class="font-bold mb-3">Live Agents</h2>
+      <h2 class="font-bold mb-3">{gettext("Live Agents")}</h2>
       <form id="agent-search" phx-change="search">
-        <label>Search<input class="input w-full" name="search" value={@search} /></label>
+        <label>{gettext("Search")}<input class="input w-full" name="search" value={@search} /></label>
       </form>
-      <button class="btn btn-sm my-3" phx-click="discover">Discover now</button>
+      <button class="btn btn-sm my-3" phx-click="discover">{gettext("Discover now")}</button>
       <p :if={!@complete} class="text-warning">
-        Partial / unknown discovery. Empty results do not prove absence.
+        {gettext("Partial / unknown discovery. Empty results do not prove absence.")}
       </p>
       <p :for={failure <- @failures} class="break-all text-sm">{failure}</p>
       <ul class="space-y-3 mt-3">
@@ -37,14 +45,18 @@
         </li>
       </ul>
       <p class="text-xs mt-6">
-        Leaving only removes observation. Web restart clears navigation; embedded Agents can be lost. No archived history.
+        {gettext(
+          "Leaving only removes observation. Web restart clears navigation; embedded Agents can be lost. No archived history."
+        )}
       </p>
     </aside>
     <section class="bg-base-100 rounded-box p-4 lg:p-6 min-w-0">
       <div :if={!@ref}>
-        <h1 class="text-xl font-bold mb-4">What would you like to do?</h1>
+        <h1 class="text-xl font-bold mb-4">{gettext("What would you like to do?")}</h1>
         <p :if={!@catalogue || map_size(@catalogue.presets) == 0}>
-          Creation disabled: no configured public presets. Enable a trusted Web host catalogue.
+          {gettext(
+            "Creation disabled: no configured public presets. Enable a trusted Web host catalogue."
+          )}
         </p>
         <form
           :if={@catalogue && map_size(@catalogue.presets) > 0}
@@ -53,14 +65,18 @@
           phx-submit="create"
           class="space-y-4"
         >
-          <label class="block">Task<textarea
+          <label class="block">{gettext("Task")}<textarea
             class="textarea w-full"
             name="draft[task]"
             maxlength="65536"
             required
             rows="4"
           >{@draft["task"]}</textarea></label>
-          <label class="block">Preset<select class="select w-full" name="draft[preset]">
+          <label class="block">{gettext("Preset")}
+          <select
+            class="select w-full"
+            name="draft[preset]"
+          >
             <option
               :for={{id, p} <- Enum.sort(@catalogue.presets)}
               value={id}
@@ -70,19 +86,27 @@
             </option>
           </select></label>
           <p :if={modified?(assigns)} class="badge badge-outline">
-            Modified from preset defaults
+            {gettext("Modified from preset defaults")}
           </p>
-          <button type="button" phx-click="reset" class="btn btn-sm">Reset to preset defaults</button>
+          <button type="button" phx-click="reset" class="btn btn-sm">
+            {gettext("Reset to preset defaults")}
+          </button>
           <details open={@live_action == :new}>
-            <summary class="cursor-pointer">Adjust model, tools, environment and name</summary>
+            <summary class="cursor-pointer">
+              {gettext("Adjust model, tools, environment and name")}
+            </summary>
             <div class="space-y-3 mt-3">
-              <label class="block">Name<input
+              <label class="block">{gettext("Name")}<input
                 class="input w-full"
                 name="draft[title]"
                 maxlength="128"
                 value={@draft["title"]}
               /></label>
-              <label class="block">Model<select class="select w-full" name="draft[model]">
+              <label class="block">{gettext("Model")}
+              <select
+                class="select w-full"
+                name="draft[model]"
+              >
                 <option
                   :for={{id, m} <- Enum.sort(@catalogue.models)}
                   value={id}
@@ -92,7 +116,7 @@
                 </option>
               </select></label>
               <fieldset>
-                <legend>Tools (configured capabilities only)</legend>
+                <legend>{gettext("Tools (configured capabilities only)")}</legend>
                 <label :for={{id, t} <- Enum.sort(@catalogue.tools)} class="block my-2">
                   <input
                     type="checkbox"
@@ -111,9 +135,9 @@
                 }
                 class="block"
               >
-                Environment (must match selected tools)
+                {gettext("Environment (must match selected tools)")}
                 <select class="select w-full" name="draft[environment]"><option value="">
-                  Choose environment
+                  {gettext("Choose environment")}
                 </option><option
                   :for={{id, e} <- Enum.sort(@catalogue.environments)}
                   value={id}
@@ -123,10 +147,12 @@
                 </option></select>
               </label>
               <details>
-                <summary>Advanced authority</summary><label>Authority<select
+                <summary>{gettext("Advanced authority")}</summary><label>{gettext("Authority")}<select
                   class="select w-full"
                   name="draft[authority]"
-                ><option value="">Choose configured authority</option><option
+                ><option value="">
+                  {gettext("Choose configured authority")}
+                </option><option
                   :for={{id, a} <- Enum.sort(@catalogue.authorities)}
                   value={id}
                   selected={id == @draft["authority"]}
@@ -137,53 +163,70 @@
             </div>
           </details>
           <p class="text-sm break-words">
-            Effective public options: model {@draft["model"]}; tools {Enum.join(
-              Map.get(@draft, "tools", []),
-              ", "
-            )}; environment {@draft["environment"] || "not required"}; authority {@draft[
-              "authority"
-            ] || "missing"}. Changes apply only to the new instance. Tool effects follow configured scope; stop does not roll them back.
+            {gettext(
+              "Effective public options: model %{model}; tools %{tools}; environment %{environment}; authority %{authority}. Changes apply only to the new instance. Tool effects follow configured scope; stop does not roll them back.",
+              model: @draft["model"],
+              tools: Enum.join(Map.get(@draft, "tools", []), ", "),
+              environment: @draft["environment"] || gettext("not required"),
+              authority: @draft["authority"] || gettext("missing")
+            )}
           </p>
           <button
             class="btn btn-primary"
             disabled={@pending != nil || @draft["authority"] in [nil, ""]}
-          >Create and send task</button>
+          >{gettext("Create and send task")}</button>
         </form>
       </div>
       <div :if={@ref}>
-        <h1 class="text-xl font-bold">Agent workspace</h1>
-        <p>Initial input: {@input_result} · Navigation: {@navigation_result}</p>
-        <p>Business state: {text(@snapshot && @snapshot[:status])}</p>
-        <p class="text-sm my-3">
-          Current live context only. Earlier history may be missing; updates can coalesce. No token stream or reasoning trace.
+        <h1 class="text-xl font-bold">{gettext("Agent workspace")}</h1>
+        <p>
+          {gettext("Initial input: %{input} · Navigation: %{navigation}",
+            input: @input_result,
+            navigation: @navigation_result
+          )}
         </p>
-        <p :if={!@display} role="status">Display absent / omitted. Previous display cleared.</p>
+        <p>{gettext("Business state: %{state}", state: text(@snapshot && @snapshot[:status]))}</p>
+        <p class="text-sm my-3">
+          {gettext(
+            "Current live context only. Earlier history may be missing; updates can coalesce. No token stream or reasoning trace."
+          )}
+        </p>
+        <p :if={!@display} role="status">
+          {gettext("Display absent / omitted. Previous display cleared.")}
+        </p>
         <p :if={@display && @display[:truncated]} class="text-warning">
-          Display truncated / omitted by source limits.
+          {gettext("Display truncated / omitted by source limits.")}
         </p>
         <p :if={@display && @display[:omitted]}>
-          Omitted entries: {@display.omitted.entries}; activities: {@display.omitted.activities}
+          {gettext("Omitted entries: %{entries}; activities: %{activities}",
+            entries: @display.omitted.entries,
+            activities: @display.omitted.activities
+          )}
         </p>
         <details :if={@display && @display[:metadata]} class="mb-3">
-          <summary>Instance public configuration</summary>
+          <summary>{gettext("Instance public configuration")}</summary>
           <p>
-            Title: {@display.metadata[:title] || "Unknown (external Agent)"}; preset: {@display.metadata[
-              :preset_id
-            ] || "Unknown"}
+            {gettext("Title: %{title}; preset: %{preset}",
+              title: @display.metadata[:title] || gettext("Unknown (external Agent)"),
+              preset: @display.metadata[:preset_id] || gettext("Unknown")
+            )}
           </p>
           <p :if={@display.metadata[:option_ids]}>
-            Model: {@display.metadata.option_ids[:model]}; tools: {Enum.join(
-              @display.metadata.option_ids[:tools] || [],
-              ", "
-            )}; environment: {@display.metadata.option_ids[:environment]}
+            {gettext("Model: %{model}; tools: %{tools}; environment: %{environment}",
+              model: @display.metadata.option_ids[:model],
+              tools: Enum.join(@display.metadata.option_ids[:tools] || [], ", "),
+              environment: @display.metadata.option_ids[:environment]
+            )}
           </p>
         </details>
         <div id="context" phx-hook="FollowContext" class="relative">
-          <button type="button" data-new-activity hidden class="btn btn-sm btn-info">New activity — jump to bottom</button>
+          <button type="button" data-new-activity hidden class="btn btn-sm btn-info">
+            {gettext("New activity — jump to bottom")}
+          </button>
           <div
             data-scroll-region
             tabindex="0"
-            aria-label="Current conversation"
+            aria-label={gettext("Current conversation")}
             class="max-h-[55vh] overflow-auto overscroll-contain space-y-4 p-2"
           >
             <article
@@ -192,35 +235,45 @@
               class="border border-base-300 rounded-box p-3 min-w-0"
             >
               <h2 class="font-bold">{turn(entry[:turn])} · {text(entry[:role])}</h2>
-              <pre class="whitespace-pre-wrap break-words overflow-auto max-h-80 text-sm">{text(entry[:content])}</pre>
-              <p :if={entry[:truncated]}>Source field truncated</p>
+              <pre class="whitespace-pre-wrap break-words overflow-auto max-h-80 text-sm">{text(
+                entry[:content]
+              )}</pre>
+              <p :if={entry[:truncated]}>{gettext("Source field truncated")}</p>
               <details :for={call <- entry[:calls] || []}>
-                <summary>Tool call: {call[:name]}</summary><pre class="whitespace-pre-wrap break-words max-h-64 overflow-auto">{text(call[:arguments])}</pre>
+                <summary>{gettext("Tool call: %{name}", name: call[:name])}</summary><pre class="whitespace-pre-wrap break-words max-h-64 overflow-auto">{text(
+                  call[:arguments]
+                )}</pre>
               </details>
             </article>
           </div>
         </div>
         <.activities display={@display} pending={@pending != nil} diagnostic_handle={@handle} />
         <form :if={!@read_only} id="follow-up" phx-change="text" phx-submit="input">
-          <label class="block">Next task draft<textarea
+          <label class="block">{gettext("Next task draft")}<textarea
             class="textarea w-full"
             name="text"
             maxlength="65536"
             required
           >{@text}</textarea></label>
           <p :if={active?(@snapshot)}>
-            Active / unknown state: draft stays here and is never queued.
+            {gettext("Active / unknown state: draft stays here and is never queued.")}
           </p>
-          <button class="btn btn-primary mt-2" disabled={@pending != nil || active?(@snapshot)}>Send next turn</button>
+          <button class="btn btn-primary mt-2" disabled={@pending != nil || active?(@snapshot)}>
+            {gettext("Send next turn")}
+          </button>
         </form>
         <div :if={!@read_only} class="flex flex-wrap gap-2 mt-4">
-          <button phx-click="stop" class="btn" disabled={@pending != nil}>Stop current turn (keep Agent)</button>
-          <button phx-click="confirm" class="btn btn-outline">Close instance…</button>
+          <button phx-click="stop" class="btn" disabled={@pending != nil}>
+            {gettext("Stop current turn (keep Agent)")}
+          </button>
+          <button phx-click="confirm" class="btn btn-outline">{gettext("Close instance…")}</button>
         </div>
         <div :if={@confirm} role="alert" class="border border-error p-4 mt-4">
-          <p>Close this Agent instance? Leaving this page only unsubscribes.</p>
-          <button phx-click="close" class="btn btn-error" disabled={@pending != nil}>Confirm close instance</button>
-          <button phx-click="cancel" class="btn">Keep instance</button>
+          <p>{gettext("Close this Agent instance? Leaving this page only unsubscribes.")}</p>
+          <button phx-click="close" class="btn btn-error" disabled={@pending != nil}>
+            {gettext("Confirm close instance")}
+          </button>
+          <button phx-click="cancel" class="btn">{gettext("Keep instance")}</button>
         </div>
       </div>
     </section>

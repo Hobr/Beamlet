@@ -43,3 +43,34 @@ operator-managed authentication and the relevant core authorization boundaries.
 Browser UX was verified in a real local walkthrough (geckodriver 0.36.0 + Firefox 158 headless against an owned deterministic host):34 of35 checks passed with no product defect. Confirmed there: no horizontal overflow at1440px and at the narrowest attainable window (500x758 inner), conditional environment add/remove, preset switch/adjust/reset, Enter-submit creation, real model-tool-model activity with a second turn, live activity card, observe-only child inspector, retained scroll with a working new-activity button, visible focus stops with Enter activation, leave/rediscovers the same Agent, stop keeps the instance, and close requires confirmation. Not verified: a390px viewport (this Firefox build clamps windows to500 CSS px), browser console logs (driver returns405 for the log endpoints), busy/multi-observer rejection in a browser, touch, screen readers, colour contrast, text zoom and reconnect after a real network drop. See the parent task research/browser-walkthrough.md.
 
 Same-host peer tests are not physical deployment or paid-provider evidence.
+
+## Language
+
+The product copy of the workbench and the read-only management pages is translated
+with Gettext and ships in Simplified Chinese (`zh_CN`, the default) and English
+(`en`). Shared strings — status/reason vocabulary, common actions and table
+headers, locale canonicalisation and the default — live once in
+`apps/beamlet_i18n`; Web-only copy lives in `apps/beamlet_web/priv/gettext`;
+CLI-only copy lives in `apps/beamlet_cli/priv/gettext`. One msgid has exactly one
+owning catalogue, and the three msgid sets must stay mutually exclusive.
+
+Language is a session-scoped UI preference, never business data: no database, no
+browser storage, no transcript, and no Agent/Node/Runtime behaviour depends on it.
+`Beamlet.Web.Locale` (plug in the `:browser` pipeline, plus the LiveView
+`on_mount`/`on_params` hooks) resolves, in order: a valid `?locale=` value, the
+session `locale`, then `config :beamlet_web, :default_locale` (shipped as
+`"zh_CN"`, so an absent or stripped configuration still shows Chinese). Accepted
+spellings are `zh`, `zh-cn`, `zh_CN`, `cn` -> `zh_CN` and `en`, `en-us`,
+`en_US` -> `en`; anything else is ignored and never persisted.
+
+The header switcher (`中文` / `English`) keeps the current path, adds
+`?locale=zh_CN|en` and performs a plain page load, so the choice is written to the
+signed session and every later page keeps it. The signed session cookie carries
+only this non-sensitive preference. Text that was already rendered stays in the
+language it was rendered in until the next page load; there is no client-side
+re-translation.
+
+A missing translation falls back to the English msgid. Rendering never shows
+`nil`, a function or a raw term, and unknown identifiers (service names, tool
+names, unlisted reasons) keep their existing rendering instead of being treated
+as copy.

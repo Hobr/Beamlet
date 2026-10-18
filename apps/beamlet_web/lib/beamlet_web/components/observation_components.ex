@@ -2,6 +2,8 @@ defmodule Beamlet.Web.ObservationComponents do
   @moduledoc "Escaped, bounded source projections shared by Web inspectors."
   use Beamlet.Web, :html
 
+  alias Beamlet.I18n.Vocabulary
+
   attr :display, :map, default: nil
   attr :pending, :boolean, default: false
 
@@ -9,10 +11,12 @@ defmodule Beamlet.Web.ObservationComponents do
 
   def activities(assigns) do
     ~H"""
-    <section aria-label="Current concurrent activity" class="my-4">
-      <h2 class="font-bold">Current concurrent activity</h2>
+    <section aria-label={gettext("Current concurrent activity")} class="my-4">
+      <h2 class="font-bold">{gettext("Current concurrent activity")}</h2>
       <p>
-        Placement unknown unless observed. Cards are current facts; completed activities may disappear.
+        {gettext(
+          "Placement unknown unless observed. Cards are current facts; completed activities may disappear."
+        )}
       </p>
       <details
         :for={activity <- (@display && @display[:activities]) || []}
@@ -23,10 +27,11 @@ defmodule Beamlet.Web.ObservationComponents do
             activity[:turn]
           )}
         </summary>
-        <p>Activity identity: {turn(activity[:id])}</p>
+        <p>{gettext("Activity identity: %{id}", id: turn(activity[:id]))}</p>
         <p>
-          Operation identity: {turn(activity[:operation])} · Attempt identity: {turn(
-            activity[:attempt]
+          {gettext("Operation identity: %{operation} · Attempt identity: %{attempt}",
+            operation: turn(activity[:operation]),
+            attempt: turn(activity[:attempt])
           )}
         </p>
         <.link
@@ -34,12 +39,16 @@ defmodule Beamlet.Web.ObservationComponents do
           navigate={
             ~p"/admin/diagnostics?handle=#{@diagnostic_handle}&activity=#{turn(activity[:id])}"
           }
-        >Inspect activity diagnostics</.link>
-        <p>Placement: {text(activity[:placement])}</p>
-        <pre class="whitespace-pre-wrap break-words max-h-64 overflow-auto">{text(activity[:arguments])}</pre>
-        <pre class="whitespace-pre-wrap break-words max-h-64 overflow-auto">{text(activity[:result])}</pre>
+        >{gettext("Inspect activity diagnostics")}</.link>
+        <p>{gettext("Placement: %{placement}", placement: text(activity[:placement]))}</p>
+        <pre class="whitespace-pre-wrap break-words max-h-64 overflow-auto">{text(
+          activity[:arguments]
+        )}</pre>
+        <pre class="whitespace-pre-wrap break-words max-h-64 overflow-auto">{text(
+          activity[:result]
+        )}</pre>
         <p :if={activity[:result_omitted] || activity[:truncated]}>
-          Activity content omitted / truncated
+          {gettext("Activity content omitted / truncated")}
         </p>
         <button
           :if={activity[:child]}
@@ -47,25 +56,27 @@ defmodule Beamlet.Web.ObservationComponents do
           phx-value-key={turn(activity[:id])}
           class="btn btn-sm"
           disabled={@pending}
-        >Inspect child (observe only)</button>
+        >{gettext("Inspect child (observe only)")}</button>
         <p :if={activity[:child]}>
-          Child identity observed; observe-only. No command is sent to the child.
+          {gettext("Child identity observed; observe-only. No command is sent to the child.")}
         </p>
       </details>
     </section>
     """
   end
 
-  def text(nil), do: "Unknown / omitted"
+  def text(nil), do: gettext("Unknown / omitted")
   def text(v) when is_binary(v), do: v
-  def text(v) when is_atom(v), do: Atom.to_string(v)
-  def text(_), do: "Unsupported content omitted"
-  def turn(nil), do: "Turn unknown"
+  def text(v) when is_atom(v), do: Vocabulary.status(v)
+  def text(_), do: gettext("Unsupported content omitted")
+  def turn(nil), do: gettext("Turn unknown")
 
   def turn(v),
     do:
-      "Turn " <>
-        (:crypto.hash(:sha256, :erlang.term_to_binary(v))
-         |> Base.url_encode64(padding: false)
-         |> binary_part(0, 10))
+      gettext("Turn %{id}",
+        id:
+          :crypto.hash(:sha256, :erlang.term_to_binary(v))
+          |> Base.url_encode64(padding: false)
+          |> binary_part(0, 10)
+      )
 end

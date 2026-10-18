@@ -60,6 +60,7 @@ defmodule Beamlet.Umbrella.MixProject do
         :beamlet_agent,
         :beamlet_node,
         :beamlet_daemon,
+        :beamlet_i18n,
         :beamlet_cli
       ],
       else: nil

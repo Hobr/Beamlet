@@ -1,0 +1,131 @@
+## `msgid`s in this file come from POT (.pot) files.
+##
+## Do not add, change, or remove `msgid`s manually here as
+## they're tied to the ones in the corresponding POT file
+## (with the same domain).
+##
+## Use `mix gettext.extract --merge` or `mix gettext.merge`
+## to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: zh_CN\n"
+
+#: lib/beamlet/i18n/catalogue.ex:60
+#: lib/beamlet/i18n/catalogue.ex:60
+#, elixir-autogen, elixir-format
+msgid "active"
+msgstr "活动"
+
+#: lib/beamlet/i18n/catalogue.ex:55
+#: lib/beamlet/i18n/catalogue.ex:55
+#, elixir-autogen, elixir-format
+msgid "admitting"
+msgstr "接入中"
+
+#: lib/beamlet/i18n/catalogue.ex:57
+#: lib/beamlet/i18n/catalogue.ex:57
+#, elixir-autogen, elixir-format
+msgid "complete"
+msgstr "完整"
+
+#: lib/beamlet/i18n/catalogue.ex:53
+#: lib/beamlet/i18n/catalogue.ex:53
+#, elixir-autogen, elixir-format
+msgid "completed"
+msgstr "已完成"
+
+#: lib/beamlet/i18n/catalogue.ex:61
+#: lib/beamlet/i18n/catalogue.ex:61
+#, elixir-autogen, elixir-format
+msgid "connected"
+msgstr "已连接"
+
+#: lib/beamlet/i18n/catalogue.ex:64
+#: lib/beamlet/i18n/catalogue.ex:64
+#, elixir-autogen, elixir-format
+msgid "disabled"
+msgstr "已停用"
+
+#: lib/beamlet/i18n/catalogue.ex:62
+#: lib/beamlet/i18n/catalogue.ex:62
+#, elixir-autogen, elixir-format
+msgid "disconnected"
+msgstr "未连接"
+
+#: lib/beamlet/i18n/catalogue.ex:49
+#: lib/beamlet/i18n/catalogue.ex:49
+#, elixir-autogen, elixir-format
+msgid "done"
+msgstr "完成"
+
+#: lib/beamlet/i18n/catalogue.ex:63
+#: lib/beamlet/i18n/catalogue.ex:63
+#, elixir-autogen, elixir-format
+msgid "enabled"
+msgstr "已启用"
+
+#: lib/beamlet/i18n/catalogue.ex:51
+#: lib/beamlet/i18n/catalogue.ex:51
+#, elixir-autogen, elixir-format
+msgid "error"
+msgstr "错误"
+
+#: lib/beamlet/i18n/catalogue.ex:46
+#: lib/beamlet/i18n/catalogue.ex:46
+#, elixir-autogen, elixir-format
+msgid "idle"
+msgstr "空闲"
+
+#: lib/beamlet/i18n/catalogue.ex:65
+#: lib/beamlet/i18n/catalogue.ex:65
+#, elixir-autogen, elixir-format
+msgid "local"
+msgstr "本地"
+
+#: lib/beamlet/i18n/catalogue.ex:58
+#: lib/beamlet/i18n/catalogue.ex:58
+#, elixir-autogen, elixir-format
+msgid "partial"
+msgstr "部分"
+
+#: lib/beamlet/i18n/catalogue.ex:54
+#: lib/beamlet/i18n/catalogue.ex:54
+#, elixir-autogen, elixir-format
+msgid "pending"
+msgstr "待处理"
+
+#: lib/beamlet/i18n/catalogue.ex:59
+#: lib/beamlet/i18n/catalogue.ex:59
+#, elixir-autogen, elixir-format
+msgid "ready"
+msgstr "就绪"
+
+#: lib/beamlet/i18n/catalogue.ex:47
+#: lib/beamlet/i18n/catalogue.ex:47
+#, elixir-autogen, elixir-format
+msgid "running"
+msgstr "运行中"
+
+#: lib/beamlet/i18n/catalogue.ex:52
+#: lib/beamlet/i18n/catalogue.ex:52
+#, elixir-autogen, elixir-format
+msgid "starting"
+msgstr "启动中"
+
+#: lib/beamlet/i18n/catalogue.ex:50
+#: lib/beamlet/i18n/catalogue.ex:50
+#, elixir-autogen, elixir-format
+msgid "stopped"
+msgstr "已停止"
+
+#: lib/beamlet/i18n/catalogue.ex:56
+#: lib/beamlet/i18n/catalogue.ex:56
+#, elixir-autogen, elixir-format
+msgid "unknown"
+msgstr "未知"
+
+#: lib/beamlet/i18n/catalogue.ex:48
+#: lib/beamlet/i18n/catalogue.ex:48
+#, elixir-autogen, elixir-format
+msgid "waiting"
+msgstr "等待中"

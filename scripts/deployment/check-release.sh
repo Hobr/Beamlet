@@ -15,7 +15,9 @@ printf 'Release evidence: %s\n' "$logs"
   find . -type f -print0 | sort -z | xargs -0 sha256sum
 ) >"$logs/copied-manifest.sha256"
 sha256sum "$logs/copied-manifest.sha256" | tee "$logs/copied-tree.sha256"
-if find "$work/release/lib" -maxdepth 1 -type d | grep -Ei '/(beamlet_cli|beamlet_web|phoenix[^/]*|bandit|plug[^/]*|websock[^/]*)-'; then
+# Presentation-only apps (and their Gettext/Expo dependencies) must stay out of the
+# daemon closure too: `beamlet_i18n` is a leaf for Web and CLI copy, not core.
+if find "$work/release/lib" -maxdepth 1 -type d | grep -Ei '/(beamlet_cli|beamlet_web|beamlet_i18n|gettext|expo|phoenix[^/]*|bandit|plug[^/]*|websock[^/]*)-'; then
   echo 'Forbidden host/Web artifact shipped' >&2
   exit 1
 fi
@@ -30,7 +32,7 @@ printf 'import Config\nconfig :beamlet_daemon, node: []\n' >"$BEAMLET_CONFIG"
 cd "$work"
 ./release/bin/beamlet_daemon eval '
   forbidden? = fn app ->
-    Regex.match?(~r/\A(beamlet_cli|beamlet_web|phoenix.*|plug.*|bandit|websock.*)\z/, Atom.to_string(app))
+    Regex.match?(~r/\A(beamlet_cli|beamlet_web|beamlet_i18n|gettext|expo|phoenix.*|plug.*|bandit|websock.*)\z/, Atom.to_string(app))
   end
   root = System.fetch_env!("RELEASE_ROOT")
   {:ok, [{:release, _, _, apps}]} =
@@ -51,5 +53,8 @@ cd "$work"
 python3 "$script_dir/check-named-release.py" "$work/release" "$logs"
 
 python3 "$script_dir/check-cli-release.py" "$work/release" "$cli_release" "$logs/cli"
-( cd "$cli_release"; find . -type f -print0 | sort -z | xargs -0 sha256sum ) >"$logs/cli-manifest.sha256"
+(
+  cd "$cli_release"
+  find . -type f -print0 | sort -z | xargs -0 sha256sum
+) >"$logs/cli-manifest.sha256"
 sha256sum "$logs/cli-manifest.sha256" >"$logs/cli-tree.sha256"

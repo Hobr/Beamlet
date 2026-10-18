@@ -13,6 +13,11 @@ config :beamlet_web,
   namespace: Beamlet.Web,
   generators: [context_app: false]
 
+# Product copy locale. `zh_CN` is the default for Web and CLI; `en` is the other
+# supported catalogue. See apps/beamlet_i18n.
+config :beamlet_web, :default_locale, "zh_CN"
+config :beamlet_cli, :default_locale, "zh_CN"
+
 # Configures the endpoint
 config :beamlet_web, Beamlet.Web.Endpoint,
   url: [host: "localhost"],

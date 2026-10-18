@@ -39,6 +39,12 @@ or key-env fallback. Executor roots/settings stay in trusted Node profiles.
 Default selection is explicit: absent default authority leaves drafts unresolved
 until an exposed authority is chosen. No availability fallback exists.
 
+UI language is not a host setting and is not part of the trusted `:host` keyword
+list: `config :beamlet_web, :default_locale` (shipped as `"zh_CN"`, the other
+catalogue is `"en"`) only selects presentation, the per-request choice comes from
+the session or `?locale=`, and no Agent/Node/Runtime behaviour depends on either.
+See the language section of [WORKBENCH.md](WORKBENCH.md#language).
+
 `Presets.describe/0` returns safe maps of labels/descriptions, preset public
 reference defaults, tool public environment choices, and default authority.
 `Presets.reset(preset_id)` returns `{:ok, draft}`. Draft string keys are exactly

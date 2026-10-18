@@ -1,6 +1,6 @@
 defmodule Beamlet.CLI.Runner do
   @moduledoc "Standalone terminal owner, invoked after Application startup by the release."
-  alias Beamlet.CLI.{Command, Renderer, Session}
+  alias Beamlet.CLI.{Command, Locale, Renderer, Session}
 
   def main do
     {:ok, _} = Application.ensure_all_started(:beamlet_cli)
@@ -8,6 +8,9 @@ defmodule Beamlet.CLI.Runner do
   end
 
   def run(session, opts \\ []) do
+    # The locale is resolved once for the process before any stdin is read, so
+    # every later Renderer/Session output in this process uses one language.
+    Locale.put()
     read = Keyword.get(opts, :read, fn -> read_line(:stdio) end)
     output = Keyword.get(opts, :output, &Owl.IO.puts/1)
     exit = Keyword.get(opts, :exit, &System.stop/1)

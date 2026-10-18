@@ -31,7 +31,27 @@ defmodule Beamlet.Web.ConnCase do
     end
   end
 
-  setup _tags do
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+  @doc """
+  Default locale for web tests.
+
+  Tests assert behaviour and copy, and the product ships Chinese by default, so
+  every `ConnCase` connection starts with an explicit English session locale:
+  the assertions keep testing behaviour instead of translation, and no test
+  depends on the process-wide or application default. Chinese tests opt in with
+  `@tag locale: "zh_CN"`, and the test that has to prove the shipped default
+  builds a session-less connection of its own.
+  """
+  @test_locale "en"
+
+  def test_locale, do: @test_locale
+
+  setup tags do
+    locale = Map.get(tags, :locale, @test_locale)
+
+    conn =
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Test.init_test_session(%{"locale" => locale})
+
+    {:ok, conn: conn, locale: locale}
   end
 end

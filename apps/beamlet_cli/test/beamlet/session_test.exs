@@ -1,6 +1,30 @@
 defmodule Beamlet.CLI.SessionTest do
   use ExUnit.Case
-  alias Beamlet.CLI.{Command, Renderer, Runner, Session}
+  alias Beamlet.CLI.{Command, Locale, Renderer, Runner, Session}
+
+  # These tests assert terminal behaviour and copy, and the product ships Chinese
+  # by default. Pinning English keeps the assertions about behaviour instead of
+  # translation; the locale `zh_CN` for this process is restored afterwards.
+  setup do
+    previous = Application.fetch_env(:beamlet_cli, :locale)
+    previous_env = System.get_env("BEAMLET_LANG")
+
+    Application.put_env(:beamlet_cli, :locale, "en")
+    System.delete_env("BEAMLET_LANG")
+    Locale.put("en")
+
+    on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:beamlet_cli, :locale, value)
+        :error -> Application.delete_env(:beamlet_cli, :locale)
+      end
+
+      if previous_env, do: System.put_env("BEAMLET_LANG", previous_env)
+      Locale.put("zh_CN")
+    end)
+
+    :ok
+  end
 
   test "bounded grammar preserves input and rejects invalid bytes and limits" do
     assert {:ok, {:input, "a", "hello  world"}} = Command.parse("input a hello  world")

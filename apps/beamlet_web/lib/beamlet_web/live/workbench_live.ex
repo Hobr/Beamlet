@@ -1,7 +1,10 @@
 defmodule Beamlet.Web.WorkbenchLive do
   use Beamlet.Web, :live_view
   import Beamlet.Web.ObservationComponents, only: [activities: 1, text: 1, turn: 1]
-  alias Beamlet.Web.{Agents, Handles, OwnedCall, Presets, WorkbenchCommands}
+  alias Beamlet.I18n.Vocabulary
+  alias Beamlet.Web.{Agents, Handles, Locale, OwnedCall, Presets, WorkbenchCommands}
+
+  on_mount({Locale, :default})
 
   @impl true
   def mount(_, _, socket) do
@@ -22,11 +25,11 @@ defmodule Beamlet.Web.WorkbenchLive do
        observer: nil,
        snapshot: nil,
        display: nil,
-       status: "Connecting",
+       status: gettext("Connecting"),
        feedback: "",
        identity: nil,
-       input_result: "Not submitted",
-       navigation_result: "Not requested",
+       input_result: gettext("Not submitted"),
+       navigation_result: gettext("Not requested"),
        text: "",
        read_only: false,
        caller: nil,
@@ -35,7 +38,8 @@ defmodule Beamlet.Web.WorkbenchLive do
   end
 
   @impl true
-  def handle_params(params, _, socket) do
+  def handle_params(params, uri, socket) do
+    socket = Locale.on_params(socket, params, uri)
     leave(socket.assigns.observer)
     if socket.assigns.caller, do: send(socket.assigns.caller, :cancel)
     socket = if params["handle"], do: socket, else: clear_command_feedback(socket)
@@ -74,7 +78,9 @@ defmodule Beamlet.Web.WorkbenchLive do
   def handle_info({:owned, {:load, g}, {catalogue, drafts}}, %{assigns: %{generation: g}} = s)
       when is_map(catalogue) do
     {_, {:ok, draft}} = Enum.at(Enum.sort(drafts), 0, {nil, {:ok, %{}}})
-    {:noreply, assign(s, catalogue: catalogue, drafts: drafts, draft: draft, status: "Ready")}
+
+    {:noreply,
+     assign(s, catalogue: catalogue, drafts: drafts, draft: draft, status: gettext("Ready"))}
   end
 
   def handle_info(:discover, %{assigns: %{discovering: true}} = s), do: {:noreply, s}
@@ -98,7 +104,8 @@ defmodule Beamlet.Web.WorkbenchLive do
         %{key: key, id: d.id, authority: Atom.to_string(d.authority)}
       end)
 
-    failures = Enum.map(result.failures, fn {n, reason} -> "#{n}: #{reason}" end)
+    failures =
+      Enum.map(result.failures, fn {n, reason} -> "#{n}: #{Vocabulary.reason(reason)}" end)
 
     {:noreply,
      assign(s,
@@ -113,7 +120,11 @@ defmodule Beamlet.Web.WorkbenchLive do
   def handle_info({:owned, {:discover, g}, _}, %{assigns: %{generation: g}} = s),
     do:
       {:noreply,
-       assign(s, discovering: false, complete: false, failures: ["Discovery unavailable"])}
+       assign(s,
+         discovering: false,
+         complete: false,
+         failures: [gettext("Discovery unavailable")]
+       )}
 
   def handle_info({:owned, {:open, g}, {:ok, ref}}, %{assigns: %{generation: g}} = s),
     do: {:noreply, observe(s, ref)}
@@ -124,14 +135,14 @@ defmodule Beamlet.Web.WorkbenchLive do
         {:noreply,
          assign(s,
            identity: %{authority: authority, id: id},
-           feedback: "Creation dispatched; outcome not yet known"
+           feedback: gettext("Creation dispatched; outcome not yet known")
          )}
 
       {:confirmed, ref} ->
-        {:noreply, observe(assign(s, feedback: "Created instance confirmed"), ref)}
+        {:noreply, observe(assign(s, feedback: gettext("Created instance confirmed")), ref)}
 
       :input_pending ->
-        {:noreply, assign(s, input_result: "Dispatched; acknowledgement unknown")}
+        {:noreply, assign(s, input_result: gettext("Dispatched; acknowledgement unknown"))}
 
       {:input, result} ->
         {:noreply, assign(s, input_result: outcome(result))}
@@ -146,8 +157,8 @@ defmodule Beamlet.Web.WorkbenchLive do
         {:noreply,
          s
          |> assign(
-           navigation_result: "Available",
-           feedback: "Created. Initial input: #{s.assigns.input_result}"
+           navigation_result: gettext("Available"),
+           feedback: gettext("Created. Initial input: %{input}", input: s.assigns.input_result)
          )
          |> push_patch(to: ~p"/agents/#{handle}")}
 
@@ -168,14 +179,17 @@ defmodule Beamlet.Web.WorkbenchLive do
            ] ->
         {:noreply,
          assign(s,
-           feedback: "Exact discovered identity: #{reason}. Refresh discovery explicitly."
+           feedback:
+             gettext("Exact discovered identity: %{reason}. Refresh discovery explicitly.",
+               reason: Vocabulary.reason(reason)
+             )
          )}
 
       {:navigation, _} ->
         {:noreply,
          assign(s,
-           navigation_result: "Unavailable",
-           feedback: "Confirmed instance retained here; navigation unavailable"
+           navigation_result: gettext("Unavailable"),
+           feedback: gettext("Confirmed instance retained here; navigation unavailable")
          )}
 
       _ ->
@@ -197,7 +211,7 @@ defmodule Beamlet.Web.WorkbenchLive do
      assign(s,
        snapshot: snapshot,
        display: Map.get(snapshot, :display),
-       status: "Observing live context"
+       status: gettext("Observing live context")
      )}
   end
 
@@ -208,14 +222,16 @@ defmodule Beamlet.Web.WorkbenchLive do
       do:
         {:noreply,
          assign(s,
-           status: "Observation unavailable; instance outcome unknown",
+           status: gettext("Observation unavailable; instance outcome unknown"),
            display: nil,
            snapshot: nil
          )}
 
   def handle_info({:owned, {kind, g}, _}, %{assigns: %{generation: g}} = s)
       when kind in [:load, :open],
-      do: {:noreply, assign(s, feedback: "Configuration or exact identity unavailable / stale")}
+      do:
+        {:noreply,
+         assign(s, feedback: gettext("Configuration or exact identity unavailable / stale"))}
 
   def handle_info(_, s), do: {:noreply, s}
 
@@ -250,7 +266,7 @@ defmodule Beamlet.Web.WorkbenchLive do
 
   def handle_event(event, _, %{assigns: %{read_only: true}} = s)
       when event in ["input", "stop", "close"],
-      do: {:noreply, assign(s, feedback: "Child inspector is observe-only")}
+      do: {:noreply, assign(s, feedback: gettext("Child inspector is observe-only"))}
 
   def handle_event("inspect-child", %{"key" => key}, s) do
     activity =
@@ -266,7 +282,7 @@ defmodule Beamlet.Web.WorkbenchLive do
         end)
 
       _ ->
-        {:noreply, assign(s, feedback: "Child identity no longer available")}
+        {:noreply, assign(s, feedback: gettext("Child identity no longer available"))}
     end
   end
 
@@ -287,7 +303,7 @@ defmodule Beamlet.Web.WorkbenchLive do
         command(clear_command_feedback(s), fn _, _ -> {:attached, Agents.attach(descriptor)} end)
 
       _ ->
-        {:noreply, assign(s, feedback: "Stale discovery; refresh explicitly")}
+        {:noreply, assign(s, feedback: gettext("Stale discovery; refresh explicitly"))}
     end
   end
 
@@ -305,8 +321,8 @@ defmodule Beamlet.Web.WorkbenchLive do
   defp clear_command_feedback(s) do
     assign(s,
       identity: nil,
-      input_result: "Unknown (attached instance)",
-      navigation_result: "Not requested",
+      input_result: gettext("Unknown (attached instance)"),
+      navigation_result: gettext("Not requested"),
       feedback: "",
       text: "",
       confirm: false
@@ -362,7 +378,11 @@ defmodule Beamlet.Web.WorkbenchLive do
     caller = OwnedCall.start(owner, tag, fn -> fun.(owner, tag) end, timeout)
 
     {:noreply,
-     assign(s, caller: caller, pending: tag, feedback: "Command pending; no duplicate dispatch")}
+     assign(s,
+       caller: caller,
+       pending: tag,
+       feedback: gettext("Command pending; no duplicate dispatch")
+     )}
   end
 
   defp observe(s, ref) do
@@ -373,23 +393,29 @@ defmodule Beamlet.Web.WorkbenchLive do
 
   defp leave(nil), do: :ok
   defp leave(pid), do: send(pid, :leave)
-  defp outcome({:accepted, _}), do: "Input accepted"
-  defp outcome({:rejected, reason}), do: "Rejected: #{reason}"
+  defp outcome({:accepted, _}), do: gettext("Input accepted")
+
+  defp outcome({:rejected, reason}),
+    do: gettext("Rejected: %{reason}", reason: Vocabulary.reason(reason))
 
   defp outcome(:ok),
-    do: "Request acknowledged; observe actual state. Stop does not undo external effects."
+    do:
+      gettext("Request acknowledged; observe actual state. Stop does not undo external effects.")
 
-  defp outcome({:error, reason}) when is_atom(reason), do: "Unavailable / rejected: #{reason}"
+  defp outcome({:error, reason}) when is_atom(reason),
+    do: gettext("Unavailable / rejected: %{reason}", reason: Vocabulary.reason(reason))
 
   defp outcome(:configuration_unavailable),
-    do: "Configuration unavailable before creation dispatch"
+    do: gettext("Configuration unavailable before creation dispatch")
 
   defp outcome(:invalid_draft),
-    do: "Invalid selection or missing configuration; nothing dispatched"
+    do: gettext("Invalid selection or missing configuration; nothing dispatched")
 
   defp outcome(_),
     do:
-      "Outcome unknown / unavailable. No automatic retry. Discover the displayed identity explicitly."
+      gettext(
+        "Outcome unknown / unavailable. No automatic retry. Discover the displayed identity explicitly."
+      )
 
   defp active?(nil), do: true
   defp active?(snapshot), do: snapshot[:status] in [:running, :waiting]

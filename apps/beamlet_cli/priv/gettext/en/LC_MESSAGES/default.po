@@ -1,0 +1,155 @@
+## `msgid`s in this file come from POT (.pot) files.
+##
+## Do not add, change, or remove `msgid`s manually here as
+## they're tied to the ones in the corresponding POT file
+## (with the same domain).
+##
+## Use `mix gettext.extract --merge` or `mix gettext.merge`
+## to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: en\n"
+
+#: lib/beamlet/cli/renderer.ex:141
+#: lib/beamlet/cli/renderer.ex:141
+#, elixir-autogen, elixir-format
+msgid "(none)"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:48
+#: lib/beamlet/cli/renderer.ex:48
+#, elixir-autogen, elixir-format
+msgid "Config files are trusted executable operator-owned Elixir code, not sandboxed."
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:49
+#: lib/beamlet/cli/renderer.ex:49
+#, elixir-autogen, elixir-format
+msgid "Detach, quit, EOF and watch timeout do not close Agents or cancel upstream work."
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:43
+#: lib/beamlet/cli/renderer.ex:43
+#, elixir-autogen, elixir-format
+msgid "Example: attach host@local id64:dHdvIHdvcmRz a"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:42
+#: lib/beamlet/cli/renderer.ex:42
+#, elixir-autogen, elixir-format
+msgid "IDs: copy id64:<base64url UTF-8, no padding>; use explicit safe alias."
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:94
+#: lib/beamlet/cli/renderer.ex:94
+#, elixir-autogen, elixir-format
+msgid "Showing %{shown} identities; page=%{page}/%{pages}; agents-page N traverses retained query. Discovery is not an atomic cluster snapshot."
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:41
+#: lib/beamlet/cli/renderer.ex:41
+#, elixir-autogen, elixir-format
+msgid "agents-page <number> (retained query; agents refreshes/replaces it)"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:45
+#: lib/beamlet/cli/renderer.ex:45
+#, elixir-autogen, elixir-format
+msgid "attach <authority> <agent-id> [alias]"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:86
+#: lib/beamlet/cli/renderer.ex:86
+#: lib/beamlet/cli/renderer.ex:136
+#: lib/beamlet/cli/renderer.ex:136
+#, elixir-autogen, elixir-format
+msgid "authority"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:54
+#: lib/beamlet/cli/renderer.ex:54
+#, elixir-autogen, elixir-format
+msgid "commands / policy"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:126
+#: lib/beamlet/cli/renderer.ex:126
+#, elixir-autogen, elixir-format
+msgid "connected trusted node"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:44
+#: lib/beamlet/cli/renderer.ex:44
+#, elixir-autogen, elixir-format
+msgid "create <authority> <absolute-options-file>"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:68
+#: lib/beamlet/cli/renderer.ex:68
+#, elixir-autogen, elixir-format
+msgid "discovery complete=%{complete} agents=%{agents} failures=%{failures}"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:62
+#: lib/beamlet/cli/renderer.ex:62
+#, elixir-autogen, elixir-format
+msgid "error: %{reason}"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:116
+#: lib/beamlet/cli/renderer.ex:116
+#: lib/beamlet/cli/renderer.ex:118
+#: lib/beamlet/cli/renderer.ex:118
+#, elixir-autogen, elixir-format
+msgid "field"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:40
+#: lib/beamlet/cli/renderer.ex:40
+#, elixir-autogen, elixir-format
+msgid "help | connect <trusted-node> | nodes | agents [authority]"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:137
+#: lib/beamlet/cli/renderer.ex:137
+#, elixir-autogen, elixir-format
+msgid "id"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:46
+#: lib/beamlet/cli/renderer.ex:46
+#, elixir-autogen, elixir-format
+msgid "input <alias> <text> | status <alias> | watch <alias> [timeout-ms event-limit]"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:59
+#: lib/beamlet/cli/renderer.ex:59
+#, elixir-autogen, elixir-format
+msgid "ok"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:138
+#: lib/beamlet/cli/renderer.ex:138
+#, elixir-autogen, elixir-format
+msgid "pid"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:87
+#: lib/beamlet/cli/renderer.ex:87
+#, elixir-autogen, elixir-format
+msgid "result"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:47
+#: lib/beamlet/cli/renderer.ex:47
+#, elixir-autogen, elixir-format
+msgid "stop <alias> | close <alias> | detach <alias> | quit"
+msgstr ""
+
+#: lib/beamlet/cli/renderer.ex:116
+#: lib/beamlet/cli/renderer.ex:116
+#: lib/beamlet/cli/renderer.ex:118
+#: lib/beamlet/cli/renderer.ex:118
+#, elixir-autogen, elixir-format
+msgid "value"
+msgstr ""

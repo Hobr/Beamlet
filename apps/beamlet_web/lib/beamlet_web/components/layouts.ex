@@ -122,6 +122,30 @@ defmodule Beamlet.Web.Layouts do
   end
 
   @doc """
+  Language switcher for the product surfaces.
+
+  Each entry is a plain link (full page load) so the locale plug can persist the
+  choice in the session; `path` keeps the page currently being viewed. Labels
+  stay in their own language and nothing is stored in the browser.
+  """
+  attr :locale_options, :list, required: true
+
+  def locale_switcher(assigns) do
+    ~H"""
+    <nav aria-label={gettext("Language")} class="flex items-center gap-2">
+      <.link
+        :for={option <- @locale_options}
+        href={option.path}
+        class={["btn btn-sm", option.current && "btn-active"]}
+        aria-current={option.current && "true"}
+      >
+        {option.label}
+      </.link>
+    </nav>
+    """
+  end
+
+  @doc """
   Provides dark vs light theme toggle based on themes defined in app.css.
 
   See <head> in root.html.heex which applies the theme before page load.

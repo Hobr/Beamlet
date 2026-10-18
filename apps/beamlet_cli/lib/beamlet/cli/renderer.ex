@@ -1,56 +1,75 @@
 defmodule Beamlet.CLI.Renderer do
   @moduledoc "Bounded terminal projection; errors never render arbitrary terms."
   alias Beamlet.CLI.Command
+  alias Beamlet.I18n.Vocabulary
 
-  @help """
-  help | connect <trusted-node> | nodes | agents [authority]
-  agents-page <number> (retained query; agents refreshes/replaces it)
-  IDs: copy id64:<base64url UTF-8, no padding>; use explicit safe alias.
-  Example: attach host@local id64:dHdvIHdvcmRz a
-  create <authority> <absolute-options-file>
-  attach <authority> <agent-id> [alias]
-  input <alias> <text> | status <alias> | watch <alias> [timeout-ms event-limit]
-  stop <alias> | close <alias> | detach <alias> | quit
-  Config files are trusted executable operator-owned Elixir code, not sandboxed.
-  Detach, quit, EOF and watch timeout do not close Agents or cancel upstream work.
-  """
+  use Gettext, backend: Beamlet.CLI.Gettext
+
+  # Shared error vocabulary. These literals are runtime lookups into
+  # `Beamlet.I18n`; the table itself is the allowlist, so an unexpected term can
+  # never become copy or leak into the terminal.
+  defp safe_reason(:invalid_command), do: Beamlet.I18n.dgettext("errors", "invalid_command")
+
+  defp safe_reason(:invalid_configuration),
+    do: Beamlet.I18n.dgettext("errors", "invalid_configuration")
+
+  defp safe_reason(:invalid_authority), do: Beamlet.I18n.dgettext("errors", "invalid_authority")
+  defp safe_reason(:alias_exists), do: Beamlet.I18n.dgettext("errors", "alias_exists")
+  defp safe_reason(:alias_limit), do: Beamlet.I18n.dgettext("errors", "alias_limit")
+  defp safe_reason(:invalid_alias), do: Beamlet.I18n.dgettext("errors", "invalid_alias")
+  defp safe_reason(:unknown_alias), do: Beamlet.I18n.dgettext("errors", "unknown_alias")
+  defp safe_reason(:not_found), do: Beamlet.I18n.dgettext("errors", "not_found")
+  defp safe_reason(:not_authority), do: Beamlet.I18n.dgettext("errors", "not_authority")
+  defp safe_reason(:stale_agent), do: Beamlet.I18n.dgettext("errors", "stale_agent")
+  defp safe_reason(:unavailable), do: Beamlet.I18n.dgettext("errors", "unavailable")
+  defp safe_reason(:timeout), do: Beamlet.I18n.dgettext("errors", "timeout")
+  defp safe_reason(:limit), do: Beamlet.I18n.dgettext("errors", "limit")
+  defp safe_reason(:busy), do: Beamlet.I18n.dgettext("errors", "busy")
+  defp safe_reason(:event_limit), do: Beamlet.I18n.dgettext("errors", "event_limit")
+  defp safe_reason(:timeout_or_loss), do: Beamlet.I18n.dgettext("errors", "timeout_or_loss")
+
+  defp safe_reason(:invalid_watch_options),
+    do: Beamlet.I18n.dgettext("errors", "invalid_watch_options")
+
+  defp safe_reason(_), do: Beamlet.I18n.dgettext("errors", "request_failed")
+
+  # Help body. Command grammar, keywords and example tokens stay untranslated;
+  # only the prose lines have a different translation.
+  defp help_lines do
+    [
+      gettext("help | connect <trusted-node> | nodes | agents [authority]"),
+      gettext("agents-page <number> (retained query; agents refreshes/replaces it)"),
+      gettext("IDs: copy id64:<base64url UTF-8, no padding>; use explicit safe alias."),
+      gettext("Example: attach host@local id64:dHdvIHdvcmRz a"),
+      gettext("create <authority> <absolute-options-file>"),
+      gettext("attach <authority> <agent-id> [alias]"),
+      gettext("input <alias> <text> | status <alias> | watch <alias> [timeout-ms event-limit]"),
+      gettext("stop <alias> | close <alias> | detach <alias> | quit"),
+      gettext("Config files are trusted executable operator-owned Elixir code, not sandboxed."),
+      gettext("Detach, quit, EOF and watch timeout do not close Agents or cancel upstream work.")
+    ]
+  end
+
   def render(:help) do
-    rows = @help |> String.split("\n", trim: true) |> Enum.map(&%{"commands / policy" => &1})
+    header = gettext("commands / policy")
+    rows = help_lines() |> Enum.map(&%{header => &1})
     table(rows)
   end
 
-  def render(:ok), do: "ok"
+  def render(:ok), do: gettext("ok")
 
-  def render({:error, reason}) do
-    safe =
-      if reason in [
-           :invalid_command,
-           :invalid_configuration,
-           :invalid_authority,
-           :alias_exists,
-           :alias_limit,
-           :invalid_alias,
-           :unknown_alias,
-           :not_found,
-           :not_authority,
-           :stale_agent,
-           :unavailable,
-           :timeout,
-           :limit,
-           :busy,
-           :event_limit,
-           :timeout_or_loss,
-           :invalid_watch_options
-         ], do: reason, else: :request_failed
-
-    "error: #{safe}"
-  end
+  def render({:error, reason}),
+    do: gettext("error: %{reason}", reason: safe_reason(reason))
 
   def render({:ok, value}), do: render(value)
 
   def render(%{agents: agents, failures: failures, complete: complete} = snapshot) do
     header =
-      "discovery complete=#{complete} agents=#{length(agents)} failures=#{map_size(failures)}"
+      gettext("discovery complete=%{complete} agents=%{agents} failures=%{failures}",
+        complete: complete,
+        agents: length(agents),
+        failures: map_size(failures)
+      )
 
     page = Map.get(snapshot, :page, 1)
     pages = max(1, div(length(agents) + 7, 8))
@@ -63,13 +82,21 @@ defmodule Beamlet.CLI.Renderer do
 
     errors =
       Enum.map(failures, fn {authority, reason} ->
-        %{"authority" => to_string(authority), "result" => render({:error, reason})}
+        %{
+          gettext("authority") => to_string(authority),
+          gettext("result") => render({:error, reason})
+        }
       end)
 
     Enum.join(
       [
         header,
-        "Showing #{length(identities)} identities; page=#{page}/#{pages}; agents-page N traverses retained query. Discovery is not an atomic cluster snapshot.",
+        gettext(
+          "Showing %{shown} identities; page=%{page}/%{pages}; agents-page N traverses retained query. Discovery is not an atomic cluster snapshot.",
+          shown: length(identities),
+          page: page,
+          pages: pages
+        ),
         table(identities),
         table(errors)
       ],
@@ -86,9 +113,9 @@ defmodule Beamlet.CLI.Renderer do
     fields = Map.take(snapshot, [:steps, :turn, :terminal_turn, :final, :progress])
 
     rows = [
-      %{"field" => "status", "value" => to_string(status)}
+      %{gettext("field") => "status", gettext("value") => Vocabulary.status(status)}
       | Enum.map(fields, fn {key, value} ->
-          %{"field" => to_string(key), "value" => bounded(value, 2048)}
+          %{gettext("field") => to_string(key), gettext("value") => bounded(value, 2048)}
         end)
     ]
 
@@ -96,7 +123,8 @@ defmodule Beamlet.CLI.Renderer do
   end
 
   def render(nodes) when is_list(nodes) do
-    table(Enum.map(nodes, &%{"connected trusted node" => to_string(&1)}))
+    header = gettext("connected trusted node")
+    table(Enum.map(nodes, &%{header => to_string(&1)}))
   end
 
   def render(value), do: bounded(value, 4096)
@@ -105,12 +133,12 @@ defmodule Beamlet.CLI.Renderer do
   # the authority/ID columns. Rows/cells are bounded before Owl lays them out.
   defp identity(ref),
     do: %{
-      "authority" => to_string(ref.authority),
-      "id" => Command.identity_token(ref.id),
-      "pid" => inspect(ref.pid)
+      gettext("authority") => to_string(ref.authority),
+      gettext("id") => Command.identity_token(ref.id),
+      gettext("pid") => inspect(ref.pid)
     }
 
-  defp table([]), do: "(none)"
+  defp table([]), do: gettext("(none)")
 
   defp table(rows) do
     rows

@@ -39,6 +39,7 @@ defmodule Beamlet.Web.MixProject do
   defp deps do
     [
       {:beamlet_runtime, in_umbrella: true, only: :test},
+      {:beamlet_i18n, in_umbrella: true},
       {:beamlet_node, in_umbrella: true},
       {:beamlet_agent, in_umbrella: true},
       {:beamlet_actions, in_umbrella: true},
