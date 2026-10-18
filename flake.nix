@@ -24,9 +24,7 @@
               inotify-tools
             ])
             ++ (with beam; [
-              erlang
               elixir
-              elixir-ls
               expert
             ]);
 
