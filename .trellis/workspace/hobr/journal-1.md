@@ -300,3 +300,40 @@ Delivered immutable Agent-owned provider/config/credentials/placement bindings, 
 ### Next Steps
 
 - 活动任务列表为空。若要第三种语言或浏览器级语言切换验收，需另行立项。
+
+---
+
+## Session 9: 合并 durable-storage 并清零 Credo
+
+**Date**: 2026-10-18
+**Task**: Durable/storage 代码通过默认与严格 Credo
+**Branch**: `dev`
+
+### Summary
+
+先把 `feat/durable-storage`（阶段 A–F 持久化）合并进已交付 Web 与 i18n 的 `dev`。Git 全部自动合并，无文本冲突，但自动合并后有三处真实集成问题：storage 的 `journal_peer/2` 第三个子句不可达（Dialyzer `pattern_match_cov`）、根工程 PLT 缺 `:mix` 导致操作员 Mix 任务报 `Mix.raise/1` 未知、以及 Web 分布式测试断言英文文案却从未在中文默认之后跑过。分别以删除死子句、`dialyzer: [plt_add_apps: [:mix]]`、显式英文会话 locale 修复；文档同步为十个应用、七库两宿主，并指向已归档的阶段 F 证据。
+
+合并本身唯一红灯是 Credo：该分支自带 44 项默认问题（strict 106 项），其自身证据也记录过 `--strict` 退出 14。按用户选择 A 单独立项清理：抽取私有辅助函数降低嵌套/复杂度/参数个数、`cond`/`unless`/单分支 `with` 改写为 `if`/`case`、补齐并排序顶层 alias、把测试宏的长 `quote` 拆成组合片段。全程未用 `.credo.exs`、`--ignore`、`credo:disable` 或降低规则，也未改动条目断言、schema、迁移、事务/CAS、公开签名与错误原子。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9c6354d` | Merge branch 'feat/durable-storage' into dev |
+| `dfa90cb` | docs(trellis): align app counts and backend build description after merge |
+| `ffb5e87` | refactor(durable): make durable and storage code Credo-clean |
+
+### Testing
+
+- [OK] 合并后：伞项目 439 通过 / 49 排除；storage 59/13；命名分布式 33（runtime 6、node 20、daemon 2、web 5）；durable e2e 两阶段；daemon+CLI release 重建与 `check-release.sh`；Sobelow、gettext、whitespace、Dialyzer 0。
+- [OK] 重构后独立检查复跑同样门：Credo 默认与 `--strict --all` 均 0 issue；format、警告即错误编译、sobelow、gettext、Dialyzer（未刷新 PLT）、durable e2e、分布式 33、`git diff --check` 全通过；测试计数未下降，断言未削弱，契约测试生成名逐一同名。
+- [OK] 作用域核对：`mix.lock`、`scripts`、`config`、各 `mix.exs` 无差异；未触碰 Web/i18n。
+- [!] 未验证：release（无 manifest/闭包/配置变化故不适用）、浏览器、PostgreSQL 适配器（13 项按设计排除）、物理多机与付费 provider。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 活动任务清空；`dev` 领先 `origin/dev` 20 个提交，未推送。
