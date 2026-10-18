@@ -11,22 +11,25 @@ from pathlib import Path
 
 
 class Service:
-    def __init__(self, root, logs, label, settings, cookie, port=None):
+    def __init__(self, root, logs, label, settings, cookie):
         self.root = root
         self.logs = logs
         self.label = label
-        self.executable = str(root / "release/bin/beamlet_daemon")
+        # Each fixture edits its own bundled runtime.exs, never a custom external
+        # configuration interface. Controls remain the native Mix launcher.
+        release = root / label
+        shutil.copytree(root / "release", release)
+        self.executable = str(release / "bin/beamlet_daemon")
+        runtime = release / "releases/0.1.0/runtime.exs"
+        runtime.write_text(runtime.read_text() + "\n" + settings + "\n")
         self.env = os.environ.copy()
         self.env.update(
             RELEASE_NODE=f"{label}_{os.getpid()}@127.0.0.1",
             RELEASE_COOKIE=cookie,
-            BEAMLET_CONFIG=str(root / f"{label}.exs"),
+            RELEASE_DISTRIBUTION="name",
         )
-        for key in ["SECRET_KEY_BASE", "BEAMLET_MODEL_KEY", "BEAMLET_DIST_PORT"]:
+        for key in ["SECRET_KEY_BASE", "BEAMLET_MODEL_KEY", "BEAMLET_CONFIG", "BEAMLET_DIST_PORT"]:
             self.env.pop(key, None)
-        if port is not None:
-            self.env["BEAMLET_DIST_PORT"] = str(port)
-        Path(self.env["BEAMLET_CONFIG"]).write_text("import Config\n" + settings + "\n")
         self.process = None
         self.log = None
 
@@ -118,7 +121,6 @@ def main():
                 service.rpc(f'''
                   true = Node.alive?()
                   true = Atom.to_string(node()) == System.fetch_env!("RELEASE_NODE")
-                  {{:ok, 9100}} = :application.get_env(:kernel, :inet_dist_listen_min)
                   true = (Process.whereis(Beamlet.Agent.Registry) != nil) == {str(role != "executor").lower()}
                   true = (Process.whereis(Beamlet.Runtime.ExecutorGateway) != nil) == {str(role != "authority").lower()}
                   true = (Process.whereis(Beamlet.Node.Provider) != nil) == {str(role != "authority").lower()}
@@ -138,7 +140,7 @@ def main():
                       wait.(wait, 300)
                       true = Process.alive?(Process.whereis(Beamlet.Agent.Registry))
                     ''')
-                print(f"same copied daemon: named {role}, default port9100, RPC/pid/stop passed")
+                print(f"same copied daemon: named {role}, native distribution, RPC/pid/stop passed")
             finally:
                 service.stop()
             if role == "default":
@@ -146,9 +148,9 @@ def main():
 
         # Same copy simultaneously hosts two only configurations. Authority's
         # one-shot bootstrap connects executor; placement forbids local fallback.
-        executor = Service(root, logs, "remote_executor", "config :beamlet_daemon, node: [roles: [:executor], limits: [refresh_ms: 20]]", cookie, 19102)
+        executor = Service(root, logs, "remote_executor", "config :beamlet_daemon, node: [roles: [:executor], limits: [refresh_ms: 20]]", cookie)
         executor_name = executor.env["RELEASE_NODE"]
-        authority = Service(root, logs, "remote_authority", f'config :beamlet_daemon, node: [roles: [:authority], limits: [refresh_ms: 20]], allowed_nodes: ["{executor_name}"], peers: ["{executor_name}"]', cookie, 19101)
+        authority = Service(root, logs, "remote_authority", f'config :beamlet_daemon, node: [roles: [:authority], limits: [refresh_ms: 20]], allowed_nodes: ["{executor_name}"], peers: ["{executor_name}"]', cookie)
         try:
             executor.start()
             authority.start()
@@ -193,41 +195,50 @@ def main():
         finally:
             stop_services(authority, executor)
 
-        # Reader/host errors must be static and never include raw config or causes.
+        # Application validators still reject malformed host options before roles
+        # start. Native Config scripts are trusted code, not sanitized readers.
         sentinel = "PRIVATE_CONFIG_SENTINEL"
-        probe = Service(root, logs, "invalid", "config :beamlet_daemon, node: []", cookie)
         cases = {
             "authority-limits": f'config :beamlet_daemon, node: [roles: [:authority], limits: "{sentinel}"]',
             "interaction": 'config :beamlet_daemon, node: [roles: [:interaction]]',
             "empty": "config :beamlet_daemon, node: [roles: []]",
             "duplicate": "config :beamlet_daemon, node: [roles: [:authority, :authority]]",
             "unknown-role": "config :beamlet_daemon, node: [roles: [:unknown]]",
-            "wrong-app": f'config :beamlet_node, :retired, "{sentinel}"',
-            "reader-exception": f'raise "{sentinel}"',
-            "syntax": f'config :beamlet_daemon, bad: "{sentinel}" ]',
+            "unknown-key": f'config :beamlet_daemon, unknown: "{sentinel}"',
             "bad-provider": f'config :beamlet_daemon, node: [model_providers: %{{"{sentinel}" => String}}]',
             "untrusted-peer": 'config :beamlet_daemon, peers: ["missing@127.0.0.1"]',
+            "invalid-storage": f'config :beamlet_daemon, storage: [adapter: :unknown, database: "{sentinel}"]',
         }
         for label, content in cases.items():
-            Path(probe.env["BEAMLET_CONFIG"]).write_text("import Config\n" + content + "\n")
+            probe = Service(root, logs, "invalid-" + label, content, cookie)
             result = probe.command("start")
             output = result.stdout + result.stderr
             (logs / f"reject-{label}.log").write_text(output)
             assert result.returncode != 0
-            assert "invalid daemon configuration" in output
-            if label == "authority-limits":
-                # Config providers run before application/role supervision starts.
-                assert "Config provider Config.Reader failed" in output
+            assert "invalid_daemon_configuration" in output
             assert sentinel not in output
             assert "invalid runtime limit" not in output
             assert "failed to start child" not in output
-        for label, path in [("relative", "relative.exs"), ("missing", str(root / "absent.exs"))]:
-            probe.env["BEAMLET_CONFIG"] = path
-            result = probe.command("start")
-            (logs / f"reject-{label}.log").write_text(result.stdout + result.stderr)
-            assert result.returncode != 0
-            assert "invalid daemon configuration" in result.stdout + result.stderr
-        print("12 invalid runtime/config cases rejected without raw sentinel leakage")
+        # A configured but absent dataset must not be created/migrated by boot.
+        database = root / "must-not-be-created.db"
+        journal = root / "must-not-be-created-journal.db"
+        probe = Service(root, logs, "missing-dataset", f'''config :beamlet_daemon,
+          node: [roles: [:authority]],
+          storage: [database: "{database}", dataset_id: "00000000-0000-4000-8000-000000000001",
+            journal: [database: "{journal}", dataset_id: "00000000-0000-4000-8000-000000000002"],
+            executor_id: "00000000-0000-4000-8000-000000000003"]''', cookie)
+        try:
+            probe.start()
+            probe.rpc('''
+              %{admission: {:refused, :dataset_missing},
+                datasets: %{authority: {:refused, :dataset_missing}}} = Beamlet.Storage.Host.status()
+              nil = Process.whereis(Beamlet.Storage.SQLiteAuthorityRepo)
+              nil = Process.whereis(Beamlet.Storage.ExecutorJournalRepo)
+            ''')
+            assert not database.exists() and not journal.exists(), "boot created a database"
+        finally:
+            probe.stop()
+        print("9 invalid host cases rejected without sentinel leakage; absent dataset not created")
 
 
 if __name__ == "__main__":

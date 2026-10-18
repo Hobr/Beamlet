@@ -11,12 +11,16 @@ python3 -B scripts/deployment/test-cli-pty.py >"$logs/pty-reader.log" 2>&1
 cookie=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 test_name="beamlet_acceptance_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 elixir --sname "$test_name" --cookie "$cookie" -S mix test --only distributed --seed 631927 >"$logs/distributed.log" 2>&1
-mix credo --strict >"$logs/credo.log" 2>&1
+mix credo --strict --all >"$logs/credo.log" 2>&1
 mix dialyzer >"$logs/dialyzer.log" 2>&1
 mix sobelow >"$logs/sobelow.log" 2>&1
 mix xref graph --format cycles >"$logs/cycles.log" 2>&1
 BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_daemon --overwrite >"$logs/build.log" 2>&1
 BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_cli --overwrite >"$logs/build-cli.log" 2>&1
+MIX_ENV=prod mix tailwind beamlet_web --minify >"$logs/tailwind.log" 2>&1
+MIX_ENV=prod mix esbuild beamlet_web --minify >"$logs/esbuild.log" 2>&1
+MIX_ENV=prod mix phx.digest >"$logs/digest.log" 2>&1
+MIX_ENV=prod mix release beamlet_web --overwrite >"$logs/build-web.log" 2>&1
 BEAMLET_CHECK_LOG_DIR="$logs/copied" bash scripts/deployment/check-release.sh >"$logs/release.log" 2>&1
 if env -u SECRET_KEY_BASE MIX_ENV=prod mix run --no-start -e ':ok' >"$logs/web-secret.log" 2>&1; then
   echo 'Web missing-secret check unexpectedly succeeded' >&2

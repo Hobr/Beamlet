@@ -95,39 +95,52 @@ later. No background reconnect or business replay exists.
 
 BEAMLET_BACKEND_BUILD=1 compiles the seven backend libraries (five core,
 `beamlet_storage` and `beamlet_i18n`) plus both hosts under isolated _build/backend,
-excluding Web. Each release excludes the other host. beamlet_daemon uses daemon_runtime.exs,
-which reads trusted operator-owned absolute BEAMLET_CONFIG, accepts only the daemon
-namespace/settings, normalizes/validates, then explicitly enables the host. Reader
-and validation failure raises one static message outside the rescue context; raw
-config/cause/credentials are not inspected. Trusted Elixir code can itself leak or
-execute arbitrary actions; this is not a sandbox. Ordinary Web production
-SECRET_KEY_BASE failure and CSP remain unchanged.
+excluding Web. Each release excludes the other host. All three releases use Mix's
+default bundled `config/runtime.exs` (`releases/<version>/runtime.exs`); there is no
+custom runtime_config_path, config provider, external-config discovery, CLI
+`--config` flag, wrapper or deployment environment variable. `runtime.exs` reads the
+native `RELEASE_NAME` only to enable the selected host; ordinary source/library
+loading stays opt-in. Daemon/CLI production releases do not configure Web or need
+SECRET_KEY_BASE; packaged Web and source-run production Web still fail fast without
+it. There is no custom `rel/env.sh.eex`: node identity, cookie, distribution and VM
+options are native Mix Release settings, so no Beamlet variable or fixed service
+port is required. Config scripts, including an edited bundled runtime.exs, are
+trusted executable code, not a sandbox, and their native reader exceptions are not
+sanitized by Beamlet.
 
-rel/env.sh.eex retains long-name service fixed BEAMLET_DIST_PORT (default9100)
-and ephemeral port0 for rpc/remote/restart/stop/pid helpers. Eval alone does not
-prove this regression. check-release.sh verifies copied .rel/.app/lib closures
-without Web/Phoenix/Plug/Bandit/WebSock, the opposite host, or the presentation-only
-`beamlet_i18n`/`gettext`/`expo` set (the daemon must never ship them; the CLI release
-legitimately does). check-named-release.py uses the same
-artifact for default/authority-only/executor-only named start/RPC/pid/stop, then
+check-release.sh verifies copied daemon, CLI and Web .rel/.app/lib closures without
+the opposite host, Web/Phoenix/Plug/Bandit/WebSock in backend artifacts, or the
+presentation-only `beamlet_i18n`/`gettext`/`expo` set (the daemon must never ship
+them; the CLI release legitimately does). check-named-release.py copies the daemon
+artifact per fixture and edits each copy's bundled runtime.exs for
+default/authority-only/executor-only named start/RPC/pid/stop, then
 authority→executor bootstrap and a deterministic remote Gateway turn. It checks
-failed-peer local continuation and static malformed-config rejection. Copied-file
-manifest/hash and logs are retained in a printed evidence directory, overridable
-with BEAMLET_CHECK_LOG_DIR. Ports9100/19101/19102 must be free. Seven combinations
-remain library tests, not daemon modes or role-specific build artifacts.
+failed-peer local continuation, host-validation rejection without sentinel leakage
+and that a configured missing dataset is never created at boot. The Web section
+rejects a missing secret, then requests real HTTP and digested CSS/JS from a copied
+artifact and exercises native pid/rpc/stop. Copied-file manifest/hash and logs are
+retained in a printed evidence directory, overridable with BEAMLET_CHECK_LOG_DIR.
+check-release.sh expects all three artifacts (backend build plus Web assets/digest
+and `mix release beamlet_web`); a backend-only run must not be reported as a full
+pass. Seven combinations remain library tests, not daemon modes or role-specific
+build artifacts.
 
 Deployment instructions/example are under scripts/deployment (daemon.example.exs).
 The unchanged bounded Python HTTP fixture and migrated CLI integration retain
 complete Tool-observation digest/correlation, wrong environment, fresh capacity,
-held-request stop and executor loss/no replay. check-local runs both release
-builds and copied/stdin/reattachment gates; final parent evidence is recorded separately. Rollback
-requires an old artifact with its matching config/protocol; restart is not Agent
-recovery. No physical deployment or paid provider evidence is implied.
+held-request stop and executor loss/no replay. check-local runs all three release
+builds and copied/stdin/reattachment gates; final parent evidence is recorded
+separately. `--overwrite` can retain obsolete files from an older artifact, so
+rebuild into a fresh generated destination or remove only that generated host
+directory before assembling; never deploy an overlay. Rollback requires an old
+artifact with its matching config/protocol; restart is not Agent recovery. No
+physical deployment or paid provider evidence is implied.
 
 ## 5. Durable storage in the packaged hosts
 
-`storage:` is an optional trusted operator block in the daemon `BEAMLET_CONFIG`
-only; the daemon release ships `beamlet_storage`/Ecto/Exqlite/Postgrex in its
+`storage:` is optional daemon application configuration in shared config or the
+packaged release's bundled `runtime.exs`; it is not a separate external document.
+The daemon release ships `beamlet_storage`/Ecto/Exqlite/Postgrex in its
 closure and opens exactly the datasets the configured roles need. The CLI host is
 fixed interaction-only: no database, no storage key, release entrypoint unchanged.
 `Beamlet.Storage.Host.status/1` reports durable admission (a live format check plus
@@ -274,9 +287,10 @@ attach authority id64:dHdvIHdvcmRz safe_alias
 input safe_alias exact UTF-8 text
 ```
 
-The attach example addresses ID `two words`. Creation still reads trusted
-absolute Config with `:beamlet_cli, :agent_options`; release host configuration
-uses `BEAMLET_CONFIG`, with no generic command eval.
+The attach example addresses ID `two words`. Creation still reads a trusted
+absolute Agent-options Config file with `:beamlet_cli, :agent_options`; that
+business command is separate from release host configuration, which uses the
+bundled `runtime.exs`. No generic command eval exists.
 
 ### 3. Contracts
 

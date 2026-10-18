@@ -13,15 +13,42 @@ The backend selector compiles seven libraries (five core plus storage and i18n)
 and both hosts, excluding Web, under isolated `_build/backend`. Each release
 includes only its own dependency closure: the daemon excludes CLI/i18n/Gettext,
 and the CLI excludes daemon/Web. This also avoids Req's optional Plug dependency
-from Web. The release has its own `config/daemon_runtime.exs`; ordinary Web production
-still fails without SECRET_KEY_BASE. No dummy Web secret is needed for daemon.
+from Web. All three named releases use Mix's default bundled
+`config/runtime.exs`; daemon and CLI do not require a Web secret.
 
-Copy `_build/backend/prod/rel/beamlet_daemon` outside the checkout, to compatible
-OS/architecture/OTP hosts. **Do not build role-specific artifacts.** Copy and edit
-[daemon.example.exs](daemon.example.exs) to an absolute operator-owned file:
+Shared `config/config.exs` imports dev/test/prod build configuration. Mix embeds
+those values in `sys.config` and copies `config/runtime.exs` to
+`releases/0.1.0/runtime.exs`. Runtime configuration is evaluated before application
+startup. Only the selected native `RELEASE_NAME` activates its host; ordinary
+source/library loading stays opt-in. Keep one enabled host/Node per VM.
+
+Copy the release directory outside the checkout to a compatible OS/architecture.
+The target needs neither project source nor Mix; bundled ERTS still needs matching
+system/native libraries. When rebuilding a previously customized release, use a
+fresh output directory: `--overwrite` may retain obsolete files from an older
+artifact (including retired wrappers/apps). Remove only the generated host release
+directory before rebuilding; deploy a complete fresh tree, not an overlay.
+Build assets before assembling Web:
+
+```sh
+MIX_ENV=prod mix tailwind beamlet_web --minify
+MIX_ENV=prod mix esbuild beamlet_web --minify
+MIX_ENV=prod mix phx.digest
+MIX_ENV=prod mix release beamlet_web --overwrite
+BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_cli --overwrite
+```
+
+For Web, provide the existing `SECRET_KEY_BASE` securely and run
+`bin/beamlet_web start`; the release enables Endpoint serving and the Web host.
+Production source-run Web retains its required-secret check. Backend releases
+neither ship Web nor need a dummy secret.
+
+**Do not build role-specific artifacts.** Application settings examples in
+[daemon.example.exs](daemon.example.exs) and [cli.example.exs](cli.example.exs)
+are snippets to adapt in shared build config or the bundled `runtime.exs`, not
+automatically loaded external files. For example:
 
 ```elixir
-import Config
 config :beamlet_daemon,
   node: [], # default [:authority, :executor]
   allowed_nodes: ["executor@c.example.internal"],
@@ -35,16 +62,17 @@ is no runtime role switch/reconfiguration API. Code for both capabilities remain
 in every copy. Node remains an embedded library with all seven combinations,
 not an executable or an application boot-config reader.
 
-BEAMLET_CONFIG is trusted Elixir **code with deployment-user privileges**, not a
-sandbox or model input. Restrict file ownership/permissions and never load
-model-provided paths/modules. The runtime reader accepts only :beamlet_daemon
-settings (enabled/node/allowed_nodes/peers), normalizes and validates them, then
-explicitly enables the host. Reader/validation errors are static and do not
-render raw values, paths or exception causes. Arbitrary code in a trusted file
-can itself print or leak data; sanitizing reader failures cannot prevent that.
-Ordinary umbrella startup has enabled=false and an empty daemon tree, with no
-cluster or stdin side effects. Changes to Application env after startup do not
-reconfigure the running host.
+There is no Beamlet external-config requirement, discovery, CLI config flag,
+provider framework or deployment wrapper. The old external-file startup contract
+is retired. Config/runtime scripts are trusted executable Elixir with deployment
+user privileges, not a sandbox; restrict ownership and never use model input.
+Existing host validators still reject invalid application settings at startup;
+native script syntax/exception diagnostics are not sanitized by a custom reader.
+Ordinary umbrella startup has enabled=false and an empty daemon tree. Changes to
+Application env after startup do not reconfigure the running host. Runtime edits
+require restart and must survive your next deployment; compile-time settings
+(including `force_ssl`) require a rebuild. No hot reload or target-side editing
+interface is provided.
 
 Authority boot needs no user key or workspace. Register trusted model adapters
 with `model_providers` on authority/executor (defaults: openai-compatible and
@@ -55,22 +83,26 @@ provision user model keys in executor profiles; no key_env fallback exists.
 
 ## Service and cluster bootstrap
 
-Provision these variables through a restricted service environment, without shell
-tracing or printing the cookie:
+Use native Mix Release defaults, or its supported `RELEASE_NODE`,
+`RELEASE_COOKIE`, `RELEASE_DISTRIBUTION`, `RELEASE_VM_ARGS` and
+`RELEASE_REMOTE_VM_ARGS` settings. No custom shell requires identity/cookie/config
+variables or pins a distribution port. Consult `mix help release` on the build
+host for native settings and writable runtime configuration requirements.
 
-- RELEASE_NODE: long name, e.g. `authority@b.example.internal`.
-- RELEASE_COOKIE: securely shared by trusted cluster members.
-- BEAMLET_CONFIG: absolute trusted config path.
-- BEAMLET_DIST_PORT: fixed service distribution port, default **9100**.
+Run `bin/beamlet_daemon start` under a service manager (or `start_iex` for a
+trusted session). Native `pid`, `rpc`, `remote`, `restart`, and `stop` controls
+remain available with the service's identity/cookie. Native defaults include a
+release cookie generated at build and a release-named node; use unique names for
+simultaneous copies and rotate/provision cookies securely for trusted clustering.
+Do not log cookies or enable shell tracing. `help` and `version` need no
+application configuration or Web secret.
 
-Run `bin/beamlet_daemon start` under a service manager (or `start_iex` for a trusted
-operator session). `rel/env.sh.eex` uses long names and two schedulers. The rpc,
-remote, restart, stop and pid helper VMs use ephemeral port **0**, never the service
-port. Stop with `bin/beamlet_daemon stop`; inspect the service manager and sockets
-before treating shutdown as complete. EPMD TCP4369 and selected distribution ports
-must be reachable bidirectionally. Use resolvable long names on a trusted private
-network/firewall: cookie distribution permits trusted code execution, not Internet
-or multi-tenant authentication. TLS distribution rollout is not implemented.
+Stop with `bin/beamlet_daemon stop`; inspect the service manager and sockets
+before treating shutdown as complete. EPMD TCP4369 and configured/native
+distribution listeners must be reachable bidirectionally; choose any required
+port restriction with native VM arguments, not a Beamlet fixed-port variable.
+Use trusted private networks/firewalls: cookie distribution permits trusted code
+execution, not Internet or multi-tenant authentication. TLS rollout is not supplied.
 
 allowed_nodes is a trusted list of at most32 ASCII node@host names, each at
 most255 bytes. peers is a distinct subset, at most32 entries. After Node is ready,
@@ -114,7 +146,7 @@ Beamlet.Agent.close(ref)
 
 The initial subscribed snapshot precedes updates. Sink loss/timeout does not own
 Agent lifetime; close is explicit. Do not serialize a live Ref as a durable handle.
-Discovery/reattachment and a standalone CLI session/release are subsequent tasks,
+Discovery/reattachment and a standalone CLI session belong to the CLI release,
 not hidden Node executable dependencies. Keep live refs in the same operator
 session/script. A CLI library test fixture exists but is not shipped in daemon.
 
@@ -154,23 +186,31 @@ rollback, termination or billing cessation. Never replay uncertain business work
 
 ## Checks, evidence and rollback
 
-check-release.sh copies one artifact outside source/deps, fingerprints its file
-manifest, checks .rel/.app/lib dependency closure (no CLI/Web/Phoenix/Plug/Bandit/
-WebSock), and exercises default/authority-only/executor-only **named start, RPC,
-pid and stop** on default service port9100. It then runs authority and executor
-copies/configurations from that same artifact on19101/19102, bootstrap-connects,
-and completes one deterministic remote Gateway turn. It checks failed-peer local
-continuation and11 malformed runtime/config rejections without sentinel leakage.
-Set BEAMLET_CHECK_LOG_DIR to retain logs in a chosen absolute directory; otherwise
-a printed temporary evidence directory is retained. **Python 3.11+** is required
-for the named-release checker (`sys.exception()` and exception `add_note()`);
-its cleanup regression suite was verified on Python 3.14. EPMD/local sockets and
-free ports9100/19101/19102 are required. The seven library combinations are tested
-separately and are not daemon role choices.
+`check-release.sh` copies the daemon, CLI and Web artifacts outside source/deps,
+fingerprints the copied trees, and checks isolated dependency closures. It tests
+the same daemon artifact in default/authority-only/executor-only named modes,
+native RPC/pid/stop without custom shell policy, failed-peer continuation,
+authority-to-executor bootstrap and a deterministic remote Gateway turn. Fixtures
+edit each copy's **bundled runtime.exs**; there is no external reader. Nine invalid
+host options still fail without sentinel leakage, and a missing dataset is never
+created at boot. Old reader-path/syntax-sanitization tests no longer apply to
+native trusted scripts. Existing Python cleanup failure regressions remain intact.
 
-`bash scripts/deployment/check-local.sh` runs the available daemon-stage gates and
-explicitly reports final two-host/CLI acceptance as deferred. It does not attest
-parent completion. Ordinary and named distributed actual counts, failure logs,
+CLI checks preserve foreground stdin, quit/EOF reattachment to the identical
+Ref, explicit close, Unicode/identity pagination and actual PTY model output.
+Web checks reject a missing secret, start with native identity/cookie defaults,
+request real HTTP and CSS/JS from the copied digest artifact, and exercise native
+controls. Web fixtures only change the copy's listener port/IP. No checked-in
+probe file or new deployment variable is needed.
+
+Set the existing `BEAMLET_CHECK_LOG_DIR` to retain logs in a chosen directory;
+otherwise a printed temporary evidence directory is retained. Python3.11+,
+EPMD/local sockets and native system libraries are required. The seven library
+role combinations remain separate tests, not daemon startup choices.
+
+`bash scripts/deployment/check-local.sh` runs format/compile/umbrella/named tests,
+static analysis, all three release builds and the copied-artifact checks.
+Successful local checks do not attest physical deployment or parent acceptance. Ordinary and named distributed actual counts, failure logs,
 active-LSP limitations and copied hashes belong in task evidence. Use scheduler-only
 ERL_FLAGS='+S 2:2' with an explicit securely generated parent --cookie for named Mix
 tests; never put -setcookie in inherited ERL_FLAGS (observed parent/peer mismatch).
@@ -190,9 +230,9 @@ The backend compilation selector includes both hosts; each release dependency
 closure contains only its own host and excludes Web. Ordinary umbrella loading
 starts neither host's Node and never reads stdin.
 
-Copy the CLI release directory and `cli.example.exs` outside the checkout. Set
-absolute `BEAMLET_CONFIG`, unique long `RELEASE_NODE`, trusted `RELEASE_COOKIE`
-and an available `BEAMLET_DIST_PORT` (0 selects ephemeral). Run
+Copy the CLI release directory outside the checkout. Adapt `cli.example.exs`
+application settings in shared config or its bundled runtime.exs; use native
+Release settings for trusted distribution and a unique node identity. Run
 `bin/beamlet_cli start` in the foreground; stdin accepts commands without IEx.
 `help` describes the grammar. Use `connect authority@host`, then `agents`,
 `attach authority@host agent-id local-alias`, `status local-alias`,
@@ -222,7 +262,7 @@ English copy assertions (`error: invalid_command`, no `error:` in a healthy
 session) stay deterministic now that Chinese is the shipped default; the language
 switch itself is covered by `apps/beamlet_cli/test/beamlet/i18n_test.exs`.
 
-`check-release.sh` now checks both rebuilt artifacts, including the same daemon
+`check-release.sh` checks all three rebuilt artifacts, including the same daemon
 copy in three modes and three independent foreground CLI stdin sessions. The
 first quits after create; the second discovers/attaches, operates and leaves via
 EOF; RPC proves identical authority/PID/incarnation before the third explicitly
@@ -247,8 +287,7 @@ Terminal copy is translated with Gettext and ships in Simplified Chinese
 languages mid-run. Precedence:
 
 1. `config :beamlet_cli, :locale` — trusted build-time application config; it wins
-   over everything and is *not* part of the `BEAMLET_CONFIG` host schema
-   (`enabled`/`allowed_nodes` only);
+   over everything (the host validator accepts `enabled`/`allowed_nodes` only);
 2. `BEAMLET_LANG` — operator environment override, accepted spellings `zh`,
    `zh-cn`, `zh_CN`, `cn`, `en`, `en-us`, `en_US`;
 3. `config :beamlet_cli, :default_locale` — shipped as `"zh_CN"`;
@@ -298,8 +337,8 @@ The independent4096-codepoint watch limit remains distinct from display width.
 
 ## Durable storage (stage F)
 
-Durable storage is opt-in and configured only in the daemon host's trusted
-`BEAMLET_CONFIG` file; omit the `storage:` block and the host stays ephemeral and
+Durable storage is opt-in application configuration in the daemon's shared
+config/bundled runtime.exs; omit the `storage:` block and the host stays ephemeral and
 starts no database. Keys, the explicit migration command, the backup/restore
 runbook and the full evidence are in
 [the stage F release evidence](../../.trellis/tasks/archive/2026-10/10-18-durable-release-operations/research/release-evidence.md).

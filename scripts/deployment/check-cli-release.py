@@ -33,19 +33,19 @@ def main():
         manifest = "".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root / 'cli')}\n" for p in sorted((root / "cli").rglob("*")) if p.is_file())
         (logs / "copied-cli-manifest.sha256").write_text(manifest)
         (logs / "copied-cli-tree.sha256").write_text(hashlib.sha256(manifest.encode()).hexdigest() + "\n")
-        forbidden = re.compile(r"^(beamlet_daemon|beamlet_web|phoenix.*|plug.*|bandit|websock.*)-")
+        forbidden = re.compile(r"^(beamlet_config|beamlet_daemon|beamlet_web|phoenix.*|plug.*|bandit|websock.*)-")
         assert not any(forbidden.match(p.name) for p in (root / "cli/lib").iterdir())
         cookie = secrets.token_hex(24)
-        daemon = named.Service(root, logs, "cli_authority", 'config :beamlet_daemon, node: [limits: [refresh_ms: 20]]', cookie, 19201)
+        daemon = named.Service(root, logs, "cli_authority", 'config :beamlet_daemon, node: [limits: [refresh_ms: 20]]', cookie)
         authority = daemon.env["RELEASE_NODE"]
-        config = root / "cli.exs"
-        config.write_text(f'import Config\nconfig :beamlet_cli, allowed_nodes: ["{authority}"]\n')
+        runtime = root / "cli/releases/0.1.0/runtime.exs"
+        runtime.write_text(runtime.read_text() + f'\nconfig :beamlet_cli, allowed_nodes: ["{authority}"]\n')
         options = root / "options.exs"
         options.write_text('import Config\nconfig :beamlet_cli, agent_options: [id: "persist", model: %{provider: "deterministic", config: %{"reply" => %{"kind" => "text", "content" => "copied-ok", "calls" => []}}}]\n')
 
         def session(label, commands):
             env = daemon.env.copy()
-            env.update(RELEASE_NODE=f"{label}_{secrets.token_hex(6)}@127.0.0.1", BEAMLET_CONFIG=str(config), BEAMLET_DIST_PORT="0", BEAMLET_LANG="en")
+            env.update(RELEASE_NODE=f"{label}_{secrets.token_hex(6)}@127.0.0.1", BEAMLET_LANG="en")
             result = subprocess.run([str(root / "cli/bin/beamlet_cli"), "start"], input=commands, text=True, capture_output=True, cwd=root, env=env, timeout=25)
             output = result.stdout + result.stderr
             (logs / f"{label}.log").write_text(output)
@@ -56,7 +56,7 @@ def main():
         try:
             daemon.start()
             width_env = daemon.env.copy()
-            width_env.update(BEAMLET_CONFIG=str(config), RELEASE_NODE=f"width_{secrets.token_hex(6)}@127.0.0.1", BEAMLET_DIST_PORT="0", BEAMLET_LANG="en")
+            width_env.update(RELEASE_NODE=f"width_{secrets.token_hex(6)}@127.0.0.1", BEAMLET_LANG="en")
             width = subprocess.run([str(root / "cli/bin/beamlet_cli"), "eval",
                 'true = Code.ensure_loaded?(Ucwidth); 4 = Owl.Data.length("中国"); 2 = Owl.Data.length("😀"); 1 = Owl.Data.length("é"); IO.puts("Ucwidth enabled")'],
                 cwd=root, env=width_env, capture_output=True, timeout=25)
@@ -93,7 +93,7 @@ def main():
                 commands += f"attach {authority} {token} p{index}\nstatus p{index}\ninput p{index} café 中国 é😀  spaces  \nwatch p{index} 5000 64\n"
             commands += "quit\n"
             env = daemon.env.copy()
-            env.update(RELEASE_NODE=f"pty_{secrets.token_hex(6)}@127.0.0.1", BEAMLET_CONFIG=str(config), BEAMLET_DIST_PORT="0", BEAMLET_LANG="en")
+            env.update(RELEASE_NODE=f"pty_{secrets.token_hex(6)}@127.0.0.1", BEAMLET_LANG="en")
             status, output = cli_pty.terminal([str(root / 'cli/bin/beamlet_cli'), 'start'], commands.encode(), cwd=root, env=env)
             (logs / 'copied-pty.log').write_bytes(output)
             # pty-ok is emitted by the model, never present in input/terminal echo.

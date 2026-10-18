@@ -13,13 +13,10 @@ defmodule Beamlet.Umbrella.MixProject do
       dialyzer: [plt_add_apps: [:mix]],
       aliases: aliases(),
       releases: [
-        beamlet_daemon: [
-          applications: [beamlet_daemon: :permanent],
-          runtime_config_path: "config/daemon_runtime.exs"
-        ],
+        beamlet_daemon: [applications: [beamlet_daemon: :permanent]],
+        beamlet_web: [applications: [beamlet_web: :permanent]],
         beamlet_cli: [
           applications: [beamlet_cli: :permanent],
-          runtime_config_path: "config/cli_runtime.exs",
           steps: [:assemble, &cli_entrypoint/1, :tar]
         ]
       ],

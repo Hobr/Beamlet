@@ -19,6 +19,62 @@ defmodule Beamlet.DaemonTest do
     :ok
   end
 
+  test "shared runtime configuration activates only the selected release host" do
+    previous = System.get_env("RELEASE_NAME")
+
+    on_exit(fn ->
+      if previous,
+        do: System.put_env("RELEASE_NAME", previous),
+        else: System.delete_env("RELEASE_NAME")
+    end)
+
+    runtime = Path.expand("../../../../config/runtime.exs", __DIR__)
+
+    for name <- ["beamlet_daemon", "beamlet_cli", "beamlet_web"] do
+      System.put_env("RELEASE_NAME", name)
+      config = Config.Reader.read!(runtime, env: :test)
+      assert get_in(config, [:beamlet_daemon, :enabled]) == if(name == "beamlet_daemon", do: true)
+      assert get_in(config, [:beamlet_cli, :enabled]) == if(name == "beamlet_cli", do: true)
+
+      assert get_in(config, [:beamlet_web, :host, :enabled]) ==
+               if(name == "beamlet_web", do: true)
+
+      assert get_in(config, [:beamlet_web, Beamlet.Web.Endpoint, :server]) ==
+               if(name == "beamlet_web", do: true)
+    end
+
+    System.delete_env("RELEASE_NAME")
+    assert Config.Reader.read!(runtime, env: :test) == []
+  end
+
+  test "production backend runtime needs no Web secret; Web and source runs still do" do
+    previous_name = System.get_env("RELEASE_NAME")
+    previous_secret = System.get_env("SECRET_KEY_BASE")
+
+    on_exit(fn ->
+      for {key, value} <- [{"RELEASE_NAME", previous_name}, {"SECRET_KEY_BASE", previous_secret}] do
+        if value, do: System.put_env(key, value), else: System.delete_env(key)
+      end
+    end)
+
+    System.delete_env("SECRET_KEY_BASE")
+    runtime = Path.expand("../../../../config/runtime.exs", __DIR__)
+
+    for name <- ["beamlet_daemon", "beamlet_cli"] do
+      System.put_env("RELEASE_NAME", name)
+      config = Config.Reader.read!(runtime, env: :prod)
+      refute Keyword.has_key?(config, :beamlet_web)
+    end
+
+    for name <- ["beamlet_web", nil] do
+      if name, do: System.put_env("RELEASE_NAME", name), else: System.delete_env("RELEASE_NAME")
+
+      assert_raise RuntimeError, ~r/SECRET_KEY_BASE is missing/, fn ->
+        Config.Reader.read!(runtime, env: :prod)
+      end
+    end
+  end
+
   test "authority-only limits reject at preflight without starting children" do
     for limits <- [
           [refresh_ms: 0],

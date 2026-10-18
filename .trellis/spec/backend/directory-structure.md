@@ -128,11 +128,12 @@ adds that directory to `elixirc_paths(:test)`.
 - Shared `config/config.exs` imports environment config last. Endpoint runtime
   secrets belong to `config/runtime.exs`; development and test settings live in
   `config/dev.exs` and `config/test.exs`.
-- Backend build uses `BEAMLET_BACKEND_BUILD=1`, isolated `_build/backend`,
-  `config/daemon_runtime.exs` and trusted absolute `BEAMLET_CONFIG`. Deployment
-  assets/checks live in `rel/` and `scripts/deployment/`. A single beamlet_daemon
-  artifact supports default authority+executor and both only configurations.
-  Node is not a release entrypoint; beamlet_cli uses config/cli_runtime.exs and excludes daemon/Web.
+- Backend build uses `BEAMLET_BACKEND_BUILD=1` and isolated `_build/backend`.
+  Deployment checks live in `scripts/deployment/`. All releases use Mix's default
+  bundled `config/runtime.exs`; there is no custom runtime loader, provider or
+  deployment environment variable. A single beamlet_daemon artifact supports
+  default authority+executor and both only configurations. Node is not a release
+  entrypoint; beamlet_cli and beamlet_web have their own isolated release roots.
 - Web source assets are in `apps/beamlet_web/assets/`; esbuild/Tailwind output
   targets `apps/beamlet_web/priv/static/assets/` (`config/config.exs`). Static
   source resources also include `priv/static/images/logo.svg` and `robots.txt`.

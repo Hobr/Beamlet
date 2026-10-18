@@ -1,6 +1,27 @@
 import Config
 
-if config_env() == :prod do
+# Mix bundles this script for every release. Ordinary source/library loading stays
+# opt-in; only the selected release activates its host (one Node per VM).
+release = System.get_env("RELEASE_NAME")
+
+case release do
+  "beamlet_daemon" ->
+    config :beamlet_daemon, enabled: true
+
+  "beamlet_cli" ->
+    config :beamlet_cli, enabled: true
+
+  "beamlet_web" ->
+    config :beamlet_web, :host, enabled: true
+    config :beamlet_web, Beamlet.Web.Endpoint, server: true
+
+  _ ->
+    :ok
+end
+
+# Backend releases do not ship Phoenix or need a Web signing secret. Keep the
+# production source-run Web check as well as the packaged Web check.
+if config_env() == :prod and release not in ["beamlet_daemon", "beamlet_cli"] do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want
@@ -21,15 +42,8 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
-  # ## Using releases
-  #
-  # If you are doing OTP releases, you need to instruct Phoenix
-  # to start each relevant endpoint:
-  #
-  #     config :beamlet_web, Beamlet.Web.Endpoint, server: true
-  #
-  # Then you can assemble a release by calling `mix release`.
-  # See `mix help release` for more information.
+  # The beamlet_web release enables Endpoint serving above. Other production
+  # source-run hosts can explicitly configure server: true in shared config.
 
   # ## SSL Support
   #

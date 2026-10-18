@@ -1,6 +1,7 @@
 import Config
 
-# Copy and edit on each host. This is trusted local code, not remote input.
+# Application settings example: adapt in shared config or bundled runtime.exs.
+# Mix does not discover or automatically load this example.
 # Boot needs no model credentials. Agent creation supplies one immutable binding.
 config :beamlet_daemon,
   allowed_nodes: [],
