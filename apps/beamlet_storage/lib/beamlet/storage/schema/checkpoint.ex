@@ -6,6 +6,8 @@ defmodule Beamlet.Storage.Schema.Checkpoint do
   schema "checkpoints" do
     field :agent_id, :string
     field :turn_id, :string
+    field :through_seq, :integer
+    field :reducer_version, :integer
     field :data, Beamlet.Storage.JSON, kind: :checkpoint
     field :continuation, :string
     field :schema_version, :integer
@@ -18,7 +20,7 @@ defmodule Beamlet.Storage.Schema.Checkpoint do
     RecordChangeset.build(
       record,
       attrs,
-      ~w(id agent_id data continuation schema_version digest safe_to_fork recorded_at)a
+      ~w(id agent_id through_seq reducer_version data continuation schema_version digest safe_to_fork recorded_at)a
     )
   end
 end

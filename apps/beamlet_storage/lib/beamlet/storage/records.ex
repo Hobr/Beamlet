@@ -7,11 +7,10 @@ defmodule Beamlet.Storage.Records do
   stage-A taxonomy; SQL, connection and configuration detail never escape.
   """
   import Ecto.Query
-  alias Beamlet.Storage.{Codec, Transaction}
+  alias Beamlet.Storage.{Codec, Events, Transaction}
   alias Beamlet.Storage.Schema.{Agent, Command, Event}
 
-  @errors ~w(invalid_data limit conflict stale_generation schema_unsupported artifact_missing storage_unavailable storage_outcome_unknown unsafe_checkpoint source_not_frozen)a
-  @event_type ~r/\A[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+\z/
+  @errors ~w(invalid_data limit conflict stale_generation schema_unsupported artifact_missing storage_unavailable storage_outcome_unknown unresolved_execution unsafe_checkpoint source_not_frozen)a
   @digest ~r/\A[0-9a-f]{64}\z/
 
   @doc "Runs one write transaction; rollback keeps the whole write set out of the dataset."
@@ -92,9 +91,7 @@ defmodule Beamlet.Storage.Records do
   def enum(_, _), do: {:error, :invalid_data}
 
   def event_type(value) do
-    with {:ok, value} <- text(value, 255) do
-      if Regex.match?(@event_type, value), do: {:ok, value}, else: {:error, :invalid_data}
-    end
+    if Events.supported?(value, 1), do: {:ok, value}, else: {:error, :schema_unsupported}
   end
 
   def get(repo, schema, id) do
@@ -144,20 +141,15 @@ defmodule Beamlet.Storage.Records do
     end
   end
 
-  @doc "Owned Operations share the Agent history order, so their events advance the Agent counter."
-  def advance_agent_history(repo, agent_id, expected_version, expected_generation) do
-    with {:ok, agent} <- get(repo, Agent, agent_id) do
-      seq = agent.history_seq + 1
-
-      with {:ok, _version} <-
-             cas_agent(repo, agent, expected_version, expected_generation, history_seq: seq) do
-        {:ok, seq}
-      end
-    end
-  end
-
   def event_changeset(attrs) do
-    Event.changeset(%Event{}, attrs)
+    changeset = Event.changeset(%Event{}, attrs)
+
+    changeset =
+      if Events.supported?(attrs[:type], attrs[:schema_version]),
+        do: changeset,
+        else: Ecto.Changeset.add_error(changeset, :schema_version, "invalid_data")
+
+    changeset
     |> Ecto.Changeset.unique_constraint([:scope_id, :dedupe_key],
       name: :events_scope_id_dedupe_key_index
     )

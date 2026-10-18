@@ -28,6 +28,7 @@ defmodule Beamlet.Storage.Transaction do
     try do
       repo.transaction(multi_or_fun, opts)
     rescue
+      error in RuntimeError -> unavailable_repo(error, :storage_outcome_unknown, __STACKTRACE__)
       _ in [DBConnection.ConnectionError] -> {:error, :storage_outcome_unknown}
       error in [Exqlite.Error] -> {:error, classify_sqlite(error)}
       error in [Postgrex.Error] -> {:error, classify_postgres(error)}
@@ -72,9 +73,32 @@ defmodule Beamlet.Storage.Transaction do
   def read(fun) do
     fun.()
   rescue
+    error in RuntimeError ->
+      unavailable_repo(error, :storage_unavailable, __STACKTRACE__)
+
+    error in ArgumentError ->
+      invalid_json_load(error, __STACKTRACE__)
+
     _ in [DBConnection.ConnectionError, Exqlite.Error, Postgrex.Error] ->
       {:error, :storage_unavailable}
   catch
     :exit, _ -> {:error, :storage_unavailable}
+  end
+
+  # Ecto raises when our strict JSON type refuses corrupted stored bytes. Do not
+  # leak the raw field in that exception, or hide unrelated argument/programming errors.
+  defp invalid_json_load(error, [{Ecto.Repo.Queryable, :struct_load!, _, _} | _] = stacktrace) do
+    if String.starts_with?(error.message, "cannot load ") and
+         String.contains?(error.message, " as type #Beamlet.Storage.JSON<"),
+       do: {:error, :invalid_data},
+       else: reraise(error, stacktrace)
+  end
+
+  defp invalid_json_load(error, stacktrace), do: reraise(error, stacktrace)
+
+  defp unavailable_repo(error, reason, stacktrace) do
+    if String.starts_with?(error.message, "could not lookup Ecto repo "),
+      do: {:error, reason},
+      else: reraise(error, stacktrace)
   end
 end

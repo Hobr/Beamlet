@@ -51,7 +51,7 @@ defmodule Beamlet.Storage.HostStorageTest do
 
   test "newer format, mismatched identity and restored_backup are refused on open", ctx do
     for {sql, expected} <- [
-          {"UPDATE storage_metadata SET format_version = 2 WHERE id = 1", :schema_unsupported},
+          {"UPDATE storage_metadata SET format_version = 3 WHERE id = 1", :schema_unsupported},
           {"UPDATE storage_metadata SET dataset_id = '#{Ecto.UUID.generate()}' WHERE id = 1",
            :dataset_mismatch},
           {"UPDATE storage_metadata SET restored_backup = TRUE WHERE id = 1", :restored_backup}
@@ -80,7 +80,7 @@ defmodule Beamlet.Storage.HostStorageTest do
     assert :ok = Admission.consult()
 
     # The probe writes and rolls back: no committed change, no business row.
-    {:ok, %{rows: [[1, id, 0]]}} =
+    {:ok, %{rows: [[2, id, 0]]}} =
       SQL.query(
         SQLiteAuthorityRepo,
         "SELECT format_version, dataset_id, restored_backup FROM storage_metadata WHERE id = 1",

@@ -18,6 +18,7 @@ defmodule Beamlet.Storage.Dataset do
   }
 
   alias Ecto.Adapters.SQL
+  alias Exqlite.Sqlite3
 
   def initialize(repo, opts), do: start(repo, opts, :initialize)
   def open(repo, opts), do: start(repo, opts, :open)
@@ -26,11 +27,21 @@ defmodule Beamlet.Storage.Dataset do
     with :ok <- validate(repo, opts),
          :ok <- authority_available(repo),
          :ok <- prepare_file(repo, opts, mode),
+         :ok <- preflight(repo, opts, mode),
          {:ok, pid} <- repo.start_link(Keyword.put(opts, :log, false)) do
       finish_start(repo, pid, opts, mode)
     else
       {:error, reason}
-      when reason in [:invalid_data, :dataset_missing, :dataset_exists, :path_alias, :conflict] ->
+      when reason in [
+             :invalid_data,
+             :dataset_missing,
+             :dataset_exists,
+             :path_alias,
+             :conflict,
+             :dataset_mismatch,
+             :schema_unsupported,
+             :restored_backup
+           ] ->
         {:error, reason}
 
       _ ->
@@ -127,6 +138,63 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  defp preflight(PostgresAuthorityRepo, _, _), do: :ok
+  defp preflight(_, _, :initialize), do: :ok
+
+  defp preflight(repo, opts, :open) do
+    with {:ok, conn} <- Sqlite3.open(opts[:database], mode: :readonly) do
+      try do
+        with {:ok, [[id, stored_role, version, backup]]} <-
+               read_raw(
+                 conn,
+                 "SELECT dataset_id, role, format_version, restored_backup FROM storage_metadata WHERE id = 1"
+               ),
+             :ok <- metadata_values(repo, opts, id, stored_role, version, backup),
+             :ok <- preflight_migrations(repo, conn) do
+          :ok
+        else
+          {:error, reason}
+          when reason in [:dataset_mismatch, :schema_unsupported, :restored_backup] ->
+            {:error, reason}
+
+          _ ->
+            {:error, :dataset_missing}
+        end
+      after
+        Sqlite3.close(conn)
+      end
+    end
+  end
+
+  defp preflight_migrations(repo, conn) do
+    case read_raw(conn, "SELECT version FROM schema_migrations ORDER BY version") do
+      {:ok, [[migration]]} ->
+        if migration == format_version(repo), do: :ok, else: {:error, :schema_unsupported}
+
+      _ ->
+        {:error, :schema_unsupported}
+    end
+  end
+
+  defp read_raw(conn, sql) do
+    with {:ok, statement} <- Sqlite3.prepare(conn, sql) do
+      try do
+        Sqlite3.fetch_all(conn, statement)
+      after
+        Sqlite3.release(conn, statement)
+      end
+    end
+  end
+
+  defp metadata_values(repo, opts, id, stored_role, version, backup) do
+    cond do
+      id != opts[:dataset_id] or stored_role != role(repo) -> {:error, :dataset_mismatch}
+      version != format_version(repo) -> {:error, :schema_unsupported}
+      backup not in [false, 0] -> {:error, :restored_backup}
+      true -> :ok
+    end
+  end
+
   defp maybe_initialize(_, _, :open), do: :ok
 
   defp maybe_initialize(repo, opts, :initialize) do
@@ -144,14 +212,17 @@ defmodule Beamlet.Storage.Dataset do
           Migrations.install_metadata(repo, opts[:dataset_id], role(repo))
 
         path = Application.app_dir(:beamlet_storage, "priv/#{role(repo)}_migrations")
-        Code.require_file(Path.join(path, "1_#{role(repo)}_v1.exs"))
+
+        Code.require_file(
+          Path.join(path, "#{format_version(repo)}_#{role(repo)}_v#{format_version(repo)}.exs")
+        )
 
         migration =
           if role(repo) == "journal",
             do: Beamlet.Storage.Migrations.JournalV1,
-            else: Beamlet.Storage.Migrations.AuthorityV1
+            else: Beamlet.Storage.Migrations.AuthorityV2
 
-        Ecto.Migrator.run(repo, [{1, migration}], :up,
+        Ecto.Migrator.run(repo, [{format_version(repo), migration}], :up,
           all: true,
           log: false,
           log_migrations_sql: false
@@ -192,7 +263,7 @@ defmodule Beamlet.Storage.Dataset do
       {:ok, %{rows: [[id, stored_role, version, backup]]}} ->
         cond do
           id != opts[:dataset_id] or stored_role != role(repo) -> {:error, :dataset_mismatch}
-          version != 1 -> {:error, :schema_unsupported}
+          version != format_version(repo) -> {:error, :schema_unsupported}
           backup not in [false, 0] -> {:error, :restored_backup}
           true -> verify_migrations(repo)
         end
@@ -204,10 +275,16 @@ defmodule Beamlet.Storage.Dataset do
 
   defp verify_migrations(repo) do
     case SQL.query(repo, "SELECT version FROM schema_migrations ORDER BY version", [], log: false) do
-      {:ok, %{rows: [[1]]}} -> :ok
-      _ -> {:error, :schema_unsupported}
+      {:ok, %{rows: [[version]]}} when version == 1 or version == 2 ->
+        if version == format_version(repo), do: :ok, else: {:error, :schema_unsupported}
+
+      _ ->
+        {:error, :schema_unsupported}
     end
   end
+
+  defp format_version(ExecutorJournalRepo), do: 1
+  defp format_version(_), do: 2
 
   defp role(ExecutorJournalRepo), do: "journal"
   defp role(_), do: "authority"

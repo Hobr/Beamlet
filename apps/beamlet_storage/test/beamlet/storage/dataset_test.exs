@@ -55,11 +55,24 @@ defmodule Beamlet.Storage.DatasetTest do
     assert Process.alive?(pid)
     assert {:error, :dataset_exists} = Dataset.initialize(@repo, opts)
 
-    assert [[opts[:dataset_id], "authority", 1, 0]] ==
+    assert [[opts[:dataset_id], "authority", 2, 0]] ==
              sql("SELECT dataset_id, role, format_version, restored_backup FROM storage_metadata").rows
 
     @repo.stop()
     assert {:ok, _} = Dataset.open(@repo, opts)
+  end
+
+  test "old authority format is refused without rewriting file contents", %{opts: opts} do
+    {:ok, _} = Dataset.initialize(@repo, opts)
+    sql("UPDATE storage_metadata SET format_version = 1")
+    sql("UPDATE schema_migrations SET version = 1")
+    # Establish a consistent closed-file baseline; previous WAL cleanup is not
+    # part of the subsequent open under test.
+    sql("PRAGMA wal_checkpoint(TRUNCATE)")
+    @repo.stop()
+    before = File.read!(opts[:database])
+    assert {:error, :schema_unsupported} = Dataset.open(@repo, opts)
+    assert File.read!(opts[:database]) == before
   end
 
   test "actual PRAGMA settings and engine version", %{opts: opts} do
@@ -87,7 +100,7 @@ defmodule Beamlet.Storage.DatasetTest do
 
     for {update, error} <- [
           {"role = 'journal'", :dataset_mismatch},
-          {"format_version = 2", :schema_unsupported},
+          {"format_version = 3", :schema_unsupported},
           {"restored_backup = 1", :restored_backup}
         ] do
       assert {:ok, _} = Dataset.open(@repo, opts)
@@ -99,14 +112,14 @@ defmodule Beamlet.Storage.DatasetTest do
       {:ok, _} = @repo.start_link(opts)
 
       sql(
-        "UPDATE storage_metadata SET role = 'authority', format_version = 1, restored_backup = 0"
+        "UPDATE storage_metadata SET role = 'authority', format_version = 2, restored_backup = 0"
       )
 
       @repo.stop()
     end
 
     assert {:ok, _} = Dataset.open(@repo, opts)
-    sql("INSERT INTO schema_migrations(version, inserted_at) VALUES (2, CURRENT_TIMESTAMP)")
+    sql("INSERT INTO schema_migrations(version, inserted_at) VALUES (3, CURRENT_TIMESTAMP)")
     @repo.stop()
     assert {:error, :schema_unsupported} = Dataset.open(@repo, opts)
   end

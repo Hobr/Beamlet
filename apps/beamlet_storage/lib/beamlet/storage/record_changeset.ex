@@ -39,8 +39,20 @@ defmodule Beamlet.Storage.RecordChangeset do
   end
 
   defp validate_field(cs, field, _)
-       when field in [:generation, :lock_version, :history_seq, :ordinal, :size],
+       when field in [
+              :generation,
+              :lock_version,
+              :history_seq,
+              :ordinal,
+              :size,
+              :through_seq,
+              :owner_generation,
+              :prepared_seq
+            ],
        do: validate_number(cs, field, greater_than_or_equal_to: 0)
+
+  defp validate_field(cs, :reducer_version, _),
+    do: validate_number(cs, :reducer_version, greater_than: 0)
 
   defp validate_field(cs, :schema_version, _), do: validate_inclusion(cs, :schema_version, [1])
   defp validate_field(cs, :seq, _), do: validate_number(cs, :seq, greater_than: 0)

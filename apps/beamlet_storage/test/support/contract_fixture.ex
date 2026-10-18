@@ -277,6 +277,20 @@ defmodule Beamlet.Storage.ContractFixture do
   def close_raw({:sqlite, conn}), do: Exqlite.Sqlite3.close(conn)
   def close_raw({:postgres, conn}), do: GenServer.stop(conn)
 
+  def reject_consumption(%{backend: :sqlite} = fixture, seq) do
+    sql(
+      fixture,
+      "CREATE TRIGGER reject_consumption BEFORE INSERT ON events WHEN NEW.type = 'operation.result_consumed' AND NEW.seq = #{seq} BEGIN SELECT RAISE(ABORT, 'injected'); END"
+    )
+  end
+
+  def reject_consumption(%{backend: :postgres} = fixture, seq) do
+    sql(
+      fixture,
+      "ALTER TABLE events ADD CONSTRAINT reject_consumption CHECK (type <> 'operation.result_consumed' OR seq <> #{seq})"
+    )
+  end
+
   defp pg_user, do: System.get_env("BEAMLET_PG_USER", "beamlet")
   defp pg_port, do: String.to_integer(System.get_env("BEAMLET_PG_PORT", "5432"))
 end

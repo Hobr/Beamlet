@@ -8,6 +8,11 @@ defmodule Beamlet.Storage.Schema.Operation do
     field :turn_id, :string
     field :tool_call_id, :string
     field :ordinal, :integer
+    field :step_id, :string
+    field :role, :string
+    field :owner_generation, :integer
+    field :prepared_seq, :integer
+    field :sources, Beamlet.Storage.JSON, kind: :operation
     field :description, Beamlet.Storage.JSON, kind: :operation
     field :description_digest, :string
     field :accepted_result, Beamlet.Storage.JSON, kind: :result
@@ -22,7 +27,7 @@ defmodule Beamlet.Storage.Schema.Operation do
     RecordChangeset.build(
       record,
       attrs,
-      ~w(id description description_digest lock_version history_seq schema_version recorded_at)a
+      ~w(id sources description description_digest lock_version history_seq schema_version recorded_at)a
     )
   end
 end

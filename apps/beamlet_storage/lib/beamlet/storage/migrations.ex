@@ -16,8 +16,8 @@ defmodule Beamlet.Storage.Migrations do
 
       SQL.query!(
         repo,
-        "INSERT INTO storage_metadata (id, dataset_id, role, format_version, restored_backup) VALUES (1, $1, $2, 1, FALSE)",
-        [dataset_id, role],
+        "INSERT INTO storage_metadata (id, dataset_id, role, format_version, restored_backup) VALUES (1, $1, $2, $3, FALSE)",
+        [dataset_id, role, if(role == "authority", do: 2, else: 1)],
         log: false
       )
 
