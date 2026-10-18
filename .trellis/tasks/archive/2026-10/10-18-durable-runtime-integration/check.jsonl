@@ -2,5 +2,5 @@
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"真实双库、named distributed、严格静态与 release 验收"}
 {"file":".trellis/spec/backend/operation-runtime.md","reason":"当前 owning contract 与必须保留的语义"}
 {"file":".trellis/spec/backend/database-guidelines.md","reason":"当前 owning contract 与必须保留的语义"}
-{"file":".trellis/tasks/10-18-durable-rebuild/research/code-evidence.md","reason":"代码差距、版本/预留序号/模型归属及任务基线证据"}
-{"file":".trellis/tasks/10-18-agent-durable-design/research/decision-record.md","reason":"用户已确认内容归属、无兼容要求与外部来源边界"}
+{"file":".trellis/tasks/archive/2026-10/10-18-durable-rebuild/research/code-evidence.md","reason":"代码差距、版本/预留序号/模型归属及任务基线证据"}
+{"file":".trellis/tasks/archive/2026-10/10-18-agent-durable-design/research/decision-record.md","reason":"用户已确认内容归属、无兼容要求与外部来源边界"}
