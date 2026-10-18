@@ -93,8 +93,8 @@ raw errors or config. Failure leaves local service available. Task/controller/he
 ownership is cleaned on host loss/deadline; an initiated OTP handshake may complete
 later. No background reconnect or business replay exists.
 
-BEAMLET_BACKEND_BUILD=1 compiles the seven backend libraries (five core, `beamlet_i18n`
-and the daemon/CLI closure needs) plus both hosts under isolated _build/backend,
+BEAMLET_BACKEND_BUILD=1 compiles the seven backend libraries (five core,
+`beamlet_storage` and `beamlet_i18n`) plus both hosts under isolated _build/backend,
 excluding Web. Each release excludes the other host. beamlet_daemon uses daemon_runtime.exs,
 which reads trusted operator-owned absolute BEAMLET_CONFIG, accepts only the daemon
 namespace/settings, normalizes/validates, then explicitly enables the host. Reader

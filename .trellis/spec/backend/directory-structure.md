@@ -4,7 +4,7 @@
 
 Root `mix.exs` sets `apps_path: "apps"`. There is no root `lib/`, `test/`, or
 `priv/`; application code and tests live under each child app (for example,
-`apps/beamlet_web/`). All nine child manifests share root build, dependency,
+`apps/beamlet_web/`). All ten child manifests share root build, dependency,
 lockfile, and configuration paths.
 
 | Application | Implemented source today |
@@ -16,10 +16,11 @@ lockfile, and configuration paths.
 | `beamlet_node` | Explicitly supervised role composition, Routes/Provider/Runtime; shared trusted-name/connect/filter API in `Beamlet.Node.Cluster`, bounded discovery in `Beamlet.Node.Agents`; no Application callback |
 | `beamlet_cli` | Opt-in interaction host, terminal Client and bounded Command/Session/Renderer/Runner; foreground release |
 | `beamlet_daemon` | Opt-in Application, startup configuration policy and owned one-shot peer bootstrap; authority/executor daemon release |
+| `beamlet_storage` | Opt-in Ecto datasets, transactional Agent/Operation records, executor journal, history and explicit migration/operator tooling; no Application callback |
 | `beamlet_i18n` | Shared Gettext backend `Beamlet.I18n`, `Beamlet.I18n.Locale` canonicalisation/default, `Beamlet.I18n.Vocabulary` and the `Beamlet.I18n.Catalogue` declaration of shared msgids; `priv/gettext` shared catalogue |
 | `beamlet_web` | Phoenix endpoint, router, page/error renderers, components, telemetry; opt-in Host/Bootstrap, immutable Presets, Agents adapter and ephemeral Handles; `Beamlet.Web.Locale` request/LiveView locale resolution |
 
-Runtime declares `{:beamlet_actions, in_umbrella: true}` and OTP `:crypto`.
+Runtime declares `{:beamlet_actions, in_umbrella: true}`, `{:beamlet_storage, in_umbrella: true}` and OTP `:crypto`.
 Harness declares exact Req 0.7.5 and direct Jason; it has no sibling dependencies.
 Actions declares no siblings; dedicated credentials use OTP JSON and generic Runtime
 forwarding. Harness.Model owns independent neutral validation/registration; Agent's

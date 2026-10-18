@@ -9,9 +9,11 @@ BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_daemon --overwrite
 bash scripts/deployment/check-release.sh
 ```
 
-The backend selector compiles the five libraries plus daemon, excludes Web/CLI,
-uses isolated `_build/backend`, and avoids Req's optional Plug dependency from
-Web. The release has its own `config/daemon_runtime.exs`; ordinary Web production
+The backend selector compiles seven libraries (five core plus storage and i18n)
+and both hosts, excluding Web, under isolated `_build/backend`. Each release
+includes only its own dependency closure: the daemon excludes CLI/i18n/Gettext,
+and the CLI excludes daemon/Web. This also avoids Req's optional Plug dependency
+from Web. The release has its own `config/daemon_runtime.exs`; ordinary Web production
 still fails without SECRET_KEY_BASE. No dummy Web secret is needed for daemon.
 
 Copy `_build/backend/prod/rel/beamlet_daemon` outside the checkout, to compatible
@@ -300,7 +302,7 @@ Durable storage is opt-in and configured only in the daemon host's trusted
 `BEAMLET_CONFIG` file; omit the `storage:` block and the host stays ephemeral and
 starts no database. Keys, the explicit migration command, the backup/restore
 runbook and the full evidence are in
-[the stage F release evidence](../../.trellis/tasks/10-18-durable-release-operations/research/release-evidence.md).
+[the stage F release evidence](../../.trellis/tasks/archive/2026-10/10-18-durable-release-operations/research/release-evidence.md).
 
 ```elixir
 config :beamlet_daemon,
