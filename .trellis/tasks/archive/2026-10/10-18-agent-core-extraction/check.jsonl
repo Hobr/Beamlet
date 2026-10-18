@@ -5,4 +5,4 @@
 {"file":".trellis/spec/backend/durable-references.md","reason":"Inherited sources, fork risk and history/export compatibility"}
 {"file":".trellis/spec/backend/harness-providers.md","reason":"Provider-neutral model/history contracts"}
 {"file":".trellis/spec/backend/operation-runtime.md","reason":"Preparation/acceptance/consumption ownership"}
-{"file":".trellis/tasks/10-18-agent-core-extraction/research/recreation.md","reason":"Missing-work incident and current baseline evidence"}
+{"file":".trellis/tasks/archive/2026-10/10-18-agent-core-extraction/research/recreation.md","reason":"Missing-work incident and current baseline evidence"}
