@@ -1,4 +1,4 @@
-defmodule Beamlet.Storage.Operator do
+defmodule Beamlet.Node.Storage.Operator do
   @moduledoc """
   Explicit operator actions for a durable dataset. Installing/migrating is never
   done by an Agent, by host boot or by `Beamlet.Storage.Dataset.open/2`: this
@@ -10,17 +10,16 @@ defmodule Beamlet.Storage.Operator do
   dataset. The Repo started for the installation is stopped again afterwards, so
   no application is left running by the command.
   """
-  alias Beamlet.Storage.{
-    Dataset,
-    ExecutorJournalRepo,
-    Host,
-    PostgresAuthorityRepo,
-    SQLiteAuthorityRepo
-  }
+  alias Beamlet.Storage.Dataset
+
+  alias Beamlet.Actions.Storage.ExecutorJournalRepo
+  alias Beamlet.Agent.Storage.PostgresAuthorityRepo
+  alias Beamlet.Agent.Storage.SQLiteAuthorityRepo
+  alias Beamlet.Node.Storage, as: Host
 
   @doc """
   Installs the datasets `roles` need from a trusted `:storage` block (same shape
-  as `Beamlet.Storage.Host.configuration/2`).
+  as `Beamlet.Node.Storage.configuration/2`).
 
   Returns `{:ok, %{authority: :installed | nil, journal: :installed | nil}}` or
   `{:error, {:authority | :journal, reason}}` / `{:error,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Format2 end-to-end verification over fresh test files and two OS processes.
+# Dataset format3 / trace format2 end-to-end verification over fresh test files and two OS processes.
 #
 #   scripts/deployment/durable-e2e.sh            # isolated temp directory
 #   DURABLE_E2E_DIR=/abs/dir scripts/deployment/durable-e2e.sh

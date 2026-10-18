@@ -1,14 +1,13 @@
-defmodule Beamlet.Storage.HostStorageTest do
+defmodule Beamlet.Node.HostStorageTest do
   use ExUnit.Case, async: false
 
-  alias Beamlet.Storage.{
-    Admission,
-    Dataset,
-    ExecutorJournalRepo,
-    Host,
-    Operator,
-    SQLiteAuthorityRepo
-  }
+  alias Beamlet.Actions.Storage.ExecutorJournalRepo
+  alias Beamlet.Agent.Storage.Profiles
+  alias Beamlet.Agent.Storage.SQLiteAuthorityRepo
+  alias Beamlet.Node.Storage, as: Host
+  alias Beamlet.Node.Storage.Operator
+  alias Beamlet.Storage.Admission
+  alias Beamlet.Storage.Dataset
 
   alias Ecto.Adapters.SQL
 
@@ -51,7 +50,7 @@ defmodule Beamlet.Storage.HostStorageTest do
 
   test "newer format, mismatched identity and restored_backup are refused on open", ctx do
     for {sql, expected} <- [
-          {"UPDATE storage_metadata SET format_version = 3 WHERE id = 1", :schema_unsupported},
+          {"UPDATE storage_metadata SET format_version = 4 WHERE id = 1", :schema_unsupported},
           {"UPDATE storage_metadata SET dataset_id = '#{Ecto.UUID.generate()}' WHERE id = 1",
            :dataset_mismatch},
           {"UPDATE storage_metadata SET restored_backup = TRUE WHERE id = 1", :restored_backup}
@@ -80,7 +79,7 @@ defmodule Beamlet.Storage.HostStorageTest do
     assert :ok = Admission.consult()
 
     # The probe writes and rolls back: no committed change, no business row.
-    {:ok, %{rows: [[2, id, 0]]}} =
+    {:ok, %{rows: [[3, id, 0]]}} =
       SQL.query(
         SQLiteAuthorityRepo,
         "SELECT format_version, dataset_id, restored_backup FROM storage_metadata WHERE id = 1",
@@ -90,7 +89,7 @@ defmodule Beamlet.Storage.HostStorageTest do
 
     assert id == ctx.storage[:dataset_id]
 
-    assert {:error, {:authority, :dataset_exists}} =
+    assert {:error, {:authority, :conflict}} =
              Operator.initialize([:authority], ctx.storage)
 
     SQLiteAuthorityRepo.stop()
@@ -184,6 +183,35 @@ defmodule Beamlet.Storage.HostStorageTest do
     assert %{admission: {:refused, :restored_backup}} = Host.status(:paused_host)
   end
 
+  test "journal loss after boot closes the default gate and shutdown releases owned resources",
+       ctx do
+    assert {:ok, _} = Operator.initialize([:authority, :executor], ctx.storage)
+    {:ok, settings} = Host.configuration([:authority, :executor], ctx.storage)
+    pid = start_supervised!({Host, storage: settings})
+    assert :ok = Admission.consult()
+    ExecutorJournalRepo.stop()
+    assert {:error, :durable_not_admitted} = Admission.consult()
+
+    assert %{
+             admission: {:refused, :storage_unavailable},
+             datasets: %{journal: {:refused, :storage_unavailable}}
+           } = Host.status()
+
+    GenServer.stop(pid)
+    refute Process.whereis(SQLiteAuthorityRepo)
+    refute Process.whereis(Admission)
+  end
+
+  test "interaction-only composition opens no dataset or admission", ctx do
+    {:ok, settings} = Host.configuration([:interaction], ctx.storage)
+    start_supervised!({Host, storage: settings})
+    assert %{admission: :not_configured, datasets: %{}} = Host.status()
+    refute Process.whereis(SQLiteAuthorityRepo)
+    refute Process.whereis(ExecutorJournalRepo)
+    refute File.exists?(ctx.storage[:database])
+    refute File.exists?(ctx.storage[:journal][:database])
+  end
+
   defp stop_repos do
     for repo <- [SQLiteAuthorityRepo, ExecutorJournalRepo] do
       try do
@@ -211,6 +239,7 @@ defmodule Beamlet.Storage.HostStorageTest do
 
   defp authority_opts(ctx) do
     [
+      descriptor: Profiles.authority(),
       database: ctx.storage[:database],
       peer_database: ctx.storage[:journal][:database],
       dataset_id: ctx.storage[:dataset_id]
@@ -219,6 +248,9 @@ defmodule Beamlet.Storage.HostStorageTest do
 
   defp admission(ctx) do
     [
+      descriptor: Profiles.authority(),
+      database: ctx.storage[:database],
+      peer_database: ctx.storage[:journal][:database],
       repo: SQLiteAuthorityRepo,
       dataset_id: ctx.storage[:dataset_id],
       name: Admission

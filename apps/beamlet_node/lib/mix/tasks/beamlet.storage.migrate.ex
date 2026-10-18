@@ -23,7 +23,7 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
   """
   use Mix.Task
 
-  alias Beamlet.Storage.Operator
+  alias Beamlet.Node.Storage.Operator
 
   @impl true
   def run(args) do
@@ -75,7 +75,7 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
   defp safe_role(_), do: :unknown
 
   defp ensure_started do
-    {:ok, _} = Application.ensure_all_started(:beamlet_storage)
+    {:ok, _} = Application.ensure_all_started(:beamlet_node)
     :ok
   end
 end

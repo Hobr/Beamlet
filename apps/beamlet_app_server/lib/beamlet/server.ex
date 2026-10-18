@@ -4,14 +4,14 @@ defmodule Beamlet.Server do
   authority and executor enabled by default. One Node tree is supported per VM.
   """
   alias Beamlet.Node.Cluster
-  alias Beamlet.Storage.Host
+  alias Beamlet.Node.Storage, as: Host
 
   @doc """
   Validate host policy, delegate resource/provider validation to Node, and
   validate the optional durable-storage block for the configured roles.
 
   `storage:` is absent by default, so the host stays ephemeral and starts no
-  database. When present, `Beamlet.Storage.Host` validates it and the host opens
+  database. When present, `Beamlet.Node.Storage` validates it and the host opens
   only the datasets the roles need: `:authority` needs the authority dataset,
   `:executor` needs the executor journal, and neither is started for a role set
   that needs none. `storage:` itself never implies durable admission; admission

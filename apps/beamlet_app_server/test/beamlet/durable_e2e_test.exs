@@ -40,19 +40,21 @@ defmodule Beamlet.Server.DurableEndToEndTest do
 
   alias Beamlet.Agent
   alias Beamlet.Agent.AuthoritySupervisor
-  alias Beamlet.Agent.{Durable, TraceExport}
-  alias Beamlet.Harness.{Catalogue, Model}
+  alias Beamlet.Agent.Durable
+  alias Beamlet.Agent.TraceExport
+  alias Beamlet.Harness.Catalogue
+  alias Beamlet.Harness.Model
   alias Beamlet.Harness.Tools.Deterministic
-  alias Beamlet.Runtime.{Directory, Persistence, SharedSupervisor}
+  alias Beamlet.Runtime.Directory
+  alias Beamlet.Runtime.Persistence
+  alias Beamlet.Runtime.SharedSupervisor
 
-  alias Beamlet.Storage.{
-    Admission,
-    AgentRecords,
-    ExecutorJournalRepo,
-    Host,
-    Operator,
-    SQLiteAuthorityRepo
-  }
+  alias Beamlet.Actions.Storage.ExecutorJournalRepo
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.Storage.SQLiteAuthorityRepo
+  alias Beamlet.Node.Storage, as: Host
+  alias Beamlet.Node.Storage.Operator
+  alias Beamlet.Storage.Admission
 
   @tools %{"echo" => %{id: "echo-profile", capability: "echo"}}
 

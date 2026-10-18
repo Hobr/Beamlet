@@ -312,9 +312,9 @@ def main():
             probe.start()
             probe.rpc('''
               %{admission: {:refused, :dataset_missing},
-                datasets: %{authority: {:refused, :dataset_missing}}} = Beamlet.Storage.Host.status()
-              nil = Process.whereis(Beamlet.Storage.SQLiteAuthorityRepo)
-              nil = Process.whereis(Beamlet.Storage.ExecutorJournalRepo)
+                datasets: %{authority: {:refused, :dataset_missing}}} = Beamlet.Node.Storage.status()
+              nil = Process.whereis(Beamlet.Agent.Storage.SQLiteAuthorityRepo)
+              nil = Process.whereis(Beamlet.Actions.Storage.ExecutorJournalRepo)
             ''')
             assert not database.exists() and not journal.exists(), "boot created a database"
         finally:

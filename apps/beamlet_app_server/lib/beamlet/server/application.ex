@@ -28,5 +28,5 @@ defmodule Beamlet.Server.Application do
   # The storage host opens the configured datasets and starts durable admission
   # after the roles exist. It is absent unless the operator configured storage.
   defp storage(nil), do: []
-  defp storage(settings), do: [{Beamlet.Storage.Host, storage: settings}]
+  defp storage(settings), do: [{Beamlet.Node.Storage, storage: settings}]
 end

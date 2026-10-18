@@ -29,8 +29,7 @@ BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_server --overwrite
 bash scripts/deployment/check-release.sh
 ```
 
-The backend selector compiles seven libraries (five core plus storage and i18n)
-and both hosts, excluding Web, under isolated `_build/backend`. Each release
+The backend selector includes both persistence libraries and excludes Web, under isolated `_build/backend`. Each release
 includes only its own dependency closure: the daemon excludes CLI/i18n/Gettext,
 and the CLI excludes daemon/Web. This also avoids Req's optional Plug dependency
 from Web. All three named releases use Mix's default bundled
@@ -359,7 +358,7 @@ Installed Owl uses Ucwidth for CJK/emoji/combining terminal column measurement,
 wrapping and truncation; actual beam behavior and copied closure are checked.
 The independent4096-codepoint watch limit remains distinct from display width.
 
-## Durable storage (authority format2 / journal format1)
+## Durable storage (explicit profiles, dataset format3)
 
 Durable storage is opt-in application configuration in the server's shared
 config/bundled runtime.exs; omit storage and no database starts. The
@@ -369,7 +368,7 @@ strict format/identity rejection and transaction contracts; the
 paused activation and offline trace packages. Archived Stage F evidence predates
 format2 and is not current acceptance.
 
-Explicit initialization installs only a new format2 authority and format1 journal.
+Explicit Node operator initialization installs only fresh format3 datasets: Agent authority (foundation1 + Actions authority1 + Agent1; migrations1/100/300) and Actions journal (foundation1 + Actions journal1; migrations1/200). Dataset format3 is separate from the unchanged Agent trace format2. Old datasets are refused without conversion or repair.
 Boot/open never migrate, repair, delete or silently convert old datasets. Do not
 point initialization at a real existing database, delete a real database to make
 boot pass, or reuse old authority files with this artifact. Preserve consistent
@@ -397,7 +396,7 @@ Install the datasets once, as an operator action — never at boot:
 mix beamlet.storage.migrate --storage /etc/beamlet/storage.exs --roles authority,executor
 ```
 
-`Beamlet.Storage.Host.status/1` reports `admission` (a live probe of the dataset,
+`Beamlet.Node.Storage.status/1` reports `admission` (a live probe of the dataset,
 distinct from Node/Repo readiness) and each dataset's open state. A restored
 backup must be marked before use and stays refused, with admission off, until an
 operator resolves it. The CLI host is interaction-only and needs no database.

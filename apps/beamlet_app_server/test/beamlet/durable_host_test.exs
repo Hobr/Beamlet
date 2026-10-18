@@ -1,13 +1,11 @@
 defmodule Beamlet.Server.DurableHostTest do
   use ExUnit.Case, async: false
 
-  alias Beamlet.Storage.{
-    Admission,
-    ExecutorJournalRepo,
-    Host,
-    Operator,
-    SQLiteAuthorityRepo
-  }
+  alias Beamlet.Actions.Storage.ExecutorJournalRepo
+  alias Beamlet.Agent.Storage.SQLiteAuthorityRepo
+  alias Beamlet.Node.Storage, as: Host
+  alias Beamlet.Node.Storage.Operator
+  alias Beamlet.Storage.Admission
 
   setup do
     dir =
@@ -111,7 +109,7 @@ defmodule Beamlet.Server.DurableHostTest do
 
     assert Process.whereis(SQLiteAuthorityRepo) == nil
     assert Process.whereis(ExecutorJournalRepo)
-    assert Process.whereis(Admission) == nil
+    assert Process.whereis(Admission)
     assert Process.whereis(Beamlet.Agent.Registry) == nil
     assert Process.whereis(Beamlet.Agent.Agents) == nil
     assert {:error, :authority_not_configured} = Host.runtime()
@@ -164,7 +162,7 @@ defmodule Beamlet.Server.DurableHostTest do
   defp durable_child?(_child), do: false
 
   defp durable_module?(module) do
-    module in [Beamlet.Storage.Host, Beamlet.Storage.Admission] or
+    module in [Beamlet.Node.Storage, Beamlet.Storage.Admission] or
       module in [SQLiteAuthorityRepo, ExecutorJournalRepo, Beamlet.Storage.Dataset]
   end
 
