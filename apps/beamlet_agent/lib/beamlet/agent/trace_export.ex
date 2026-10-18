@@ -19,8 +19,7 @@ defmodule Beamlet.Agent.TraceExport do
   record larger than the page byte budget is written whole on its own line and
   listed in the manifest's `oversized_records`; a page never splits a record.
   """
-  alias Beamlet.Storage.{Artifacts, Codec, History}
-  alias Beamlet.Storage.AgentRecords
+  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, History, Records}
 
   @export_version 1
   @format "beamlet.trace"
@@ -74,19 +73,22 @@ defmodule Beamlet.Agent.TraceExport do
   """
   def write(fixed, policy) do
     with {:ok, policy} <- export_policy(policy),
-         :ok <- prepare_dir(policy.dir) do
-      with {:ok, events} <- stream_events(fixed, policy),
-           {:ok, checkpoints} <- stream_checkpoints(fixed, policy),
-           {:ok, artifacts} <- copy_artifacts(fixed, policy) do
-        manifest = manifest(fixed, policy, events, checkpoints, artifacts)
-        path = Path.join(policy.dir, "manifest.json")
+         :ok <- prepare_dir(policy.dir),
+         {:ok, events} <- stream_events(fixed, policy),
+         {:ok, checkpoints} <- stream_checkpoints(fixed, policy),
+         {:ok, artifacts} <- copy_artifacts(fixed, policy) do
+      manifest = manifest(fixed, policy, events, checkpoints, artifacts)
+      write_manifest(policy.dir, manifest)
+    end
+  end
 
-        with {:ok, bytes} <- encode(manifest) do
-          case File.write(path, bytes) do
-            :ok -> {:ok, manifest}
-            {:error, _reason} -> {:error, :invalid_data}
-          end
-        end
+  defp write_manifest(dir, manifest) do
+    path = Path.join(dir, "manifest.json")
+
+    with {:ok, bytes} <- encode(manifest) do
+      case File.write(path, bytes) do
+        :ok -> {:ok, manifest}
+        {:error, _reason} -> {:error, :invalid_data}
       end
     end
   end
@@ -134,10 +136,10 @@ defmodule Beamlet.Agent.TraceExport do
 
   ## High-water fix
 
-  defp scope_id(%{agent_id: agent_id}), do: Beamlet.Storage.Records.uuid(agent_id)
+  defp scope_id(%{agent_id: agent_id}), do: Records.uuid(agent_id)
 
   defp scope_id(agent_id) when is_binary(agent_id),
-    do: Beamlet.Storage.Records.uuid(agent_id)
+    do: Records.uuid(agent_id)
 
   defp scope_id(_), do: {:error, :invalid_data}
 
@@ -190,20 +192,23 @@ defmodule Beamlet.Agent.TraceExport do
     case History.event_page(fixed.repo, fixed.agent_id, opts) do
       {:ok, page} ->
         state = %{state | oversized: state.oversized ++ oversized_event(page)}
+        continue_events(page, state, fixed)
 
-        case reduce_writes(page["events"], state, &write_event/2) do
-          {:ok, state} ->
-            next = page["next_cursor"]
-            empty? = page["events"] == []
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
-            cond do
-              is_nil(next) or empty? -> {:ok, state}
-              next <= state.cursor -> {:error, :conflict}
-              true -> page(%{state | cursor: next}, fixed)
-            end
+  defp continue_events(page, state, fixed) do
+    case reduce_writes(page["events"], state, &write_event/2) do
+      {:ok, state} ->
+        next = page["next_cursor"]
+        empty? = page["events"] == []
 
-          {:error, reason} ->
-            {:error, reason}
+        cond do
+          is_nil(next) or empty? -> {:ok, state}
+          next <= state.cursor -> {:error, :conflict}
+          true -> page(%{state | cursor: next}, fixed)
         end
 
       {:error, reason} ->
@@ -336,18 +341,21 @@ defmodule Beamlet.Agent.TraceExport do
     case History.checkpoint_page(fixed.repo, fixed.agent_id, opts) do
       {:ok, page} ->
         state = %{state | oversized: state.oversized ++ oversized_checkpoint(page)}
+        continue_checkpoints(page, state, fixed)
 
-        case reduce_writes(page["checkpoints"], state, &write_checkpoint/2) do
-          {:ok, state} ->
-            next = page["next_cursor"]
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
-            if is_nil(next) or page["checkpoints"] == [],
-              do: {:ok, state},
-              else: checkpoint_pages(%{state | cursor: next}, fixed)
+  defp continue_checkpoints(page, state, fixed) do
+    case reduce_writes(page["checkpoints"], state, &write_checkpoint/2) do
+      {:ok, state} ->
+        next = page["next_cursor"]
 
-          {:error, reason} ->
-            {:error, reason}
-        end
+        if is_nil(next) or page["checkpoints"] == [],
+          do: {:ok, state},
+          else: checkpoint_pages(%{state | cursor: next}, fixed)
 
       {:error, reason} ->
         {:error, reason}
@@ -410,22 +418,28 @@ defmodule Beamlet.Agent.TraceExport do
 
       result =
         kept
-        |> Enum.reduce_while({:ok, %{included: [], missing: []}}, fn id, {:ok, acc} ->
-          case copy_artifact(fixed.repo, id, directory) do
-            {:ok, entry} -> {:cont, {:ok, %{acc | included: acc.included ++ [entry]}}}
-            {:error, kind} -> {:cont, {:ok, %{acc | missing: acc.missing ++ [kind]}}}
-          end
-        end)
+        |> Enum.reduce_while(
+          {:ok, %{included: [], missing: []}},
+          &copy_artifact_entry(fixed.repo, directory, &1, &2)
+        )
 
       # A cap is a stated omission, never a silent drop that still reads complete.
       with {:ok, acc} <- result do
-        omitted =
-          Enum.map(dropped, fn id ->
-            %{"kind" => "artifact_omitted", "id" => id, "limit" => @max_artifacts}
-          end)
-
-        {:ok, %{acc | missing: acc.missing ++ omitted}}
+        {:ok, %{acc | missing: acc.missing ++ omitted_artifacts(dropped)}}
       end
+    end
+  end
+
+  defp omitted_artifacts(dropped) do
+    Enum.map(dropped, fn id ->
+      %{"kind" => "artifact_omitted", "id" => id, "limit" => @max_artifacts}
+    end)
+  end
+
+  defp copy_artifact_entry(repo, directory, id, {:ok, acc}) do
+    case copy_artifact(repo, id, directory) do
+      {:ok, entry} -> {:cont, {:ok, %{acc | included: acc.included ++ [entry]}}}
+      {:error, kind} -> {:cont, {:ok, %{acc | missing: acc.missing ++ [kind]}}}
     end
   end
 
@@ -639,42 +653,33 @@ defmodule Beamlet.Agent.TraceExport do
       manifest["export_version"] != @export_version ->
         {:error, {:unsupported_export_version, manifest["export_version"]}}
 
-      manifest["format"] != @format ->
+      not valid_manifest_header?(manifest) ->
         {:error, :invalid_data}
 
-      not Codec.uuid?(manifest["agent_id"]) ->
+      not valid_manifest_collections?(manifest) ->
         {:error, :invalid_data}
 
-      not Codec.uuid?(manifest["authority_id"]) ->
-        {:error, :invalid_data}
-
-      not is_boolean(manifest["history_complete"]) ->
-        {:error, :invalid_data}
-
-      not is_map(manifest["digests"]) ->
-        {:error, :invalid_data}
-
-      not is_list(manifest["artifacts"]) ->
-        {:error, :invalid_data}
-
-      not is_list(manifest["missing"]) ->
-        {:error, :invalid_data}
-
-      not is_map(manifest["high_water"]) ->
-        {:error, :invalid_data}
-
-      not is_map(manifest["scope"]) ->
-        {:error, :invalid_data}
-
-      not Codec.uuid?(manifest["scope"]["id"]) ->
-        {:error, :invalid_data}
-
-      not is_boolean(get_in(manifest["redaction"], ["restorable"])) ->
+      not valid_manifest_scope?(manifest) ->
         {:error, :invalid_data}
 
       true ->
         :ok
     end
+  end
+
+  defp valid_manifest_header?(manifest) do
+    manifest["format"] == @format and Codec.uuid?(manifest["agent_id"]) and
+      Codec.uuid?(manifest["authority_id"]) and is_boolean(manifest["history_complete"])
+  end
+
+  defp valid_manifest_collections?(manifest) do
+    is_map(manifest["digests"]) and is_list(manifest["artifacts"]) and
+      is_list(manifest["missing"]) and is_map(manifest["high_water"])
+  end
+
+  defp valid_manifest_scope?(manifest) do
+    is_map(manifest["scope"]) and Codec.uuid?(manifest["scope"]["id"]) and
+      is_boolean(get_in(manifest["redaction"], ["restorable"]))
   end
 
   defp verify_events(dir, manifest) do
@@ -793,29 +798,32 @@ defmodule Beamlet.Agent.TraceExport do
   defp verify_artifacts(_dir, %{"artifacts" => []}), do: {:ok, 0}
 
   defp verify_artifacts(dir, %{"artifacts" => artifacts}) when is_list(artifacts) do
-    Enum.reduce_while(artifacts, {:ok, 0}, fn artifact, {:ok, count} ->
-      path = Path.join(dir, artifact["path"] || "")
-
-      case read_file(path) do
-        {:ok, bytes} ->
-          cond do
-            byte_size(bytes) != artifact["size"] ->
-              {:halt, {:error, {:artifact_size, artifact["id"]}}}
-
-            Codec.hash(bytes) != artifact["digest"] ->
-              {:halt, {:error, {:artifact_digest, artifact["id"]}}}
-
-            true ->
-              {:cont, {:ok, count + 1}}
-          end
-
-        {:error, _reason} ->
-          {:halt, {:error, {:artifact_missing, artifact["id"]}}}
-      end
-    end)
+    Enum.reduce_while(artifacts, {:ok, 0}, &verify_artifact(dir, &1, &2))
   end
 
   defp verify_artifacts(_dir, _manifest), do: {:error, :invalid_data}
+
+  defp verify_artifact(dir, artifact, {:ok, count}) do
+    path = Path.join(dir, artifact["path"] || "")
+
+    case read_file(path) do
+      {:ok, bytes} -> verify_artifact_bytes(bytes, artifact, count)
+      {:error, _reason} -> {:halt, {:error, {:artifact_missing, artifact["id"]}}}
+    end
+  end
+
+  defp verify_artifact_bytes(bytes, artifact, count) do
+    cond do
+      byte_size(bytes) != artifact["size"] ->
+        {:halt, {:error, {:artifact_size, artifact["id"]}}}
+
+      Codec.hash(bytes) != artifact["digest"] ->
+        {:halt, {:error, {:artifact_digest, artifact["id"]}}}
+
+      true ->
+        {:cont, {:ok, count + 1}}
+    end
+  end
 
   defp read_file(path) do
     case File.read(path) do

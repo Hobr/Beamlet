@@ -52,12 +52,14 @@ defmodule Beamlet.Storage.ExecutorJournal do
   def fetch(repo, authority_id, attempt_id) do
     with {:ok, authority_id} <- Records.uuid(authority_id),
          {:ok, attempt_id} <- Records.uuid(attempt_id) do
-      Transaction.read(fn ->
-        case record(repo, authority_id, attempt_id) do
-          nil -> {:error, :conflict}
-          stored -> {:ok, Records.plain(stored)}
-        end
-      end)
+      Transaction.read(fn -> read_attempt(repo, authority_id, attempt_id) end)
+    end
+  end
+
+  defp read_attempt(repo, authority_id, attempt_id) do
+    case record(repo, authority_id, attempt_id) do
+      nil -> {:error, :conflict}
+      stored -> {:ok, Records.plain(stored)}
     end
   end
 
@@ -178,34 +180,39 @@ defmodule Beamlet.Storage.ExecutorJournal do
   end
 
   defp write_stop(repo, input) do
-    query =
-      from(j in JournalAttempt,
-        where:
-          j.authority_id == ^input.authority_id and j.attempt_id == ^input.attempt_id and
-            j.state == "start_intent" and is_nil(j.stop_reason) and
-            j.lock_version == ^input.expected_version,
-        update: [
-          set: [stop_reason: ^input.stop_reason, lock_version: ^(input.expected_version + 1)]
-        ]
-      )
-
-    case repo.update_all(query, [], log: false) do
+    case repo.update_all(stop_query(input), [], log: false) do
       {1, _} ->
         stored_response(repo, input.authority_id, input.attempt_id)
 
       {0, _} ->
-        # Competing triggers do not overwrite the first recorded cause, and a
-        # request after terminal/unknown is a no-op that reports the stored fact.
-        case record(repo, input.authority_id, input.attempt_id) do
-          nil ->
-            {:error, :conflict}
+        stop_conflict(repo, input)
+    end
+  end
 
-          %JournalAttempt{stop_reason: nil, state: "start_intent"} ->
-            {:error, :conflict}
+  defp stop_query(input) do
+    from(j in JournalAttempt,
+      where:
+        j.authority_id == ^input.authority_id and j.attempt_id == ^input.attempt_id and
+          j.state == "start_intent" and is_nil(j.stop_reason) and
+          j.lock_version == ^input.expected_version,
+      update: [
+        set: [stop_reason: ^input.stop_reason, lock_version: ^(input.expected_version + 1)]
+      ]
+    )
+  end
 
-          stored ->
-            {:ok, terminal_response(stored)}
-        end
+  # Competing triggers do not overwrite the first recorded cause, and a request
+  # after terminal/unknown is a no-op that reports the stored fact.
+  defp stop_conflict(repo, input) do
+    case record(repo, input.authority_id, input.attempt_id) do
+      nil ->
+        {:error, :conflict}
+
+      %JournalAttempt{stop_reason: nil, state: "start_intent"} ->
+        {:error, :conflict}
+
+      stored ->
+        {:ok, terminal_response(stored)}
     end
   end
 
@@ -277,41 +284,46 @@ defmodule Beamlet.Storage.ExecutorJournal do
   end
 
   defp write_terminal(repo, input) do
-    query =
-      from(j in JournalAttempt,
-        where:
-          j.authority_id == ^input.authority_id and j.attempt_id == ^input.attempt_id and
-            j.state == "start_intent" and j.lock_version == ^input.expected_version,
-        update: [
-          set: [
-            state: "terminal",
-            termination: ^input.termination,
-            terminal_result: ^input.terminal_result,
-            terminal_artifacts: ^input.terminal_artifacts,
-            receipt_id: ^input.receipt_id,
-            receipt_digest: ^input.receipt_digest,
-            receipt: ^input.receipt,
-            lock_version: ^(input.expected_version + 1)
-          ]
-        ]
-      )
-
-    case repo.update_all(query, [], log: false) do
+    case repo.update_all(terminal_query(input), [], log: false) do
       {1, _} ->
         stored_response(repo, input.authority_id, input.attempt_id)
 
       {0, _} ->
-        case record(repo, input.authority_id, input.attempt_id) do
-          %JournalAttempt{state: "terminal"} = stored ->
-            if same_terminal?(stored, input),
-              do: {:ok, terminal_response(stored)},
-              else: {:error, :conflict}
+        terminal_conflict(repo, input)
+    end
+  end
 
-          _ ->
-            # Missing row, a stale version, or unknown_after_restart: none may be
-            # converted into a terminal fact.
-            {:error, :conflict}
-        end
+  defp terminal_query(input) do
+    from(j in JournalAttempt,
+      where:
+        j.authority_id == ^input.authority_id and j.attempt_id == ^input.attempt_id and
+          j.state == "start_intent" and j.lock_version == ^input.expected_version,
+      update: [
+        set: [
+          state: "terminal",
+          termination: ^input.termination,
+          terminal_result: ^input.terminal_result,
+          terminal_artifacts: ^input.terminal_artifacts,
+          receipt_id: ^input.receipt_id,
+          receipt_digest: ^input.receipt_digest,
+          receipt: ^input.receipt,
+          lock_version: ^(input.expected_version + 1)
+        ]
+      ]
+    )
+  end
+
+  defp terminal_conflict(repo, input) do
+    case record(repo, input.authority_id, input.attempt_id) do
+      %JournalAttempt{state: "terminal"} = stored ->
+        if same_terminal?(stored, input),
+          do: {:ok, terminal_response(stored)},
+          else: {:error, :conflict}
+
+      _ ->
+        # Missing row, a stale version, or unknown_after_restart: none may be
+        # converted into a terminal fact.
+        {:error, :conflict}
     end
   end
 

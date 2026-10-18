@@ -23,10 +23,13 @@ defmodule Beamlet.Agent.HistoryExportTest do
 
   alias Beamlet.Agent
   alias Beamlet.Agent.{Durable, TraceExport}
+  alias Beamlet.Agent.Integration.Caller
+  alias Beamlet.Harness.{Context, Model}
 
   alias Beamlet.Storage.{
     AgentRecords,
     Artifacts,
+    Codec,
     Dataset,
     ExecutorJournalRepo,
     OperationRecords,
@@ -79,7 +82,7 @@ defmodule Beamlet.Agent.HistoryExportTest do
   end
 
   defp providers do
-    Map.merge(Beamlet.Harness.Model.default_providers(), %{
+    Map.merge(Model.default_providers(), %{
       "counting" => Beamlet.Agent.HistoryExportModel
     })
   end
@@ -138,7 +141,7 @@ defmodule Beamlet.Agent.HistoryExportTest do
     {:ok, head} = AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
 
     {:ok, messages} =
-      Beamlet.Harness.Context.append(head["head_checkpoint"]["data"]["messages"], [
+      Context.append(head["head_checkpoint"]["data"]["messages"], [
         %{"role" => "user", "content" => text}
       ])
 
@@ -162,7 +165,7 @@ defmodule Beamlet.Agent.HistoryExportTest do
     assistant = %{"role" => "assistant", "content" => content, "calls" => calls}
 
     {:ok, messages} =
-      Beamlet.Harness.Context.append(head["head_checkpoint"]["data"]["messages"], [assistant])
+      Context.append(head["head_checkpoint"]["data"]["messages"], [assistant])
 
     {:ok, response} =
       Durable.record_reply(durable, %{
@@ -206,12 +209,12 @@ defmodule Beamlet.Agent.HistoryExportTest do
     }
 
     {:ok, messages} =
-      Beamlet.Harness.Context.append(head["head_checkpoint"]["data"]["messages"], [assistant])
+      Context.append(head["head_checkpoint"]["data"]["messages"], [assistant])
 
     operations =
       Enum.map(calls(), fn call ->
         {:ok, operation} =
-          Beamlet.Agent.Integration.Caller.operation(
+          Caller.operation(
             @tools[call.name],
             call.arguments,
             262_144
@@ -623,7 +626,7 @@ defmodule Beamlet.Agent.HistoryExportTest do
       put_in(
         manifest,
         ["digests", "events_sha256"],
-        Beamlet.Storage.Codec.hash(File.read!(events_path))
+        Codec.hash(File.read!(events_path))
       )
       |> put_in(["counts", "events"], 1)
 
@@ -750,7 +753,7 @@ defmodule Beamlet.Agent.HistoryExportTest do
       Records.transact(SQLiteAuthorityRepo, fn ->
         Artifacts.put(SQLiteAuthorityRepo, %{
           id: uuid(),
-          digest: Beamlet.Storage.Codec.hash(content),
+          digest: Codec.hash(content),
           media_type: "text/plain",
           size: byte_size(content),
           content: content,

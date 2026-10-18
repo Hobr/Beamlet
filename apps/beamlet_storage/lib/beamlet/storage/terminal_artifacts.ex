@@ -43,9 +43,8 @@ defmodule Beamlet.Storage.TerminalArtifacts do
   @doc "Decoded bytes of one validated item, or a stage-A error atom."
   def content(container, artifact_id) do
     with {:ok, items} <- container_items(container),
-         {:ok, item} <- fetch_item(items, artifact_id),
-         {:ok, bytes} <- decode_item(item) do
-      {:ok, bytes}
+         {:ok, item} <- fetch_item(items, artifact_id) do
+      decode_item(item)
     end
   end
 
@@ -88,12 +87,7 @@ defmodule Beamlet.Storage.TerminalArtifacts do
            {:ok, _media_type} <- media_type(item["media_type"]),
            {:ok, size} <- size_bytes(item["size_bytes"]),
            {:ok, content} <- base64(item["content_base64"]) do
-        cond do
-          byte_size(content) > @max_item -> {:error, :limit}
-          byte_size(content) != size -> {:error, :invalid_data}
-          Codec.hash(content) != digest -> {:error, :invalid_data}
-          true -> {:ok, content}
-        end
+        validated_content(content, size, digest)
       end
     else
       {:error, :invalid_data}
@@ -101,6 +95,15 @@ defmodule Beamlet.Storage.TerminalArtifacts do
   end
 
   defp decode_item(_), do: {:error, :invalid_data}
+
+  defp validated_content(content, size, expected_digest) do
+    cond do
+      byte_size(content) > @max_item -> {:error, :limit}
+      byte_size(content) != size -> {:error, :invalid_data}
+      Codec.hash(content) != expected_digest -> {:error, :invalid_data}
+      true -> {:ok, content}
+    end
+  end
 
   defp digest(value) when is_binary(value) do
     if Regex.match?(@digest, value), do: {:ok, value}, else: {:error, :invalid_data}

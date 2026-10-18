@@ -165,6 +165,18 @@ defmodule Beamlet.Storage.Host do
      state}
   end
 
+  defp open_dataset({_role, {_repo, nil}}, opened_and_refused), do: opened_and_refused
+
+  defp open_dataset({role, {repo, opts}}, {opened, refused}) do
+    case Dataset.open(repo, opts) do
+      {:ok, _pid} ->
+        {Map.put(opened, role, :ready), refused}
+
+      {:error, reason} ->
+        {Map.put(opened, role, {:refused, reason}), [reason | refused]}
+    end
+  end
+
   defp open(state) do
     authority_repo = authority_repo(state.storage.adapter)
 
@@ -175,21 +187,7 @@ defmodule Beamlet.Storage.Host do
           journal: {ExecutorJournalRepo, state.storage[:journal]}
         ],
         {%{}, []},
-        fn {role, {repo, opts}}, {opened, refused} ->
-          case opts do
-            nil ->
-              {opened, refused}
-
-            opts ->
-              case Dataset.open(repo, opts) do
-                {:ok, _pid} ->
-                  {Map.put(opened, role, :ready), refused}
-
-                {:error, reason} ->
-                  {Map.put(opened, role, {:refused, reason}), [reason | refused]}
-              end
-          end
-        end
+        &open_dataset/2
       )
 
     state = %{state | datasets: datasets}

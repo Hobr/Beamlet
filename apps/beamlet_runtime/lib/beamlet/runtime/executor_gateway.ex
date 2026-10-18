@@ -3,7 +3,7 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   use GenServer
   alias Beamlet.Actions.{ExecutionHandle, Operation, Result}
   alias Beamlet.Runtime.{NodeEndpoint, Persistence, Report, Worker, Workers}
-  alias Beamlet.Storage.ExecutorJournal
+  alias Beamlet.Storage.{Codec, ExecutorJournal}
   def start_link(args), do: GenServer.start_link(__MODULE__, args, name: __MODULE__)
 
   def eligible?(op, r) do
@@ -253,7 +253,7 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   defp admit_message({:admit, coordinator, id, attempt, incarnation, lease, op, remaining}, s)
        when is_pid(coordinator) and is_binary(id) and byte_size(id) in 1..128 and
               is_binary(attempt) and byte_size(attempt) in 1..128 do
-    admission(s, coordinator, id, attempt, incarnation, lease, op, remaining, nil)
+    admission(s, admit_request(coordinator, id, attempt, incarnation, lease, op, remaining, nil))
   end
 
   defp admit_message(
@@ -262,36 +262,54 @@ defmodule Beamlet.Runtime.ExecutorGateway do
        )
        when is_pid(coordinator) and is_binary(id) and byte_size(id) in 1..128 and
               is_binary(attempt) and byte_size(attempt) in 1..128 do
-    admission(s, coordinator, id, attempt, incarnation, lease, op, remaining, durable)
+    admission(
+      s,
+      admit_request(coordinator, id, attempt, incarnation, lease, op, remaining, durable)
+    )
   end
 
   defp admit_message(_, s), do: {:noreply, s}
 
-  defp admission(s, coordinator, id, attempt, incarnation, lease, op, remaining, durable) do
-    key = {coordinator, attempt}
-    remaining = remaining_budget(remaining, lease)
+  # The admit form carries the same eight fields as an Executor request; keeping
+  # them in one map lets admission/2 stay a single readable decision.
+  defp admit_request(coordinator, id, attempt, incarnation, lease, op, remaining, durable) do
+    %{
+      coordinator: coordinator,
+      id: id,
+      attempt: attempt,
+      incarnation: incarnation,
+      lease: lease,
+      op: op,
+      remaining: remaining,
+      durable: durable
+    }
+  end
+
+  defp admission(s, request) do
+    key = {request.coordinator, request.attempt}
+    remaining = remaining_budget(request.remaining, request.lease)
 
     cond do
       Map.has_key?(s.attempts, key) ->
         {:noreply, s}
 
       map_size(s.attempts) >= s.limits.attempts ->
-        send(coordinator, {:rejected, attempt, :capacity})
+        send(request.coordinator, {:rejected, request.attempt, :capacity})
         # Saturation invalidates old leases even when no tombstone slot is available.
         {:noreply, %{s | rejected_through: System.monotonic_time(:millisecond)}}
 
-      not valid_admission?(s, incarnation, lease, op, remaining) ->
-        send(coordinator, {:rejected, attempt, :ineligible})
+      not valid_admission?(s, request.incarnation, request.lease, request.op, remaining) ->
+        send(request.coordinator, {:rejected, request.attempt, :ineligible})
         {:noreply, remember(s, key, :rejected)}
 
       true ->
-        case claim_start(s, attempt, durable, op) do
+        case claim_start(s, request.attempt, request.durable, request.op) do
           {:ok, journal} ->
-            admit(s, key, id, op, remaining, journal)
+            admit(s, key, request.id, request.op, remaining, journal)
 
           {:error, reason} ->
             # No journal start intent means no worker: capacity was never charged.
-            send(coordinator, {:rejected, attempt, reason})
+            send(request.coordinator, {:rejected, request.attempt, reason})
             {:noreply, remember(s, key, :rejected)}
         end
     end
@@ -310,24 +328,22 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   defp claim_start(s, attempt, durable, op) do
     persistence = s.persistence
 
-    cond do
-      not valid_durable?(durable, attempt, persistence, op) ->
-        {:error, :durable_unavailable}
+    if valid_durable?(durable, attempt, persistence, op) do
+      case safe_journal(fn ->
+             ExecutorJournal.fetch(
+               persistence.journal_repo,
+               persistence.authority_id,
+               durable.attempt_id
+             )
+           end) do
+        {:ok, _stored} ->
+          {:error, :duplicate_admission}
 
-      true ->
-        case safe_journal(fn ->
-               ExecutorJournal.fetch(
-                 persistence.journal_repo,
-                 persistence.authority_id,
-                 durable.attempt_id
-               )
-             end) do
-          {:ok, _stored} ->
-            {:error, :duplicate_admission}
-
-          {:error, _reason} ->
-            start_intent(s, durable)
-        end
+        {:error, _reason} ->
+          start_intent(s, durable)
+      end
+    else
+      {:error, :durable_unavailable}
     end
   end
 
@@ -344,10 +360,10 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   # The journal must describe the work actually executed, not whatever digest the
   # admit message claimed.
   defp digest_matches?(durable, %Operation{} = op) do
-    with description = Persistence.description(op),
-         {:ok, digest} <- Beamlet.Storage.Codec.digest(description, :operation) do
-      digest == durable[:description_digest]
-    else
+    description = Persistence.description(op)
+
+    case Codec.digest(description, :operation) do
+      {:ok, digest} -> digest == durable[:description_digest]
       _ -> false
     end
   rescue

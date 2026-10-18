@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify gates were run and not weakened; check the documented Credo/format/test commands"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Confirm no schema/migration/transaction/admission semantic change in the storage diff"}
+{"file": ".trellis/spec/backend/agent-orchestration.md", "reason": "Confirm durable Agent behaviour and lifecycle contracts are unchanged"}
+{"file": ".trellis/spec/backend/operation-runtime.md", "reason": "Confirm Runtime terminal/evidence and failure semantics are unchanged"}
+{"file": ".trellis/spec/backend/backend-release.md", "reason": "Confirm no release/manifest/closure change and that release guards stay untouched"}
+{"file": ".trellis/tasks/10-18-credo-cleanup/research/credo-findings.md", "reason": "Baseline finding list to confirm every item is resolved rather than suppressed"}

@@ -145,25 +145,18 @@ defmodule Beamlet.Storage.Admission do
   # recorded write failure is honoured by `:consult` before this probe runs, so a
   # failed write path is never admitted merely because a later read happens to work.
   defp probe(state) do
-    cond do
-      state.reason != nil ->
-        {:refused, state.reason}
-
-      true ->
-        case probe(state.repo, state.dataset_id) do
-          :admitted -> :admitted
-          {:error, reason} -> {:refused, reason}
-        end
+    if state.reason != nil do
+      {:refused, state.reason}
+    else
+      case probe(state.repo, state.dataset_id) do
+        :admitted -> :admitted
+        {:error, reason} -> {:refused, reason}
+      end
     end
   end
 
   defp write_probe(repo) do
-    case Transaction.write(repo, fn ->
-           case SQL.query(repo, @probe_sql, [], log: false) do
-             {:ok, _result} -> repo.rollback(:probe_executed)
-             _error -> repo.rollback(:probe_refused)
-           end
-         end) do
+    case Transaction.write(repo, fn -> rollback_probe(repo) end) do
       {:error, :probe_executed} -> :ok
       {:error, :probe_refused} -> {:error, :write_failed}
       _other -> {:error, :storage_unavailable}
@@ -172,5 +165,12 @@ defmodule Beamlet.Storage.Admission do
     _ -> {:error, :storage_unavailable}
   catch
     :exit, _ -> {:error, :storage_unavailable}
+  end
+
+  defp rollback_probe(repo) do
+    case SQL.query(repo, @probe_sql, [], log: false) do
+      {:ok, _result} -> repo.rollback(:probe_executed)
+      _error -> repo.rollback(:probe_refused)
+    end
   end
 end

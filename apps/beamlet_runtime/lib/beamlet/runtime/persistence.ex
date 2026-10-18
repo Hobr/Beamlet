@@ -16,7 +16,7 @@ defmodule Beamlet.Runtime.Persistence do
   for that Operation's Result (siblings of one batch accept concurrently).
   """
   alias Beamlet.Actions.{Operation, Result}
-  alias Beamlet.Storage.Codec
+  alias Beamlet.Storage.{Admission, Codec, OperationRecords}
 
   @enforce_keys [:authority_repo, :journal_repo, :authority_id, :executor_id, :executor_boot_id]
   defstruct [
@@ -103,7 +103,7 @@ defmodule Beamlet.Runtime.Persistence do
           })
       end
 
-    case Beamlet.Storage.OperationRecords.prepare(persistence.authority_repo, attrs) do
+    case OperationRecords.prepare(persistence.authority_repo, attrs) do
       {:ok, prepared} ->
         {:ok, prepared}
 
@@ -116,7 +116,7 @@ defmodule Beamlet.Runtime.Persistence do
   # A failed durable write turns host admission off until a fresh probe succeeds, so
   # a later submit cannot be admitted on a stale "the Repo is registered" belief.
   defp admission_failure(reason) when reason in [:storage_unavailable, :storage_outcome_unknown],
-    do: Beamlet.Storage.Admission.failure(reason)
+    do: Admission.failure(reason)
 
   defp admission_failure(_reason), do: :ok
 

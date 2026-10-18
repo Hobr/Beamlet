@@ -23,6 +23,8 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
   """
   use Mix.Task
 
+  alias Beamlet.Storage.Operator
+
   @impl true
   def run(args) do
     {opts, rest, invalid} =
@@ -35,7 +37,7 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
          {:ok, roles} <- roles(opts[:roles]) do
       ensure_started()
 
-      case Beamlet.Storage.Operator.initialize(roles, storage) do
+      case Operator.initialize(roles, storage) do
         {:ok, result} -> Mix.shell().info("installed #{inspect(result)}")
         {:error, reason} -> Mix.raise("durable installation refused: #{inspect(reason)}")
       end

@@ -22,8 +22,9 @@ defmodule Beamlet.Agent.Durable do
   ephemerally; `restore/3` attaches the wiring the caller passes in its locator.
   """
   alias Beamlet.Actions.Operation
+  alias Beamlet.Harness.Context
   alias Beamlet.Runtime.Persistence
-  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, OperationRecords}
+  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, OperationRecords, Records}
 
   @schema_version 1
   @schema "beamlet.agent.checkpoint"
@@ -206,16 +207,17 @@ defmodule Beamlet.Agent.Durable do
   """
   def record_reply(%__MODULE__{} = durable, attrs) do
     with {:ok, input} <- validate_reply(attrs),
-         {:ok, request_digest} <- digest(input.request),
-         data =
-           state_with_provenance(durable, %{
-             "messages" => input.messages,
-             "continuation" => "reply_recorded",
-             "turn_id" => durable.turn_id,
-             "step" => input.step,
-             "assistant" => input.reply,
-             "request_digest" => request_digest
-           }) do
+         {:ok, request_digest} <- digest(input.request) do
+      data =
+        state_with_provenance(durable, %{
+          "messages" => input.messages,
+          "continuation" => "reply_recorded",
+          "turn_id" => durable.turn_id,
+          "step" => input.step,
+          "assistant" => input.reply,
+          "request_digest" => request_digest
+        })
+
       AgentRecords.advance(durable.repo, %{
         agent_id: durable.agent_id,
         expected_version: durable.version,
@@ -317,19 +319,20 @@ defmodule Beamlet.Agent.Durable do
          {:ok, checkpoint_id} <- uuid(attrs[:checkpoint_id]),
          {:ok, messages} <- list(attrs[:messages]),
          {:ok, order} <- list(attrs[:order]),
-         {:ok, step} <- count(Map.get(attrs, :step, step(durable))),
-         data =
-           state_with_provenance(durable, %{
-             "messages" => messages,
-             "continuation" => "await_model_result",
-             "turn_id" => durable.turn_id,
-             "step" => step,
-             "pending" => [],
-             "order" => [],
-             "results" => %{},
-             "assistant" => nil,
-             "consumed" => order
-           }) do
+         {:ok, step} <- count(Map.get(attrs, :step, step(durable))) do
+      data =
+        state_with_provenance(durable, %{
+          "messages" => messages,
+          "continuation" => "await_model_result",
+          "turn_id" => durable.turn_id,
+          "step" => step,
+          "pending" => [],
+          "order" => [],
+          "results" => %{},
+          "assistant" => nil,
+          "consumed" => order
+        })
+
       AgentRecords.consume_result(durable.repo, %{
         agent_id: durable.agent_id,
         expected_version: durable.version,
@@ -468,8 +471,8 @@ defmodule Beamlet.Agent.Durable do
       next,
       "agent.risk_accepted",
       payload,
-      %{"risk" => %{"accept" => true}},
-      input.command_id
+      %{params: %{"risk" => %{"accept" => true}}, command_id: input.command_id},
+      nil
     )
     |> decision_response(durable, next)
   end
@@ -500,8 +503,7 @@ defmodule Beamlet.Agent.Durable do
       next,
       "agent.decision",
       payload,
-      params,
-      input.command_id,
+      %{params: params, command_id: input.command_id},
       adoption
     )
     |> decision_response(durable, next)
@@ -542,7 +544,7 @@ defmodule Beamlet.Agent.Durable do
         do: correction_message(operation, call_id, resolution),
         else: observation_message(operation, call_id, resolution)
 
-    case Beamlet.Harness.Context.append(messages, [addition]) do
+    case Context.append(messages, [addition]) do
       {:ok, all} -> {:ok, all}
       {:error, _reason} -> {:error, :limit}
     end
@@ -810,20 +812,8 @@ defmodule Beamlet.Agent.Durable do
 
   ## Internal writes
 
-  defp advance_raw(durable, checkpoint_id, data, continuation, type, payload, params, command_id) do
-    advance_raw(
-      durable,
-      checkpoint_id,
-      data,
-      continuation,
-      type,
-      payload,
-      params,
-      command_id,
-      nil
-    )
-  end
-
+  # `command_identity` carries the two command fields (`:params`, `:command_id`) so
+  # a durable advance stays within the argument bound.
   defp advance_raw(
          durable,
          checkpoint_id,
@@ -831,8 +821,7 @@ defmodule Beamlet.Agent.Durable do
          continuation,
          type,
          payload,
-         params,
-         command_id,
+         command_identity,
          adoption
        ) do
     attrs = %{
@@ -842,7 +831,7 @@ defmodule Beamlet.Agent.Durable do
       turn_id: durable.turn_id,
       checkpoint: checkpoint(checkpoint_id, data, continuation, false),
       event: event(type, payload),
-      command: command(durable.agent_id, command_id, params)
+      command: command(durable.agent_id, command_identity.command_id, command_identity.params)
     }
 
     attrs = if is_nil(adoption), do: attrs, else: Map.put(attrs, :adoption, adoption)
@@ -941,9 +930,8 @@ defmodule Beamlet.Agent.Durable do
          :ok <- model_match(model, loc[:model]),
          :ok <- secret_ref(model, loc[:model]),
          :ok <- tools_match(definition["tools"], loc[:tools]),
-         :ok <- environment(definition, loc),
-         :ok <- artifacts(loc.repo, definition) do
-      :ok
+         :ok <- environment(definition, loc) do
+      artifacts(loc.repo, definition)
     end
   end
 
@@ -1015,28 +1003,23 @@ defmodule Beamlet.Agent.Durable do
   end
 
   defp pending_state(repo, %{"pending" => pending}) when is_list(pending) do
-    Enum.reduce_while(pending, :ok, fn entry, :ok ->
-      case OperationRecords.fetch(repo, entry["operation_id"]) do
-        {:ok, %{"operation" => operation}} ->
-          accepted =
-            if operation["accepted_result"] do
-              :ok
-            else
-              {:error, {:blocked, :unconfirmed_tool_result}}
-            end
-
-          case accepted do
-            :ok -> {:cont, :ok}
-            error -> {:halt, error}
-          end
-
-        _ ->
-          {:halt, {:error, {:blocked, :missing_operation}}}
-      end
-    end)
+    Enum.reduce_while(pending, :ok, &pending_entry_state(repo, &1, &2))
   end
 
   defp pending_state(_repo, _data), do: {:error, {:blocked, :schema_unsupported}}
+
+  defp pending_entry_state(repo, entry, :ok) do
+    case OperationRecords.fetch(repo, entry["operation_id"]) do
+      {:ok, %{"operation" => operation}} -> accepted_entry_state(operation)
+      _ -> {:halt, {:error, {:blocked, :missing_operation}}}
+    end
+  end
+
+  defp accepted_entry_state(operation) do
+    if operation["accepted_result"],
+      do: {:cont, :ok},
+      else: {:halt, {:error, {:blocked, :unconfirmed_tool_result}}}
+  end
 
   defp supported(agent, head) do
     cond do
@@ -1244,25 +1227,28 @@ defmodule Beamlet.Agent.Durable do
   defp batch_call(_), do: {:error, :invalid_data}
 
   defp consumptions(operations) when is_list(operations) and length(operations) in 1..128 do
-    Enum.reduce_while(operations, {:ok, []}, fn operation, {:ok, acc} ->
-      with {:ok, _} <- fields(operation, [:operation_id], [:consumption_kind]),
-           {:ok, id} <- uuid(operation[:operation_id]) do
-        kind = Map.get(operation, :consumption_kind, "tool_result")
-
-        if kind in @consumption_kinds and not Enum.any?(acc, &(&1.operation_id == id)),
-          do: {:cont, {:ok, [%{operation_id: id, consumption_kind: kind} | acc]}},
-          else: {:halt, {:error, :invalid_data}}
-      else
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, acc} -> {:ok, Enum.reverse(acc)}
-      error -> error
-    end
+    operations
+    |> Enum.reduce_while({:ok, []}, &consumption_entry/2)
+    |> reverse_ok()
   end
 
   defp consumptions(_), do: {:error, :invalid_data}
+
+  defp consumption_entry(operation, {:ok, acc}) do
+    with {:ok, _} <- fields(operation, [:operation_id], [:consumption_kind]),
+         {:ok, id} <- uuid(operation[:operation_id]) do
+      kind = Map.get(operation, :consumption_kind, "tool_result")
+
+      if kind in @consumption_kinds and not Enum.any?(acc, &(&1.operation_id == id)),
+        do: {:cont, {:ok, [%{operation_id: id, consumption_kind: kind} | acc]}},
+        else: {:halt, {:error, :invalid_data}}
+    else
+      {:error, reason} -> {:halt, {:error, reason}}
+    end
+  end
+
+  defp reverse_ok({:ok, acc}), do: {:ok, Enum.reverse(acc)}
+  defp reverse_ok(error), do: error
 
   defp call_ids(calls) do
     ids = Enum.map(calls, & &1.id)
@@ -1318,26 +1304,26 @@ defmodule Beamlet.Agent.Durable do
   defp safe_reason(_), do: {:error, :invalid_data}
 
   defp fields(attrs, required, optional) do
-    Beamlet.Storage.Records.fields(attrs, required, optional)
+    Records.fields(attrs, required, optional)
   end
 
-  defp uuid(value), do: Beamlet.Storage.Records.uuid(value)
-  defp text(value, max), do: Beamlet.Storage.Records.text(value, max)
-  defp count(value), do: Beamlet.Storage.Records.count(value)
+  defp uuid(value), do: Records.uuid(value)
+  defp text(value, max), do: Records.text(value, max)
+  defp count(value), do: Records.count(value)
   defp map(value) when is_map(value) and not is_struct(value), do: {:ok, value}
   defp map(_), do: {:error, :invalid_data}
   defp list(value) when is_list(value), do: {:ok, value}
   defp list(_), do: {:error, :invalid_data}
 
   defp json(value) do
-    case Beamlet.Storage.Codec.encode(value, :checkpoint) do
+    case Codec.encode(value, :checkpoint) do
       {:ok, _} -> {:ok, value}
       {:error, reason} -> {:error, reason}
     end
   end
 
   defp digest(value) do
-    case Beamlet.Storage.Codec.digest(value, :checkpoint) do
+    case Codec.digest(value, :checkpoint) do
       {:ok, digest} -> {:ok, digest}
       {:error, _} -> {:error, :invalid_data}
     end

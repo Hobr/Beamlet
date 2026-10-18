@@ -3,6 +3,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   use GenServer, restart: :temporary
   alias Beamlet.Actions.{Execution, ExecutionHandle, OperationRef, Result}
   alias Beamlet.Runtime.{Directory, Persistence}
+  alias Beamlet.Storage.{Admission, OperationRecords}
 
   def start_link({_, _, owner, _, true, _} = args) do
     if Process.alive?(owner), do: GenServer.start_link(__MODULE__, args), else: :ignore
@@ -260,7 +261,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   defp claim_dispatch(s) do
     durable = s.durable
 
-    case Beamlet.Storage.OperationRecords.claim_dispatch(durable.persistence.authority_repo, %{
+    case OperationRecords.claim_dispatch(durable.persistence.authority_repo, %{
            operation_id: durable.operation_id,
            attempt_id: durable.attempt_id,
            expected_version: durable.attempt_version
@@ -344,7 +345,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   defp persist_evidence(_persistence, _durable, nil), do: :ok
 
   defp persist_evidence(persistence, durable, receipt) do
-    case Beamlet.Storage.OperationRecords.record_evidence(persistence.authority_repo, %{
+    case OperationRecords.record_evidence(persistence.authority_repo, %{
            id: receipt.id,
            operation_id: durable.operation_id,
            attempt_id: durable.attempt_id,
@@ -386,8 +387,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
     # (unwritable or refused dataset) must not commit an accepted Result. The gate
     # probes the dataset, so recovery re-enables accept without a restart.
     with :ok <- admission(),
-         {:ok, accepted} <-
-           Beamlet.Storage.OperationRecords.accept_result(persistence.authority_repo, attrs) do
+         {:ok, accepted} <- OperationRecords.accept_result(persistence.authority_repo, attrs) do
       {:ok, accepted}
     else
       {:error, reason} ->
@@ -397,7 +397,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   end
 
   defp admission do
-    case Beamlet.Storage.Admission.consult() do
+    case Admission.consult() do
       :ok -> :ok
       {:error, _reason} -> {:error, :durable_not_admitted}
     end
@@ -405,7 +405,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
 
   # Only a storage failure turns admission off; a refused transition is a data fact.
   defp admission_failure(reason) when reason in [:storage_unavailable, :storage_outcome_unknown],
-    do: Beamlet.Storage.Admission.failure(reason)
+    do: Admission.failure(reason)
 
   defp admission_failure(_reason), do: :ok
 

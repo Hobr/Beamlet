@@ -51,9 +51,10 @@ end
 defmodule Beamlet.Agent.HeldTool do
   @moduledoc false
   @behaviour Beamlet.Harness.Tool
+  alias Beamlet.Harness.Tools.Deterministic
 
   @impl true
-  def descriptor, do: Beamlet.Harness.Tools.Deterministic.descriptor()
+  def descriptor, do: Deterministic.descriptor()
 
   @impl true
   def invoke(arguments, settings, _context) do
@@ -71,7 +72,11 @@ defmodule Beamlet.Agent.DurableAgentTest do
   alias Beamlet.Actions.Result
   alias Beamlet.Agent
   alias Beamlet.Agent.Durable
+  alias Beamlet.Agent.Integration.Caller
   alias Beamlet.Harness.{Catalogue, Context}
+  alias Beamlet.Harness.Model
+  alias Beamlet.Harness.Tools.Deterministic
+  alias Beamlet.Runtime.{Directory, Persistence}
 
   alias Beamlet.Storage.{
     AgentRecords,
@@ -121,7 +126,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
   end
 
   defp providers do
-    Map.merge(Beamlet.Harness.Model.default_providers(), %{
+    Map.merge(Model.default_providers(), %{
       "counting" => Beamlet.Agent.CountingModel,
       "scripted" => Beamlet.Agent.ScriptedModel,
       "malformed" => Beamlet.Agent.MalformedModel
@@ -172,7 +177,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
   end
 
   defp catalogue do
-    {:ok, catalogue} = Catalogue.new([Beamlet.Harness.Tools.Deterministic.descriptor()])
+    {:ok, catalogue} = Catalogue.new([Deterministic.descriptor()])
     catalogue
   end
 
@@ -192,7 +197,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
     tool = Keyword.get(opts, :tool, Beamlet.Harness.Tools.Deterministic)
 
     persistence =
-      Beamlet.Runtime.Persistence.new(
+      Persistence.new(
         authority_repo: SQLiteAuthorityRepo,
         journal_repo: ExecutorJournalRepo,
         authority_id: ctx.authority_id,
@@ -237,7 +242,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
     pid = start_supervised!({Beamlet.Runtime, runtime_opts})
 
     eventually(fn ->
-      assert Enum.any?(Beamlet.Runtime.Directory.snapshots(), fn {_, report} ->
+      assert Enum.any?(Directory.snapshots(), fn {_, report} ->
                "echo" in report.capabilities
              end)
     end)
@@ -386,7 +391,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
     operations =
       Enum.map(calls, fn call ->
         {:ok, operation} =
-          Beamlet.Agent.Integration.Caller.operation(
+          Caller.operation(
             tools()[call.name],
             call.arguments,
             262_144

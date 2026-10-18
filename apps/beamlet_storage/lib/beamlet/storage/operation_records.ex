@@ -8,7 +8,7 @@ defmodule Beamlet.Storage.OperationRecords do
   evidence/resolution, never a second accepted Result.
   """
   import Ecto.Query
-  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, Records}
+  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, Records, Transaction}
   alias Beamlet.Storage.Schema.{Agent, Execution, ExecutionEvidence, Operation}
 
   @description_keys ~w(kind protocol_version payload refs budget claims safety)
@@ -41,19 +41,21 @@ defmodule Beamlet.Storage.OperationRecords do
 
   def fetch(repo, operation_id) do
     with {:ok, id} <- Records.uuid(operation_id) do
-      Beamlet.Storage.Transaction.read(fn ->
-        case repo.get(Operation, id, log: false) do
-          nil ->
-            {:error, :conflict}
+      Transaction.read(fn -> read_operation(repo, id) end)
+    end
+  end
 
-          operation ->
-            {:ok,
-             %{
-               "operation" => Records.plain(operation),
-               "attempt" => Records.plain(attempt_for(repo, id))
-             }}
-        end
-      end)
+  defp read_operation(repo, id) do
+    case repo.get(Operation, id, log: false) do
+      nil ->
+        {:error, :conflict}
+
+      operation ->
+        {:ok,
+         %{
+           "operation" => Records.plain(operation),
+           "attempt" => Records.plain(attempt_for(repo, id))
+         }}
     end
   end
 
@@ -100,29 +102,26 @@ defmodule Beamlet.Storage.OperationRecords do
   # Stage-A Operation envelope: explicit, versioned keys only. Credentials are
   # structurally rejected by the codec; references stay secret/profile refs.
   defp description(description) do
-    cond do
-      not is_map(description) or is_struct(description) or description == %{} ->
-        {:error, :invalid_data}
-
-      not Enum.all?(Map.keys(description), &(&1 in @description_keys)) ->
-        {:error, :invalid_data}
-
-      not Enum.all?(@description_required, &Map.has_key?(description, &1)) ->
-        {:error, :invalid_data}
-
-      not is_map(description["payload"]) or is_struct(description["payload"]) ->
-        {:error, :invalid_data}
-
-      not is_integer(description["protocol_version"]) or description["protocol_version"] < 1 ->
-        {:error, :invalid_data}
-
-      true ->
-        with {:ok, _kind} <- Records.text(description["kind"], 255),
-             {:ok, description} <- Records.json(description, :operation) do
-          {:ok, description}
-        end
+    if description_shape_valid?(description) do
+      with {:ok, _kind} <- Records.text(description["kind"], 255) do
+        Records.json(description, :operation)
+      end
+    else
+      {:error, :invalid_data}
     end
   end
+
+  defp description_shape_valid?(description) do
+    plain_map?(description) and description != %{} and
+      Enum.all?(Map.keys(description), &(&1 in @description_keys)) and
+      Enum.all?(@description_required, &Map.has_key?(description, &1)) and
+      plain_map?(description["payload"]) and
+      valid_protocol_version?(description["protocol_version"])
+  end
+
+  defp plain_map?(value), do: is_map(value) and not is_struct(value)
+
+  defp valid_protocol_version?(version), do: is_integer(version) and version >= 1
 
   defp attempt(nil), do: {:ok, nil}
 
@@ -327,29 +326,34 @@ defmodule Beamlet.Storage.OperationRecords do
   end
 
   defp batch_operations(list) when is_list(list) and length(list) in 1..8 do
-    Enum.reduce_while(list, {:ok, []}, fn requested, {:ok, acc} ->
-      with {:ok, attempt} <- batch_attempt(requested),
-           {:ok, operation} <- operation(Map.delete(requested, :attempt)) do
-        if owned_batch_member?(operation) and
-             not Enum.any?(
-               acc,
-               &(&1.operation.id == operation.id or
-                   &1.operation.ordinal == operation.ordinal)
-             ),
-           do: {:cont, {:ok, [%{operation: operation, attempt: attempt} | acc]}},
-           else: {:halt, {:error, :invalid_data}}
-      else
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, acc} -> {:ok, Enum.reverse(acc)}
-      error -> error
-    end
+    list
+    |> Enum.reduce_while({:ok, []}, &collect_batch_member/2)
+    |> reverse_batch()
   end
 
   defp batch_operations(list) when is_list(list), do: {:error, :limit}
   defp batch_operations(_), do: {:error, :invalid_data}
+
+  defp collect_batch_member(requested, {:ok, acc}) do
+    with {:ok, attempt} <- batch_attempt(requested),
+         {:ok, operation} <- operation(Map.delete(requested, :attempt)) do
+      if owned_batch_member?(operation) and not duplicate_batch_member?(acc, operation),
+        do: {:cont, {:ok, [%{operation: operation, attempt: attempt} | acc]}},
+        else: {:halt, {:error, :invalid_data}}
+    else
+      {:error, reason} -> {:halt, {:error, reason}}
+    end
+  end
+
+  defp duplicate_batch_member?(acc, operation) do
+    Enum.any?(
+      acc,
+      &(&1.operation.id == operation.id or &1.operation.ordinal == operation.ordinal)
+    )
+  end
+
+  defp reverse_batch({:ok, acc}), do: {:ok, Enum.reverse(acc)}
+  defp reverse_batch(error), do: error
 
   # Every batch member is dispatchable on its own: exactly one prepared attempt.
   defp batch_attempt(requested) when is_map(requested) and not is_struct(requested) do
@@ -620,26 +624,29 @@ defmodule Beamlet.Storage.OperationRecords do
          :ok <- same_executor(execution, input.executor_id),
          {:ok, _operation} <- Records.get(repo, Operation, input.operation_id) do
       case stored_evidence(repo, input) do
-        nil ->
-          Records.insert(
-            repo,
-            evidence_changeset(input)
-            |> Ecto.Changeset.unique_constraint([:executor_id, :evidence_id],
-              name: :execution_evidence_executor_id_evidence_id_index
-            )
-          )
-          |> case do
-            {:ok, evidence} -> {:ok, evidence_response(evidence)}
-            error -> error
-          end
-
-        %ExecutionEvidence{digest: digest} = stored ->
-          if digest == input.digest,
-            do: {:ok, evidence_response(stored)},
-            else: {:error, :conflict}
+        nil -> insert_evidence(repo, input)
+        %ExecutionEvidence{} = stored -> stored_evidence_result(stored, input.digest)
       end
     end
   end
+
+  defp insert_evidence(repo, input) do
+    changeset =
+      evidence_changeset(input)
+      |> Ecto.Changeset.unique_constraint([:executor_id, :evidence_id],
+        name: :execution_evidence_executor_id_evidence_id_index
+      )
+
+    case Records.insert(repo, changeset) do
+      {:ok, evidence} -> {:ok, evidence_response(evidence)}
+      error -> error
+    end
+  end
+
+  defp stored_evidence_result(%ExecutionEvidence{digest: digest} = stored, digest),
+    do: {:ok, evidence_response(stored)}
+
+  defp stored_evidence_result(_stored, _digest), do: {:error, :conflict}
 
   defp same_executor(execution, executor_id) do
     if execution.executor_id == executor_id, do: :ok, else: {:error, :invalid_data}
@@ -769,24 +776,30 @@ defmodule Beamlet.Storage.OperationRecords do
 
       case repo.update_all(query, [], log: false) do
         {1, _} ->
-          with {:ok, _event} <-
-                 Records.insert(
-                   repo,
-                   event_changeset(input.event, scope, seq, %{operation_id: operation.id})
-                 ) do
-            {:ok,
-             %{
-               "operation_id" => operation.id,
-               "accepted_result" => input.result,
-               "accepted_evidence_id" => input.evidence_id,
-               "history_seq" => seq,
-               "lock_version" => input.expected_version + 1
-             }}
-          end
+          insert_accept_event(repo, operation, input, seq, scope)
 
         {0, _} ->
           replay_accept(repo, operation, input)
       end
+    end
+  end
+
+  defp insert_accept_event(repo, operation, input, seq, scope) do
+    event = event_changeset(input.event, scope, seq, %{operation_id: operation.id})
+
+    case Records.insert(repo, event) do
+      {:ok, _event} ->
+        {:ok,
+         %{
+           "operation_id" => operation.id,
+           "accepted_result" => input.result,
+           "accepted_evidence_id" => input.evidence_id,
+           "history_seq" => seq,
+           "lock_version" => input.expected_version + 1
+         }}
+
+      error ->
+        error
     end
   end
 
@@ -801,27 +814,27 @@ defmodule Beamlet.Storage.OperationRecords do
       case input.agent do
         # A batch member writes the position its preparation reserved; several
         # accepts of one batch must not contend on the Agent version.
-        %{accept_seq: seq} when is_integer(seq) ->
-          # The position was reserved by this batch's prepare; anything beyond the
-          # Agent's committed history sequence is forged or stale.
-          if seq > 0 and seq <= agent.history_seq,
-            do: {:ok, seq, operation.owner_agent_id},
-            else: {:error, :conflict}
-
-        %{expected_version: version} ->
-          with {:ok, seq} <-
-                 Records.advance_agent_history(
-                   repo,
-                   operation.owner_agent_id,
-                   version,
-                   generation
-                 ) do
-            {:ok, seq, operation.owner_agent_id}
-          end
+        %{accept_seq: seq} when is_integer(seq) -> reserved_position(operation, agent, seq)
+        %{expected_version: version} -> advance_position(repo, operation, version, generation)
       end
     else
       nil -> {:error, :invalid_data}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # The position was reserved by this batch's prepare; anything beyond the
+  # Agent's committed history sequence is forged or stale.
+  defp reserved_position(operation, agent, seq) do
+    if seq > 0 and seq <= agent.history_seq,
+      do: {:ok, seq, operation.owner_agent_id},
+      else: {:error, :conflict}
+  end
+
+  defp advance_position(repo, operation, version, generation) do
+    with {:ok, seq} <-
+           Records.advance_agent_history(repo, operation.owner_agent_id, version, generation) do
+      {:ok, seq, operation.owner_agent_id}
     end
   end
 

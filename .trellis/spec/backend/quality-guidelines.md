@@ -54,6 +54,31 @@ passing baseline; report actual results, including dependency/tool failures.
 For documentation-only edits, check whitespace, links/source paths, and example
 accuracy; application tests need not run solely because Markdown changed.
 
+## Credo Gate for the Merged Durable Code
+
+The durable/storage merge (Agent, Runtime, Storage plus their tests) is now
+Credo-clean on the repo defaults: `mix credo` and `mix credo --strict --all` both
+exit 0 with no findings. Keep it that way, and keep the remedy a refactor:
+
+- Fix findings with the safe refactor patterns only: a top-level `alias` group
+  for repeated `Beamlet.*` prefixes (ordered alphabetically), small `defp`
+  helpers to cut nesting/cyclomatic complexity/arity, `if`/`unless` for two-branch
+  `cond`, `case` for a single-clause `with`, and composed `quote` fragments for
+  the shared storage-contract macro.
+- Suppression is not the remedy: no `.credo.exs`, no `--ignore`/directory
+  exclusions, no rule downgrades, no `# credo:disable-*` comments. Only
+  `@moduledoc false` on test-support modules is expected.
+- Refactoring must be behaviour-equivalent: no schema/migration, transaction/CAS/
+  admission, public function signature, error reason or test-assertion change.
+  Test counts are the guard (umbrella 439 passed/49 excluded, storage suite 59/13);
+  a lower count or a removed assertion means the refactor changed the contract.
+- Verify with `mix format --check-formatted`, `mix compile --warnings-as-errors`,
+  `mix test --seed 631927`, `mix credo`, `mix credo --strict --all`, `mix sobelow`,
+  `mix gettext.extract --check-up-to-date`, `mix dialyzer` and
+  `bash scripts/deployment/durable-e2e.sh`; the initial cleanup run recorded
+  44 findings under the default profile (exit 12) and 106 under `--strict --all`
+  (exit 14) before the refactor.
+
 ## Tests to Follow and Limits to Preserve
 
 Each app has `test/test_helper.exs` calling `ExUnit.start()`. Non-web tests mirror

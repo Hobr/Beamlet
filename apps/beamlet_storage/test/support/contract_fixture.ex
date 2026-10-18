@@ -9,7 +9,15 @@ defmodule Beamlet.Storage.ContractFixture do
   # PostgreSQL: a throwaway database in the isolated cluster named by
   # BEAMLET_PG_SOCKET_DIR (loopback/Unix socket only, never an existing database).
 
-  alias Beamlet.Storage.{Dataset, PostgresAuthorityRepo, SQLiteAuthorityRepo}
+  alias Beamlet.Storage.{
+    Connections,
+    Dataset,
+    PostgresAuthorityRepo,
+    Records,
+    SQLiteAuthorityRepo,
+    Transaction
+  }
+
   alias Ecto.Adapters.SQL
 
   def open(:sqlite) do
@@ -153,23 +161,7 @@ defmodule Beamlet.Storage.ContractFixture do
     # Hold pool_size checkouts at once so every physical connection is sampled.
     tasks =
       for _ <- 1..4 do
-        Task.async(fn ->
-          repo.checkout(
-            fn ->
-              rows =
-                SQL.query!(
-                  repo,
-                  "SELECT pg_backend_pid(), current_setting('synchronous_commit'), current_setting('fsync')",
-                  [],
-                  log: false
-                ).rows
-
-              Process.sleep(200)
-              rows
-            end,
-            timeout: 10_000
-          )
-        end)
+        Task.async(fn -> sample_connection(repo) end)
       end
 
     rows = Enum.map(tasks, &Task.await(&1, 20_000))
@@ -183,6 +175,24 @@ defmodule Beamlet.Storage.ContractFixture do
         end),
       required: %{"synchronous_commit" => "on", "fsync" => "on"}
     }
+  end
+
+  defp sample_connection(repo) do
+    repo.checkout(
+      fn ->
+        rows =
+          SQL.query!(
+            repo,
+            "SELECT pg_backend_pid(), current_setting('synchronous_commit'), current_setting('fsync')",
+            [],
+            log: false
+          ).rows
+
+        Process.sleep(200)
+        rows
+      end,
+      timeout: 10_000
+    )
   end
 
   # Negative control: a connection downgraded away from synchronous durability must
@@ -200,7 +210,7 @@ defmodule Beamlet.Storage.ContractFixture do
 
     result =
       try do
-        Beamlet.Storage.Connections.verify_postgres(conn)
+        Connections.verify_postgres(conn)
       rescue
         error -> {:raised, Exception.message(error)}
       catch
@@ -220,7 +230,7 @@ defmodule Beamlet.Storage.ContractFixture do
   # live SQLite statement timeout cannot be produced cheaply; the mapping is
   # exercised with the real driver exception instead.
   def driver_failure(%{backend: :postgres, repo: repo}) do
-    Beamlet.Storage.Transaction.write(repo, fn ->
+    Transaction.write(repo, fn ->
       # Kill our own backend inside the transaction: the commit outcome is unknown.
       SQL.query!(repo, "SELECT pg_terminate_backend(pg_backend_pid())", [], log: false)
       SQL.query!(repo, "INSERT INTO commands (id) VALUES ('never')", [], log: false)
@@ -229,12 +239,13 @@ defmodule Beamlet.Storage.ContractFixture do
 
   def driver_failure(%{backend: :sqlite, repo: repo}) do
     defmodule DriverFailureStub do
+      @moduledoc false
       def __adapter__, do: Ecto.Adapters.SQLite3
       def transaction(_fun, _opts), do: raise(DBConnection.ConnectionError, "connection lost")
     end
 
     # Exercise the facade boundary every caller uses, not just Transaction.write/2.
-    if repo, do: Beamlet.Storage.Records.transact(DriverFailureStub, fn -> :ok end)
+    if repo, do: Records.transact(DriverFailureStub, fn -> :ok end)
   end
 
   # Adapter-specific private connection used to mutate the installation metadata

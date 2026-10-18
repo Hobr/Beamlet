@@ -37,18 +37,20 @@ defmodule Beamlet.Storage.History do
   def event(repo, scope_id, seq) do
     with {:ok, scope} <- Records.uuid(scope_id),
          {:ok, seq} <- Records.count(seq) do
-      Transaction.read(fn ->
-        query =
-          from(e in Event,
-            where: e.scope_id == ^scope and e.seq == ^seq,
-            select: %{event: e}
-          )
+      Transaction.read(fn -> read_event(repo, scope, seq) end)
+    end
+  end
 
-        case repo.one(query, log: false) do
-          nil -> {:error, :conflict}
-          %{event: event} -> {:ok, Records.plain(event)}
-        end
-      end)
+  defp read_event(repo, scope, seq) do
+    query =
+      from(e in Event,
+        where: e.scope_id == ^scope and e.seq == ^seq,
+        select: %{event: e}
+      )
+
+    case repo.one(query, log: false) do
+      nil -> {:error, :conflict}
+      %{event: event} -> {:ok, Records.plain(event)}
     end
   end
 
@@ -143,22 +145,24 @@ defmodule Beamlet.Storage.History do
   @doc "One Operation with its attempt and receipt evidence rows."
   def operation(repo, operation_id) do
     with {:ok, id} <- Records.uuid(operation_id) do
-      Transaction.read(fn ->
-        case repo.get(Operation, id, log: false) do
-          nil ->
-            {:error, :conflict}
+      Transaction.read(fn -> read_operation(repo, id) end)
+    end
+  end
 
-          operation ->
-            attempt = attempt_for(repo, id)
+  defp read_operation(repo, id) do
+    case repo.get(Operation, id, log: false) do
+      nil ->
+        {:error, :conflict}
 
-            {:ok,
-             %{
-               "operation" => Records.plain(operation),
-               "attempt" => Records.plain(attempt),
-               "evidence" => evidence_rows(repo, id)
-             }}
-        end
-      end)
+      operation ->
+        attempt = attempt_for(repo, id)
+
+        {:ok,
+         %{
+           "operation" => Records.plain(operation),
+           "attempt" => Records.plain(attempt),
+           "evidence" => evidence_rows(repo, id)
+         }}
     end
   end
 
@@ -273,44 +277,7 @@ defmodule Beamlet.Storage.History do
   ## Reads
 
   defp read_events(repo, scope, filters) do
-    query =
-      from(e in Event,
-        where: e.scope_id == ^scope and e.seq > ^filters.after_seq,
-        order_by: [asc: e.seq],
-        limit: ^filters.limit,
-        select: %{event: e, raw: fragment("CAST(? AS TEXT)", e.payload)}
-      )
-
-    query =
-      if filters.through_seq,
-        do: from(e in query, where: e.seq <= ^filters.through_seq),
-        else: query
-
-    query = if filters.types, do: from(e in query, where: e.type in ^filters.types), else: query
-
-    query =
-      if filters.turn_id, do: from(e in query, where: e.turn_id == ^filters.turn_id), else: query
-
-    query =
-      if filters.operation_id,
-        do: from(e in query, where: e.operation_id == ^filters.operation_id),
-        else: query
-
-    query =
-      case filters.origin do
-        "performed" ->
-          from(e in query, where: is_nil(e.source_agent_id) or e.source_agent_id == ^scope)
-
-        "inherited" ->
-          from(e in query,
-            where: not is_nil(e.source_agent_id) and e.source_agent_id != ^scope
-          )
-
-        nil ->
-          query
-      end
-
-    rows = repo.all(query, log: false)
+    rows = repo.all(event_query(scope, filters), log: false)
     {events, more?} = take_rows(rows, filters.limit, filters.max_bytes, [], 0, & &1.event)
 
     {:ok,
@@ -321,6 +288,46 @@ defmodule Beamlet.Storage.History do
        "over_budget" => oversized?(rows, filters.max_bytes),
        "through_seq" => filters.through_seq
      }}
+  end
+
+  defp event_query(scope, filters) do
+    from(e in Event,
+      where: e.scope_id == ^scope and e.seq > ^filters.after_seq,
+      order_by: [asc: e.seq],
+      limit: ^filters.limit,
+      select: %{event: e, raw: fragment("CAST(? AS TEXT)", e.payload)}
+    )
+    |> filter_through(filters.through_seq)
+    |> filter_types(filters.types)
+    |> filter_turn(filters.turn_id)
+    |> filter_operation(filters.operation_id)
+    |> filter_origin(filters.origin, scope)
+  end
+
+  defp filter_through(query, nil), do: query
+  defp filter_through(query, seq), do: from(e in query, where: e.seq <= ^seq)
+
+  defp filter_types(query, nil), do: query
+  defp filter_types(query, types), do: from(e in query, where: e.type in ^types)
+
+  defp filter_turn(query, nil), do: query
+  defp filter_turn(query, turn_id), do: from(e in query, where: e.turn_id == ^turn_id)
+
+  defp filter_operation(query, nil), do: query
+
+  defp filter_operation(query, operation_id),
+    do: from(e in query, where: e.operation_id == ^operation_id)
+
+  defp filter_origin(query, nil, _scope), do: query
+
+  defp filter_origin(query, "performed", scope) do
+    from(e in query, where: is_nil(e.source_agent_id) or e.source_agent_id == ^scope)
+  end
+
+  defp filter_origin(query, "inherited", scope) do
+    from(e in query,
+      where: not is_nil(e.source_agent_id) and e.source_agent_id != ^scope
+    )
   end
 
   # An entry derived from another Agent is marked as inherited, so a reader never
@@ -344,19 +351,17 @@ defmodule Beamlet.Storage.History do
   defp take_rows([row | rest], limit, budget, acc, bytes, get) do
     size = byte_size(row.raw)
 
-    cond do
-      acc != [] and bytes + size > budget ->
-        {Enum.reverse(acc), true}
+    if acc != [] and bytes + size > budget do
+      {Enum.reverse(acc), true}
+    else
+      acc = [get.(row) | acc]
+      bytes = bytes + size
 
-      true ->
-        acc = [get.(row) | acc]
-        bytes = bytes + size
-
-        # A full page always reports a cursor: only the next (possibly empty)
-        # page can prove the range ended.
-        if length(acc) >= limit,
-          do: {Enum.reverse(acc), true},
-          else: take_rows(rest, limit, budget, acc, bytes, get)
+      # A full page always reports a cursor: only the next (possibly empty)
+      # page can prove the range ended.
+      if length(acc) >= limit,
+        do: {Enum.reverse(acc), true},
+        else: take_rows(rest, limit, budget, acc, bytes, get)
     end
   end
 

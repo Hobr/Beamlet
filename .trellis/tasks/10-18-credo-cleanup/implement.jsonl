@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Credo/format/test commands and the rule that gates must not be weakened by suppressions or config exclusions"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Durable storage contracts: transaction boundaries, CAS, admission and migration rules that the refactor must not change"}
+{"file": ".trellis/spec/backend/agent-orchestration.md", "reason": "Agent durable history/checkpoint/fork contracts so helper extraction preserves lifecycle and return values"}
+{"file": ".trellis/spec/backend/operation-runtime.md", "reason": "Runtime admission, terminal evidence and failure matrix that must stay identical after refactoring"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Safe error/return conventions; refactors must not collapse distinct error reasons"}
+{"file": ".trellis/tasks/10-18-credo-cleanup/research/credo-findings.md", "reason": "Exact 106 findings by file/line/check, generated from mix credo --strict --all"}

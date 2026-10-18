@@ -1,6 +1,7 @@
 defmodule Beamlet.Agent do
   @moduledoc "Explicit authority, ephemeral Agents, and bounded asynchronous turn commands."
-  alias Beamlet.Agent.{Ref, Server}
+  alias Beamlet.Agent.{Durable, History, Ref, Server, TraceExport}
+  alias Beamlet.Storage.AgentRecords
 
   def start(authority, opts) when is_atom(authority) do
     if authority == node(), do: start_local(opts), else: remote_start(authority, opts)
@@ -64,13 +65,13 @@ defmodule Beamlet.Agent do
   """
   def restore(locator, expected_version, command_id) do
     with :ok <- inactive(locator),
-         {:ok, restored} <- Beamlet.Agent.Durable.restore(locator, expected_version, command_id) do
+         {:ok, restored} <- Durable.restore(locator, expected_version, command_id) do
       start_restored(locator, restored)
     end
   end
 
   defp inactive(%{repo: repo, agent_id: agent_id}) do
-    case Beamlet.Storage.AgentRecords.fetch(repo, agent_id) do
+    case AgentRecords.fetch(repo, agent_id) do
       {:ok, %{"agent" => %{"alias" => alias_name} = agent}} ->
         if Registry.lookup(Beamlet.Agent.Registry, alias_name || agent["id"]) == [],
           do: :ok,
@@ -116,12 +117,12 @@ defmodule Beamlet.Agent do
   """
   def fork(locator, checkpoint_id, expected_version, command_id) do
     with :ok <- dormant_source(locator) do
-      Beamlet.Agent.Durable.fork(locator, checkpoint_id, expected_version, command_id)
+      Durable.fork(locator, checkpoint_id, expected_version, command_id)
     end
   end
 
   defp dormant_source(%{repo: repo, agent_id: agent_id}) do
-    case Beamlet.Storage.AgentRecords.fetch(repo, agent_id) do
+    case AgentRecords.fetch(repo, agent_id) do
       {:ok, %{"agent" => %{"alias" => alias_name} = agent}} ->
         if Registry.lookup(Beamlet.Agent.Registry, alias_name || agent["id"]) == [],
           do: :ok,
@@ -142,7 +143,7 @@ defmodule Beamlet.Agent do
   of history and stays with `Beamlet.Runtime.status/1`.
   """
   def history(locator, filters \\ %{}, cursor \\ nil),
-    do: Beamlet.Agent.History.query(locator, filters, cursor)
+    do: History.query(locator, filters, cursor)
 
   @doc """
   Bounded trace export of one committed scope: fixes a high-water mark first, then
@@ -150,7 +151,7 @@ defmodule Beamlet.Agent do
   into `policy.dir`. Read-only; the package never grants import/execution.
   """
   def export(locator, scope, policy) when is_map(locator) do
-    Beamlet.Agent.TraceExport.export(locator[:repo], scope || locator, policy)
+    TraceExport.export(locator[:repo], scope || locator, policy)
   end
 
   @doc """

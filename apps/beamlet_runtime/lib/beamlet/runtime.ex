@@ -9,6 +9,7 @@ defmodule Beamlet.Runtime do
   """
   alias Beamlet.Actions.{Operation, OperationRef}
   alias Beamlet.Runtime.{Directory, Observation, Persistence, SharedSupervisor}
+  alias Beamlet.Storage.{Admission, Codec, ExecutorJournal, OperationRecords}
 
   @doc """
   Safe Directory-owned report observation, `{:ok, %{version: 1, source: node,
@@ -97,9 +98,9 @@ defmodule Beamlet.Runtime do
   """
   def evidence(%Persistence{} = persistence, operation_id, attempt_id) do
     with {:ok, authority} <-
-           Beamlet.Storage.OperationRecords.fetch(persistence.authority_repo, operation_id) do
+           OperationRecords.fetch(persistence.authority_repo, operation_id) do
       journal =
-        case Beamlet.Storage.ExecutorJournal.fetch(
+        case ExecutorJournal.fetch(
                persistence.journal_repo,
                persistence.authority_id,
                attempt_id
@@ -129,8 +130,8 @@ defmodule Beamlet.Runtime do
 
   defp prepared(prepared) when is_map(prepared) and not is_struct(prepared) do
     valid =
-      Beamlet.Storage.Codec.uuid?(prepared["operation_id"]) and
-        Beamlet.Storage.Codec.uuid?(prepared["attempt_id"]) and
+      Codec.uuid?(prepared["operation_id"]) and
+        Codec.uuid?(prepared["attempt_id"]) and
         is_binary(prepared["description_digest"]) and
         non_negative?(prepared["attempt_version"]) and
         non_negative?(prepared["lock_version"])
@@ -150,7 +151,7 @@ defmodule Beamlet.Runtime do
   defp coordinators_available(nil), do: :ok
 
   defp coordinators_available(%Persistence{}) do
-    with :ok <- Beamlet.Storage.Admission.consult(),
+    with :ok <- Admission.consult(),
          true <- Process.whereis(Beamlet.Runtime.Coordinators) != nil do
       :ok
     else

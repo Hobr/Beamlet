@@ -4,6 +4,7 @@ defmodule Beamlet.Daemon do
   authority and executor enabled by default. One Node tree is supported per VM.
   """
   alias Beamlet.Node.Cluster
+  alias Beamlet.Storage.Host
 
   @doc """
   Validate host policy, delegate resource/provider validation to Node, and
@@ -50,7 +51,7 @@ defmodule Beamlet.Daemon do
   end
 
   defp storage(roles, config) do
-    case Beamlet.Storage.Host.configuration(roles, config) do
+    case Host.configuration(roles, config) do
       {:ok, settings} -> {:ok, settings}
       {:error, _reason} -> {:error, :invalid_daemon_configuration}
     end

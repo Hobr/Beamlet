@@ -97,15 +97,29 @@ defmodule Beamlet.Agent.Server do
   defp valid_keyword_options?(opts, binding_validator) do
     tools = Keyword.get(opts, :tools, %{})
 
-    Keyword.keys(opts) --
-      [:id, :model, :tools, :catalogue, :delegator, :display_metadata, :durable, :restored] == [] and
+    valid_option_keys?(opts) and
       valid_id?(opts[:id]) and
-      (is_nil(opts[:delegator]) or is_pid(opts[:delegator])) and
-      (is_nil(opts[:durable]) or match?(%Durable{}, opts[:durable])) and
-      (is_nil(opts[:restored]) or is_map(opts[:restored])) and
-      durable_pair?(opts[:durable], opts[:restored]) and
+      valid_delegator?(opts[:delegator]) and
+      valid_durable_pair?(opts[:durable], opts[:restored]) and
       binding_validator.(opts[:model]) and
-      is_map(tools) and map_size(tools) <= 64 and
+      valid_tools?(tools)
+  end
+
+  defp valid_option_keys?(opts) do
+    Keyword.keys(opts) --
+      [:id, :model, :tools, :catalogue, :delegator, :display_metadata, :durable, :restored] == []
+  end
+
+  defp valid_delegator?(delegator), do: is_nil(delegator) or is_pid(delegator)
+
+  defp valid_durable_pair?(durable, restored) do
+    (is_nil(durable) or match?(%Durable{}, durable)) and
+      (is_nil(restored) or is_map(restored)) and
+      durable_pair?(durable, restored)
+  end
+
+  defp valid_tools?(tools) do
+    is_map(tools) and map_size(tools) <= 64 and
       Enum.all?(tools, fn {name, profile} -> is_binary(name) and Caller.profile?(profile) end)
   end
 
@@ -791,26 +805,30 @@ defmodule Beamlet.Agent.Server do
 
       case Context.append(s.messages, additions) do
         {:ok, messages} ->
-          case commit_consumption(s, messages) do
-            {:ok, s} ->
-              send(self(), {:advance, s.turn})
-
-              publish_activity(%{
-                Display.annotate(s, messages)
-                | results: %{},
-                  order: [],
-                  assistant: nil
-              })
-
-            {:error, reason} ->
-              fail(s, reason)
-          end
+          apply_consumption(s, messages)
 
         _ ->
           fail(s, :context_limit)
       end
     else
       publish_activity(s)
+    end
+  end
+
+  defp apply_consumption(s, messages) do
+    case commit_consumption(s, messages) do
+      {:ok, s} ->
+        send(self(), {:advance, s.turn})
+
+        publish_activity(%{
+          Display.annotate(s, messages)
+          | results: %{},
+            order: [],
+            assistant: nil
+        })
+
+      {:error, reason} ->
+        fail(s, reason)
     end
   end
 
@@ -1013,12 +1031,12 @@ defmodule Beamlet.Agent.Server do
             status: if(accepted.replayed?, do: s.status, else: :running)
         }
 
-        unless accepted.replayed? do
+        if accepted.replayed? do
+          {:reply, {:ok, s.turn}, s}
+        else
           s = Display.annotate(s, messages)
           send(self(), {:advance, s.turn})
           {:reply, {:ok, s.turn}, publish(s)}
-        else
-          {:reply, {:ok, s.turn}, s}
         end
 
       {:error, reason} ->

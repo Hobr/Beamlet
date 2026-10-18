@@ -18,7 +18,7 @@ defmodule Beamlet.Agent.History do
   `source_event_id` markers and are reported as `origin: "inherited"`; they are
   never counted as work this Agent performed.
   """
-  alias Beamlet.Storage.{AgentRecords, History}
+  alias Beamlet.Storage.{AgentRecords, History, Records}
 
   @views ~w(turns facts context steps tools evidence decisions provenance)
 
@@ -82,8 +82,9 @@ defmodule Beamlet.Agent.History do
   defp dispatch("context", repo, id, filters, cursor) do
     seq = cursor || filters[:as_of_seq]
 
-    with {:ok, snapshot} <- History.checkpoint_at(repo, id, seq),
-         data = snapshot["checkpoint"]["data"] do
+    with {:ok, snapshot} <- History.checkpoint_at(repo, id, seq) do
+      data = snapshot["checkpoint"]["data"]
+
       {:ok,
        %{
          "view" => "context",
@@ -317,5 +318,5 @@ defmodule Beamlet.Agent.History do
     end
   end
 
-  defp uuid(value), do: Beamlet.Storage.Records.uuid(value)
+  defp uuid(value), do: Records.uuid(value)
 end

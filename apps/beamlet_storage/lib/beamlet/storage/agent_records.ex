@@ -103,19 +103,21 @@ defmodule Beamlet.Storage.AgentRecords do
 
   def fetch(repo, agent_id) do
     with {:ok, id} <- Records.uuid(agent_id) do
-      Transaction.read(fn ->
-        case repo.get(Agent, id, log: false) do
-          nil ->
-            {:error, :conflict}
+      Transaction.read(fn -> read_agent(repo, id) end)
+    end
+  end
 
-          agent ->
-            {:ok,
-             %{
-               "agent" => Records.plain(agent),
-               "head_checkpoint" => Records.plain(head_checkpoint(repo, agent))
-             }}
-        end
-      end)
+  defp read_agent(repo, id) do
+    case repo.get(Agent, id, log: false) do
+      nil ->
+        {:error, :conflict}
+
+      agent ->
+        {:ok,
+         %{
+           "agent" => Records.plain(agent),
+           "head_checkpoint" => Records.plain(head_checkpoint(repo, agent))
+         }}
     end
   end
 
@@ -1093,14 +1095,17 @@ defmodule Beamlet.Storage.AgentRecords do
   defp adoption_owner(_repo, _agent, nil), do: :ok
 
   defp adoption_owner(repo, agent, adoption) do
-    with {:ok, operation} <- Records.get(repo, Operation, adoption.operation_id) do
-      cond do
-        operation.owner_agent_id != agent.id -> {:error, :conflict}
-        is_nil(operation.accepted_result) -> {:error, :conflict}
-        true -> adopted_digest(operation, adoption)
-      end
-    else
+    case Records.get(repo, Operation, adoption.operation_id) do
+      {:ok, operation} -> adoption_owner_check(operation, agent, adoption)
       {:error, :conflict} -> {:error, :conflict}
+    end
+  end
+
+  defp adoption_owner_check(operation, agent, adoption) do
+    if operation.owner_agent_id == agent.id and not is_nil(operation.accepted_result) do
+      adopted_digest(operation, adoption)
+    else
+      {:error, :conflict}
     end
   end
 

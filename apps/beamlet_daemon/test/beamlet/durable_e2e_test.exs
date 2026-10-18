@@ -39,12 +39,15 @@ defmodule Beamlet.Daemon.DurableEndToEndTest do
   use ExUnit.Case, async: false
 
   alias Beamlet.Agent
+  alias Beamlet.Agent.AuthoritySupervisor
   alias Beamlet.Agent.{Durable, TraceExport}
-  alias Beamlet.Harness.Catalogue
+  alias Beamlet.Harness.{Catalogue, Model}
+  alias Beamlet.Harness.Tools.Deterministic
+  alias Beamlet.Runtime.{Directory, Persistence, SharedSupervisor}
 
   alias Beamlet.Storage.{
-    AgentRecords,
     Admission,
+    AgentRecords,
     ExecutorJournalRepo,
     Host,
     Operator,
@@ -250,14 +253,14 @@ defmodule Beamlet.Daemon.DurableEndToEndTest do
   defp boot_wiring(storage, authority_id) do
     {:ok, settings} = Host.configuration([:authority, :executor], storage)
     {:ok, _} = Host.start_link(storage: settings, name: Host)
-    {:ok, _} = Beamlet.Agent.AuthoritySupervisor.start_link(model_providers: providers())
+    {:ok, _} = AuthoritySupervisor.start_link(model_providers: providers())
 
     # The host owns this boot's executor identity: the Runtime and the Agent's
     # durable wiring must use the same boot id or evidence writes are refused.
     {:ok, host_runtime} = Host.runtime()
 
     persistence =
-      Beamlet.Runtime.Persistence.new(
+      Persistence.new(
         authority_repo: host_runtime.authority_repo,
         journal_repo: host_runtime.journal_repo,
         authority_id: authority_id,
@@ -277,7 +280,7 @@ defmodule Beamlet.Daemon.DurableEndToEndTest do
     }
 
     {:ok, _} =
-      Beamlet.Runtime.SharedSupervisor.start_link(
+      SharedSupervisor.start_link(
         execution: true,
         handlers: %{"agent.native" => {Beamlet.Agent.Integration.Handler, settings_map}},
         capabilities: ["model.provider:e2e", "echo"],
@@ -331,7 +334,7 @@ defmodule Beamlet.Daemon.DurableEndToEndTest do
   end
 
   defp providers do
-    Map.merge(Beamlet.Harness.Model.default_providers(), %{"e2e" => Beamlet.Daemon.E2EModel})
+    Map.merge(Model.default_providers(), %{"e2e" => Beamlet.Daemon.E2EModel})
   end
 
   defp definition do
@@ -346,7 +349,7 @@ defmodule Beamlet.Daemon.DurableEndToEndTest do
   end
 
   defp catalogue do
-    {:ok, catalogue} = Catalogue.new([Beamlet.Harness.Tools.Deterministic.descriptor()])
+    {:ok, catalogue} = Catalogue.new([Deterministic.descriptor()])
     catalogue
   end
 
@@ -435,7 +438,7 @@ defmodule Beamlet.Daemon.DurableEndToEndTest do
   end
 
   defp ready? do
-    Enum.any?(Beamlet.Runtime.Directory.snapshots(), fn {_node, report} ->
+    Enum.any?(Directory.snapshots(), fn {_node, report} ->
       "echo" in report.capabilities
     end)
   rescue

@@ -4,6 +4,8 @@ defmodule Beamlet.Agent.ForkTest do
 
   alias Beamlet.Agent
   alias Beamlet.Agent.Durable
+  alias Beamlet.Agent.Integration.Caller
+  alias Beamlet.Agent.TraceExport
   alias Beamlet.Harness.Context
   alias Beamlet.Storage.Codec
 
@@ -16,8 +18,8 @@ defmodule Beamlet.Agent.ForkTest do
     SQLiteAuthorityRepo
   }
 
-  alias Beamlet.Storage.Schema.{Checkpoint, Command, Event, Operation}
   alias Beamlet.Storage.Schema.Agent, as: AgentRow
+  alias Beamlet.Storage.Schema.{Checkpoint, Command, Event, Operation}
 
   setup do
     dir = Path.join(System.tmp_dir!(), "beamlet-fork-#{System.unique_integer([:positive])}")
@@ -129,7 +131,7 @@ defmodule Beamlet.Agent.ForkTest do
     operations =
       Enum.map(calls, fn call ->
         {:ok, operation} =
-          Beamlet.Agent.Integration.Caller.operation(
+          Caller.operation(
             %{id: "echo-profile", capability: "echo"},
             call.arguments,
             262_144
@@ -328,7 +330,7 @@ defmodule Beamlet.Agent.ForkTest do
     {:ok, messages} = Context.append(messages(source), [assistant])
 
     {:ok, operation} =
-      Beamlet.Agent.Integration.Caller.operation(
+      Caller.operation(
         %{id: "echo-profile", capability: "echo"},
         %{"text" => "a"},
         262_144
@@ -510,7 +512,7 @@ defmodule Beamlet.Agent.ForkTest do
     assert manifest["provenance"]["inherited_entries"] == 4
     assert manifest["provenance"]["performed_entries"] == 1
     assert manifest["provenance"]["inherited_counted_as_execution"] == false
-    assert {:ok, _report} = Beamlet.Agent.TraceExport.verify(dir)
+    assert {:ok, _report} = TraceExport.verify(dir)
   end
 
   test "an unconfirmed shared-environment risk blocks execution until acceptance", ctx do
@@ -669,7 +671,7 @@ defmodule Beamlet.Agent.ForkTest do
     {_accepted, source} = accept_input(source, "hello")
 
     {:ok, operation} =
-      Beamlet.Agent.Integration.Caller.operation(
+      Caller.operation(
         %{id: "echo-profile", capability: "echo"},
         %{"text" => "a"},
         262_144

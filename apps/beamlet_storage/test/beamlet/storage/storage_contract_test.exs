@@ -9,12 +9,26 @@ defmodule Beamlet.Storage.ContractSuite do
   # dataset, which must behave identically on both adapters.
 
   defmacro __using__(backend: backend) do
-    quote bind_quoted: [backend: backend] do
+    quote do
+      unquote(common(backend))
+      unquote(fixture_helpers())
+      unquote(attribute_helpers())
+      unquote(durability_tests())
+      unquote(atomicity_tests())
+      unquote(receipt_tests())
+      unquote(boundary_tests())
+    end
+  end
+
+  # Each fragment is a separate `quote`, so no single block grows past the Credo
+  # line budget; the generated test names and bodies stay identical.
+  defp common(backend) do
+    quote do
       use ExUnit.Case, async: false
 
       # Excluded by default (see test_helper.exs): the PostgreSQL half requires an
       # isolated cluster, and its absence must never be reported as a pass.
-      if backend == :postgres, do: @moduletag(:postgres_db)
+      if unquote(backend) == :postgres, do: @moduletag(:postgres_db)
 
       alias Beamlet.Storage.{
         AgentRecords,
@@ -32,14 +46,18 @@ defmodule Beamlet.Storage.ContractSuite do
       @errors ~w(invalid_data limit conflict stale_generation schema_unsupported
                  artifact_missing storage_unavailable storage_outcome_unknown)a
 
-      @backend backend
+      @backend unquote(backend)
 
       setup do
         fixture = Fixture.open(@backend)
         on_exit(fn -> Fixture.close(fixture) end)
         {:ok, fixture: fixture}
       end
+    end
+  end
 
+  defp fixture_helpers do
+    quote do
       defp sql(fixture, statement, params \\ []), do: Fixture.sql(fixture, statement, params)
 
       defp raw_connection(fixture), do: Fixture.raw_connection(fixture)
@@ -49,11 +67,9 @@ defmodule Beamlet.Storage.ContractSuite do
       # `repo.stop/0` is called from the test process more than once per fixture, so
       # a second stop must be tolerated rather than retried.
       defp stop_repo(%{repo: repo}) do
-        try do
-          repo.stop()
-        catch
-          _, _ -> :ok
-        end
+        repo.stop()
+      catch
+        _, _ -> :ok
       end
 
       # A private connection is needed while the Repo is stopped, so it can mutate
@@ -65,7 +81,11 @@ defmodule Beamlet.Storage.ContractSuite do
         {:ok, conn} = raw_connection(Map.put(fixture, :database, database))
         conn
       end
+    end
+  end
 
+  defp attribute_helpers do
+    quote do
       defp event(type, payload \\ %{}) do
         %{id: Ecto.UUID.generate(), type: type, payload: payload}
       end
@@ -128,7 +148,11 @@ defmodule Beamlet.Storage.ContractSuite do
 
         {OperationRecords.prepare(fixture.repo, attrs), attrs}
       end
+    end
+  end
 
+  defp durability_tests do
+    quote do
       ## 1. Per-connection durability settings
 
       test "every physical connection enforces full synchronous durability", %{fixture: fixture} do
@@ -209,7 +233,11 @@ defmodule Beamlet.Storage.ContractSuite do
 
         assert {:error, :restored_backup} = Dataset.open(fixture.repo, fixture.opts)
       end
+    end
+  end
 
+  defp atomicity_tests do
+    quote do
       ## 6. Multi-table atomicity
 
       test "a failing step rolls back every table of the transaction", %{fixture: fixture} do
@@ -282,7 +310,11 @@ defmodule Beamlet.Storage.ContractSuite do
         assert fetched["attempt"]["dispatch_state"] == "send_claimed"
         assert fetched["attempt"]["lock_version"] == 1
       end
+    end
+  end
 
+  defp receipt_tests do
+    quote do
       ## 8. Receipt idempotence and accepted-result immutability
 
       test "evidence and accepted Results are idempotent and never overwritten", %{
@@ -377,7 +409,11 @@ defmodule Beamlet.Storage.ContractSuite do
 
         assert [[0]] == sql(fixture, "SELECT COUNT(*) FROM agents").rows
       end
+    end
+  end
 
+  defp boundary_tests do
+    quote do
       ## 10. Raw objects and structured credentials
 
       test "raw objects, secrets and unknown fields are rejected at the write entry", %{
