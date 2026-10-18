@@ -1,850 +1,441 @@
 defmodule Beamlet.Agent.TraceExport do
-  @moduledoc """
-  Bounded, read-only trace export of one committed scope.
+  @moduledoc "Format-2, bounded offline trace packages. Begin captures fixed Agent/Operation high waters before writing pages."
+  alias Beamlet.Agent.{Reducer, TraceSnapshot, TraceVerifier}
+  alias Beamlet.Storage.{Codec, Records, References}
 
-  `begin/2` fixes the scope's high-water mark first (the Agent's committed
-  history sequence and its newest checkpoint timestamp). `write/2` then pages
-  immutable records with short read transactions and keyset pagination, and
-  streams `events.jsonl`, `checkpoints.jsonl`, referenced artifacts and a
-  versioned `manifest.json`; appends made after `begin/2` cannot enter the range.
+  @version 2
+  @files ~w(events inputs operations definition)
+  @max_bytes 33_554_432
 
-  Events keep their original scope/sequence/`recorded_at`; there is no invented
-  cross-Agent order. Entries inherited from another Agent keep their source
-  markers and are reported as inherited, never counted as this Agent's work. A
-  fork source's own history is not assembled recursively: it is reported as
-  external, and anything else not included is reported as missing.
-
-  `verify/1` validates a manifest, its file digests and its JSONL lines without
-  executing any historical code; it grants no import or execution authority. A
-  record larger than the page byte budget is written whole on its own line and
-  listed in the manifest's `oversized_records`; a page never splits a record.
-  """
-  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, History, Records}
-
-  @export_version 1
-  @format "beamlet.trace"
-  @page_default 100
-  @page_bytes 1_048_576
-  @min_page_bytes 4_096
-  @max_page_bytes 4_194_304
-  @max_artifacts 64
-  @line_limit 4_259_840
-  @event_keys ~w(scope_id seq type schema_version payload recorded_at)
-  @checkpoint_keys ~w(id agent_id continuation schema_version digest safe_to_fork recorded_at data)
-
-  @doc """
-  Fixes the export range: the Agent identity, fork provenance, committed history
-  sequence and the newest checkpoint timestamp at this moment.
-  """
   def begin(repo, scope) do
-    with true <- is_atom(repo) and not is_nil(repo),
-         {:ok, agent_id} <- scope_id(scope),
-         {:ok, fetched} <- AgentRecords.fetch(repo, agent_id),
-         agent = fetched["agent"],
-         head = fetched["head_checkpoint"],
-         {:ok, through} <- checkpoint_through(head) do
+    id = if is_map(scope), do: scope[:agent_id], else: scope
+
+    with {:ok, _} <- Records.uuid(id),
+         {:ok, snapshot} <- TraceSnapshot.capture(repo, id) do
       {:ok,
-       %{
-         repo: repo,
-         agent_id: agent_id,
-         authority_id: agent["authority_id"],
-         history_seq: agent["history_seq"],
-         checkpoint_through: through,
-         fork: %{
-           "forked_from_agent_id" => agent["forked_from_agent_id"],
-           "forked_from_checkpoint_id" => agent["forked_from_checkpoint_id"]
-         }
-       }}
-    else
-      false -> {:error, :invalid_data}
-      {:error, reason} -> {:error, reason}
+       Map.merge(snapshot, %{repo: repo, agent_id: id, history_seq: snapshot.agent["history_seq"]})}
     end
   end
 
-  @doc "Fixes the range and writes the export in one call."
   def export(repo, scope, policy) do
     with {:ok, fixed} <- begin(repo, scope), do: write(fixed, policy)
   end
 
-  @doc """
-  Streams the fixed range into `policy.dir` and returns the manifest. Policy keys:
-  `:dir` (required), `:page` (1..500), `:page_bytes` (4096..4 MiB) and
-  `:redaction` (`:none` or `:drop_content`).
-  """
   def write(fixed, policy) do
-    with {:ok, policy} <- export_policy(policy),
-         :ok <- prepare_dir(policy.dir),
-         {:ok, events} <- stream_events(fixed, policy),
-         {:ok, checkpoints} <- stream_checkpoints(fixed, policy),
-         {:ok, artifacts} <- copy_artifacts(fixed, policy) do
-      manifest = manifest(fixed, policy, events, checkpoints, artifacts)
-      write_manifest(policy.dir, manifest)
-    end
-  end
-
-  defp write_manifest(dir, manifest) do
-    path = Path.join(dir, "manifest.json")
-
-    with {:ok, bytes} <- encode(manifest) do
-      case File.write(path, bytes) do
-        :ok -> {:ok, manifest}
-        {:error, _reason} -> {:error, :invalid_data}
-      end
-    end
-  end
-
-  @doc """
-  Read-only verification of an export directory: manifest shape and version,
-  per-file SHA-256, JSONL line shape and per-scope sequence order, and artifact
-  digests/sizes. Never loads or executes historical code and grants no authority.
-  """
-  def verify(dir) do
-    with {:ok, manifest} <- read_manifest(dir),
-         {:ok, events} <- verify_events(dir, manifest),
-         {:ok, checkpoints} <- verify_checkpoints(dir, manifest),
-         {:ok, artifacts} <- verify_artifacts(dir, manifest),
-         :ok <- consistent_completeness(manifest, events) do
-      {:ok,
-       %{
-         "events" => events,
-         "checkpoints" => checkpoints,
-         "artifacts" => artifacts,
-         # Recomputed from the verified facts rather than echoed: a hand-edited
-         # manifest must not turn an incomplete package into a complete one.
-         "history_complete" => recomputed_complete?(manifest, events),
-         "redaction" => manifest["redaction"],
-         "execution_authority" => "none"
-       }}
-    end
-  end
-
-  # The manifest carries no self-digest, so its honesty fields are cross-checked
-  # against the verified content instead of being trusted.
-  defp consistent_completeness(manifest, events) do
-    claimed = manifest["history_complete"] == true
-    actual = recomputed_complete?(manifest, events)
-
-    if claimed == actual, do: :ok, else: {:error, :inconsistent_manifest}
-  end
-
-  defp recomputed_complete?(manifest, events) do
-    manifest["missing"] == [] and
-      get_in(manifest, ["counts", "events"]) == events and
-      get_in(manifest, ["high_water", "history_seq"]) == events and
-      get_in(manifest, ["redaction", "restorable"]) != false
-  end
-
-  ## High-water fix
-
-  defp scope_id(%{agent_id: agent_id}), do: Records.uuid(agent_id)
-
-  defp scope_id(agent_id) when is_binary(agent_id),
-    do: Records.uuid(agent_id)
-
-  defp scope_id(_), do: {:error, :invalid_data}
-
-  defp checkpoint_through(nil), do: {:ok, nil}
-
-  defp checkpoint_through(%{"recorded_at" => recorded_at}) when is_binary(recorded_at) do
-    case DateTime.from_iso8601(recorded_at) do
-      {:ok, at, _offset} -> {:ok, at}
-      _ -> {:error, :invalid_data}
-    end
-  end
-
-  defp checkpoint_through(_), do: {:error, :invalid_data}
-
-  ## Events
-
-  defp stream_events(fixed, policy) do
-    path = Path.join(policy.dir, "events.jsonl")
-
-    state = %{
-      path: path,
-      io: nil,
-      hash: :crypto.hash_init(:sha256),
-      count: 0,
-      bytes: 0,
-      cursor: 0,
-      oversized: [],
-      inherited: 0,
-      performed: 0,
-      redacted: 0,
-      policy: policy,
-      agent_id: fixed.agent_id
-    }
-
-    path
-    |> File.open([:write, :binary], fn io ->
-      page(%{state | io: io}, fixed) |> write_result()
-    end)
-    |> stream_outcome()
-  end
-
-  defp page(state, fixed) do
-    opts = [
-      after_seq: state.cursor,
-      through_seq: fixed.history_seq,
-      limit: state.policy.page,
-      max_bytes: state.policy.page_bytes
-    ]
-
-    case History.event_page(fixed.repo, fixed.agent_id, opts) do
-      {:ok, page} ->
-        state = %{state | oversized: state.oversized ++ oversized_event(page)}
-        continue_events(page, state, fixed)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp continue_events(page, state, fixed) do
-    case reduce_writes(page["events"], state, &write_event/2) do
-      {:ok, state} ->
-        next = page["next_cursor"]
-        empty? = page["events"] == []
-
-        cond do
-          is_nil(next) or empty? -> {:ok, state}
-          next <= state.cursor -> {:error, :conflict}
-          true -> page(%{state | cursor: next}, fixed)
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp write_event(event, state) do
-    line = event_line(event, state.policy.redaction)
-
-    with {:ok, bytes} <- encode(line),
-         :ok <- IO.binwrite(state.io, [bytes, ?\n]) do
-      {:ok,
-       %{
-         state
-         | count: state.count + 1,
-           bytes: state.bytes + byte_size(bytes) + 1,
-           hash: :crypto.hash_update(state.hash, [bytes, ?\n]),
-           inherited: state.inherited + if(event["origin"] == "inherited", do: 1, else: 0),
-           performed: state.performed + if(event["origin"] == "inherited", do: 0, else: 1),
-           redacted: state.redacted + if(state.policy.redaction == :drop_content, do: 1, else: 0)
-       }}
-    else
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  # A record above the page byte budget is written whole on its own line; the
-  # manifest names it instead of splitting or silently truncating it.
-  defp oversized_event(%{"over_budget" => true, "events" => [event | _]}) do
-    [%{"kind" => "oversized_record", "seq" => event["seq"]}]
-  end
-
-  defp oversized_event(_page), do: []
-
-  defp reduce_writes(records, state, writer) do
-    Enum.reduce_while(records, {:ok, state}, fn record, {:ok, acc} ->
-      case writer.(record, acc) do
-        {:ok, next} -> {:cont, {:ok, next}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-  end
-
-  defp write_result({:ok, state}) do
-    {:ok,
-     %{
-       count: state.count,
-       bytes: state.bytes,
-       digest: digest(state.hash),
-       oversized: state.oversized,
-       inherited: Map.get(state, :inherited, 0),
-       performed: Map.get(state, :performed, 0),
-       redacted: Map.get(state, :redacted, 0)
-     }}
-  end
-
-  defp write_result({:error, reason}), do: {:error, reason}
-
-  defp event_line(event, :none),
-    do:
-      Map.take(
-        event,
-        @event_keys ++
-          [
-            "turn_id",
-            "operation_id",
-            "causation_id",
-            "dedupe_key",
-            "source_agent_id",
-            "source_event_id",
-            "origin"
-          ]
-      )
-
-  defp event_line(event, :drop_content) do
-    event
-    |> Map.take(
-      @event_keys ++
-        [
-          "turn_id",
-          "operation_id",
-          "causation_id",
-          "source_agent_id",
-          "source_event_id",
-          "origin"
-        ]
-    )
-    |> Map.put("payload", %{"redacted" => true})
-    |> Map.put("redacted", ["payload"])
-  end
-
-  ## Checkpoints
-
-  defp stream_checkpoints(fixed, policy) do
-    path = Path.join(policy.dir, "checkpoints.jsonl")
-
-    state = %{
-      io: nil,
-      hash: :crypto.hash_init(:sha256),
-      count: 0,
-      bytes: 0,
-      cursor: nil,
-      policy: policy,
-      oversized: [],
-      redacted: 0
-    }
-
-    path
-    |> File.open([:write, :binary], fn io ->
-      checkpoint_pages(%{state | io: io}, fixed) |> write_result()
-    end)
-    |> stream_outcome()
-  end
-
-  # File.open/3 wraps the callback's value; only a complete stream is a success.
-  defp stream_outcome({:ok, {:ok, summary}}), do: {:ok, summary}
-  defp stream_outcome({:ok, {:error, reason}}), do: {:error, reason}
-  defp stream_outcome({:ok, _other}), do: {:error, :invalid_data}
-  defp stream_outcome(_), do: {:error, :invalid_data}
-
-  defp checkpoint_pages(state, fixed) do
-    opts = [
-      after: state.cursor,
-      through_recorded_at: fixed.checkpoint_through,
-      limit: state.policy.page,
-      max_bytes: state.policy.page_bytes
-    ]
-
-    case History.checkpoint_page(fixed.repo, fixed.agent_id, opts) do
-      {:ok, page} ->
-        state = %{state | oversized: state.oversized ++ oversized_checkpoint(page)}
-        continue_checkpoints(page, state, fixed)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp continue_checkpoints(page, state, fixed) do
-    case reduce_writes(page["checkpoints"], state, &write_checkpoint/2) do
-      {:ok, state} ->
-        next = page["next_cursor"]
-
-        if is_nil(next) or page["checkpoints"] == [],
-          do: {:ok, state},
-          else: checkpoint_pages(%{state | cursor: next}, fixed)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp write_checkpoint(checkpoint, state) do
-    line = checkpoint_line(checkpoint, state.policy.redaction)
-
-    with {:ok, bytes} <- encode(line),
-         :ok <- IO.binwrite(state.io, [bytes, ?\n]) do
-      {:ok,
-       %{
-         state
-         | count: state.count + 1,
-           bytes: state.bytes + byte_size(bytes) + 1,
-           hash: :crypto.hash_update(state.hash, [bytes, ?\n]),
-           redacted: state.redacted + if(state.policy.redaction == :drop_content, do: 1, else: 0)
-       }}
-    else
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp oversized_checkpoint(%{"over_budget" => true, "checkpoints" => [checkpoint | _]}) do
-    [%{"kind" => "oversized_record", "checkpoint_id" => checkpoint["id"]}]
-  end
-
-  defp oversized_checkpoint(_page), do: []
-
-  defp checkpoint_line(checkpoint, :none), do: Map.take(checkpoint, @checkpoint_keys)
-
-  defp checkpoint_line(checkpoint, :drop_content) do
-    dropped = [
-      "messages",
-      "assistant",
-      "results",
-      "pending",
-      "order",
-      "consumed",
-      "decision",
-      "request_digest"
-    ]
-
-    checkpoint
-    |> Map.take(@checkpoint_keys)
-    |> Map.put("data", Map.drop(checkpoint["data"] || %{}, dropped))
-    |> Map.put("redacted", dropped)
-  end
-
-  ## Artifacts
-
-  defp copy_artifacts(fixed, policy) do
-    with {:ok, fetched} <- AgentRecords.fetch(fixed.repo, fixed.agent_id) do
-      directory = Path.join(policy.dir, "artifacts")
-      :ok = File.mkdir_p(directory)
-
-      refs = artifact_refs(fetched["agent"]["definition"])
-      {kept, dropped} = Enum.split(refs, @max_artifacts)
-
-      result =
-        kept
-        |> Enum.reduce_while(
-          {:ok, %{included: [], missing: []}},
-          &copy_artifact_entry(fixed.repo, directory, &1, &2)
-        )
-
-      # A cap is a stated omission, never a silent drop that still reads complete.
-      with {:ok, acc} <- result do
-        {:ok, %{acc | missing: acc.missing ++ omitted_artifacts(dropped)}}
-      end
-    end
-  end
-
-  defp omitted_artifacts(dropped) do
-    Enum.map(dropped, fn id ->
-      %{"kind" => "artifact_omitted", "id" => id, "limit" => @max_artifacts}
-    end)
-  end
-
-  defp copy_artifact_entry(repo, directory, id, {:ok, acc}) do
-    case copy_artifact(repo, id, directory) do
-      {:ok, entry} -> {:cont, {:ok, %{acc | included: acc.included ++ [entry]}}}
-      {:error, kind} -> {:cont, {:ok, %{acc | missing: acc.missing ++ [kind]}}}
-    end
-  end
-
-  defp artifact_refs(definition) do
-    definition
-    |> Map.get("tools", %{})
-    |> Enum.flat_map(fn {_name, reference} -> Map.get(reference, "artifact_refs", []) end)
-    |> Enum.filter(&Codec.uuid?/1)
-    |> Enum.uniq()
-  end
-
-  defp copy_artifact(repo, id, directory) do
-    path = Path.join(directory, id <> ".bin")
-
-    case Artifacts.fetch(repo, id) do
-      {:ok, artifact} ->
-        case File.write(path, artifact.content) do
-          :ok ->
-            {:ok,
-             %{
-               "id" => artifact.id,
-               "digest" => artifact.digest,
-               "media_type" => artifact.media_type,
-               "size" => artifact.size,
-               "path" => Path.join("artifacts", id <> ".bin")
-             }}
-
-          {:error, _} ->
-            {:error, %{"kind" => "artifact_unwritable", "id" => id}}
-        end
-
-      {:error, :artifact_missing} ->
-        {:error, %{"kind" => "artifact_missing", "id" => id}}
-
-      {:error, _reason} ->
-        {:error, %{"kind" => "artifact_corrupt", "id" => id}}
-    end
-  end
-
-  ## Manifest
-
-  defp manifest(fixed, policy, events, checkpoints, artifacts) do
-    missing = artifacts.missing ++ ancestor_missing(fixed)
-    complete? = missing == [] and events.count == fixed.history_seq
-
-    redaction = redaction(policy, events, checkpoints)
-
-    %{
-      "export_version" => @export_version,
-      "format" => @format,
-      "exported_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "authority_id" => fixed.authority_id,
-      "agent_id" => fixed.agent_id,
-      "scope" => %{"kind" => "agent", "id" => fixed.agent_id},
-      "ordering" => "per_scope_sequence",
-      "high_water" => %{
-        "agent_id" => fixed.agent_id,
-        "history_seq" => fixed.history_seq,
-        "checkpoint_recorded_at" =>
-          fixed.checkpoint_through && DateTime.to_iso8601(fixed.checkpoint_through)
-      },
-      "fork" => Map.put(fixed.fork, "history_included", false),
-      "files" => %{
-        "events" => "events.jsonl",
-        "checkpoints" => "checkpoints.jsonl",
-        "artifacts" => "artifacts"
-      },
-      "counts" => %{
-        "events" => events.count,
-        "checkpoints" => checkpoints.count,
-        "artifacts" => length(artifacts.included)
-      },
-      "page_policy" => %{"page" => policy.page, "page_bytes" => policy.page_bytes},
-      "digests" => %{
-        "events_sha256" => events.digest,
-        "checkpoints_sha256" => checkpoints.digest
-      },
-      "artifacts" => artifacts.included,
-      "oversized_records" => events.oversized ++ checkpoints.oversized,
-      "missing" => missing,
-      "redaction" => redaction,
-      "provenance" => %{
-        "performed_entries" => events.performed,
-        "inherited_entries" => events.inherited,
-        "inherited_counted_as_execution" => false,
-        "external" => external(fixed)
-      },
-      "history_complete" => complete? and redaction["restorable"]
-    }
-  end
-
-  defp ancestor_missing(%{fork: %{"forked_from_agent_id" => nil}}), do: []
-
-  defp ancestor_missing(%{fork: %{"forked_from_agent_id" => source}} = fixed) do
-    [
-      %{
-        "kind" => "ancestor_history",
-        "agent_id" => source,
-        "checkpoint_id" => fixed.fork["forked_from_checkpoint_id"],
-        "note" => "source history is not assembled recursively; query it explicitly"
-      }
-    ]
-  end
-
-  defp external(%{fork: %{"forked_from_agent_id" => nil}}), do: []
-
-  defp external(%{fork: fork}) do
-    [
-      %{
-        "relation" => "fork_source",
-        "agent_id" => fork["forked_from_agent_id"],
-        "checkpoint_id" => fork["forked_from_checkpoint_id"],
-        "included" => false
-      }
-    ]
-  end
-
-  defp redaction(policy, events, checkpoints) do
-    case policy.redaction do
-      :none ->
-        %{"policy" => "none", "restorable" => true, "dropped_entries" => 0}
-
-      :drop_content ->
-        %{
-          "policy" => "drop_content",
-          "restorable" => false,
-          "dropped_entries" => events.redacted + checkpoints.redacted,
-          "note" => "payload/context content was dropped and marked; restore is not claimed"
-        }
-    end
-  end
-
-  ## Policy
-
-  defp export_policy(policy) when is_list(policy) do
-    if Keyword.keyword?(policy), do: export_policy(Map.new(policy)), else: {:error, :invalid_data}
-  end
-
-  defp export_policy(policy) when is_map(policy) and not is_struct(policy) do
-    with {:ok, dir} <- dir(policy[:dir]),
-         {:ok, page} <- bounded(policy[:page] || policy["page"], @page_default, 1, 500),
-         {:ok, page_bytes} <-
-           bounded(
-             policy[:page_bytes] || policy["page_bytes"],
-             @page_bytes,
-             @min_page_bytes,
-             @max_page_bytes
-           ),
-         {:ok, redaction} <- redaction_policy(policy[:redaction] || policy["redaction"]) do
-      {:ok, %{dir: dir, page: page, page_bytes: page_bytes, redaction: redaction}}
-    end
-  end
-
-  defp export_policy(_), do: {:error, :invalid_data}
-
-  defp dir(value) when is_binary(value) and byte_size(value) in 1..1024, do: {:ok, value}
-  defp dir(_), do: {:error, :invalid_data}
-
-  defp bounded(nil, default, _min, _max), do: {:ok, default}
-
-  defp bounded(value, _default, min, max)
-       when is_integer(value) and value >= min and value <= max,
-       do: {:ok, value}
-
-  defp bounded(value, _default, _min, max) when is_integer(value) and value > max,
-    do: {:error, :limit}
-
-  defp bounded(_, _, _, _), do: {:error, :invalid_data}
-
-  defp redaction_policy(nil), do: {:ok, :none}
-  defp redaction_policy(value) when value in [:none, "none"], do: {:ok, :none}
-
-  defp redaction_policy(value) when value in [:drop_content, "drop_content"],
-    do: {:ok, :drop_content}
-
-  defp redaction_policy(_), do: {:error, :invalid_data}
-
-  defp prepare_dir(dir) do
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      {:error, _reason} -> {:error, :invalid_data}
-    end
-  end
-
-  defp encode(value) do
-    case Codec.encode(value, :event) do
-      {:ok, bytes} -> {:ok, bytes}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp digest(hash), do: hash |> :crypto.hash_final() |> Base.encode16(case: :lower)
-
-  ## Verification
-
-  defp read_manifest(dir) do
-    with true <- is_binary(dir),
-         path = Path.join(dir, "manifest.json"),
-         {:ok, bytes} <- read_file(path),
-         {:ok, manifest} <- decode(bytes),
-         :ok <- manifest_shape(manifest) do
+    with {:ok, policy} <- policy(policy),
+         :ok <- empty_directory(policy.dir),
+         {:ok, summaries} <- write_files(fixed, policy),
+         {:ok, artifacts} <- write_artifacts(fixed, policy),
+         manifest = manifest(fixed, policy, summaries, artifacts),
+         :ok <- file_write(Path.join(policy.dir, "manifest.json"), Jason.encode!(manifest)) do
       {:ok, manifest}
-    else
-      false -> {:error, :invalid_data}
-      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp manifest_shape(manifest) do
+  defp policy(policy) when is_list(policy) do
+    if Keyword.keyword?(policy), do: policy(Map.new(policy)), else: {:error, :invalid_data}
+  end
+
+  defp policy(policy) when is_map(policy) do
+    page = policy[:page] || 100
+    bytes = policy[:page_bytes] || 1_048_576
+    redaction = policy[:redaction] || :none
+
     cond do
-      manifest["export_version"] != @export_version ->
-        {:error, {:unsupported_export_version, manifest["export_version"]}}
-
-      not valid_manifest_header?(manifest) ->
+      not valid_dir?(policy[:dir]) ->
         {:error, :invalid_data}
 
-      not valid_manifest_collections?(manifest) ->
+      not valid_page_bounds?(page, bytes) ->
         {:error, :invalid_data}
 
-      not valid_manifest_scope?(manifest) ->
+      exceeds_page_bounds?(page, bytes) ->
+        {:error, :limit}
+
+      redaction not in [:none, :drop_content] ->
         {:error, :invalid_data}
 
       true ->
-        :ok
+        {:ok, %{dir: policy.dir, page: page, page_bytes: bytes, redaction: redaction}}
     end
   end
 
-  defp valid_manifest_header?(manifest) do
-    manifest["format"] == @format and Codec.uuid?(manifest["agent_id"]) and
-      Codec.uuid?(manifest["authority_id"]) and is_boolean(manifest["history_complete"])
-  end
+  defp policy(_), do: {:error, :invalid_data}
 
-  defp valid_manifest_collections?(manifest) do
-    is_map(manifest["digests"]) and is_list(manifest["artifacts"]) and
-      is_list(manifest["missing"]) and is_map(manifest["high_water"])
-  end
+  defp valid_dir?(dir), do: is_binary(dir) and byte_size(dir) in 1..1024
+  defp exceeds_page_bounds?(page, bytes), do: page > 500 or bytes > 4_194_304
 
-  defp valid_manifest_scope?(manifest) do
-    is_map(manifest["scope"]) and Codec.uuid?(manifest["scope"]["id"]) and
-      is_boolean(get_in(manifest["redaction"], ["restorable"]))
-  end
+  defp valid_page_bounds?(page, bytes),
+    do: is_integer(page) and page >= 1 and is_integer(bytes) and bytes >= 4096
 
-  defp verify_events(dir, manifest) do
-    path = Path.join(dir, get_in(manifest, ["files", "events"]) || "events.jsonl")
-
-    verify_lines(path, manifest, %{
-      scope_id: manifest["scope"]["id"] || manifest["agent_id"],
-      count: get_in(manifest, ["counts", "events"]),
-      digest: get_in(manifest, ["digests", "events_sha256"]),
-      through: manifest["high_water"]["history_seq"],
-      keys: ["scope_id", "seq", "type", "recorded_at"],
-      redacted: manifest["redaction"]["restorable"] == false
-    })
-  end
-
-  defp verify_checkpoints(dir, manifest) do
-    path = Path.join(dir, get_in(manifest, ["files", "checkpoints"]) || "checkpoints.jsonl")
-
-    verify_lines(path, manifest, %{
-      scope_id: manifest["agent_id"],
-      count: get_in(manifest, ["counts", "checkpoints"]),
-      digest: get_in(manifest, ["digests", "checkpoints_sha256"]),
-      through: nil,
-      keys: ["id", "agent_id", "continuation", "recorded_at"],
-      redacted: manifest["redaction"]["restorable"] == false
-    })
-  end
-
-  defp verify_lines(path, _manifest, expected) do
-    state = %{
-      hash: :crypto.hash_init(:sha256),
-      count: 0,
-      last_seq: 0,
-      expected: expected,
-      error: nil
+  defp records(fixed),
+    do: %{
+      "events" => fixed.events,
+      "inputs" => fixed.inputs,
+      "operations" => fixed.operations,
+      "definition" => [fixed.agent]
     }
+
+  defp write_files(fixed, policy) do
+    Enum.reduce_while(records(fixed), {:ok, %{}}, fn {name, rows}, {:ok, acc} ->
+      case write_lines(name, rows, policy) do
+        {:ok, summary} -> {:cont, {:ok, Map.put(acc, name, summary)}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp write_lines(name, rows, policy) do
+    path = Path.join(policy.dir, name <> ".jsonl")
 
     result =
-      path
-      |> stream_lines()
-      |> Enum.reduce_while(state, fn
-        {:verify_error, reason}, state ->
-          {:halt, %{state | error: reason}}
-
-        chunk, state ->
-          state = %{state | hash: :crypto.hash_update(state.hash, chunk)}
-
-          case check_line(chunk, state) do
-            {:ok, state} -> {:cont, state}
-            {:error, reason} -> {:halt, %{state | error: reason}}
-          end
+      File.open(path, [:write, :binary], fn io ->
+        rows
+        |> Enum.chunk_every(policy.page)
+        |> Enum.reduce_while(
+          {:ok, %{count: 0, hash: :crypto.hash_init(:sha256), oversized: []}},
+          fn page, {:ok, state} -> reduce_outcome(write_page(io, page, name, policy, state)) end
+        )
       end)
 
-    cond do
-      result.error ->
-        {:error, result.error}
+    case result do
+      {:ok, {:ok, state}} ->
+        {:ok,
+         %{
+           "count" => state.count,
+           "sha256" => digest(state.hash),
+           "oversized_records" => state.oversized
+         }}
 
-      result.count != expected.count ->
-        {:error, {:line_count_mismatch, result.count, expected.count}}
-
-      digest(result.hash) != expected.digest ->
-        {:error, :digest_mismatch}
-
-      true ->
-        {:ok, result.count}
+      _ ->
+        {:error, :invalid_data}
     end
   end
 
-  # A missing, truncated or non-regular file is exactly what the verifier exists
-  # for, so report it instead of raising File.Error towards the caller.
-  defp stream_lines(path) do
-    case File.stat(path) do
-      {:ok, %File.Stat{type: :regular}} -> File.stream!(path)
-      _ -> [{:verify_error, {:missing_file, Path.basename(path)}}]
+  defp write_page(io, rows, name, policy, state) do
+    Enum.reduce_while(rows, {:ok, state}, fn row, {:ok, acc} ->
+      with {:ok, bytes} <- Codec.encode(redact(name, row, policy.redaction), :event),
+           :ok <- IO.binwrite(io, [bytes, ?\n]) do
+        oversized = oversized(bytes, policy, name, acc)
+
+        {:cont,
+         {:ok,
+          %{
+            acc
+            | count: acc.count + 1,
+              hash: :crypto.hash_update(acc.hash, [bytes, ?\n]),
+              oversized: oversized
+          }}}
+      else
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp oversized(bytes, policy, name, acc) do
+    if byte_size(bytes) > policy.page_bytes,
+      do: [%{"file" => name, "index" => acc.count} | acc.oversized],
+      else: acc.oversized
+  end
+
+  defp reduce_outcome({:ok, next}), do: {:cont, {:ok, next}}
+  defp reduce_outcome(error), do: {:halt, error}
+
+  defp redact(_, row, :none), do: row
+
+  defp redact(name, row, :drop_content) when name in ~w(events inputs),
+    do: row |> Map.put("payload", %{"redacted" => true}) |> Map.put("redacted", ["payload"])
+
+  defp redact("definition", row, :drop_content),
+    do: row |> Map.put("definition", %{}) |> Map.put("redacted", ["definition"])
+
+  defp redact("operations", row, :drop_content),
+    do: %{
+      "operation" => Map.drop(row["operation"], ~w(description accepted_result)),
+      "redacted" => ~w(description accepted_result attempt evidence)
+    }
+
+  defp write_artifacts(_fixed, %{redaction: :drop_content}), do: {:ok, []}
+
+  defp write_artifacts(fixed, policy) do
+    with :ok <- mkdir(Path.join(policy.dir, "artifacts")) do
+      Enum.reduce_while(fixed.artifacts, {:ok, []}, &write_artifact(&1, &2, policy.dir))
     end
   end
 
-  defp check_line(chunk, state) do
-    with true <- is_binary(chunk) and byte_size(chunk) in 3..@line_limit,
-         {:ok, line} when is_map(line) <- decode_line(chunk),
-         :ok <- required_keys(line, state.expected.keys),
-         :ok <- scope_match(line, state),
-         :ok <- seq_order(line, state) do
-      {:ok, %{state | count: state.count + 1, last_seq: line["seq"] || state.last_seq}}
+  defp write_artifact(artifact, {:ok, acc}, dir) do
+    case file_write(Path.join([dir, "artifacts", artifact.id <> ".bin"]), artifact.content) do
+      :ok ->
+        {:cont,
+         {:ok,
+          acc ++
+            [
+              %{
+                "id" => artifact.id,
+                "digest" => artifact.digest,
+                "size" => artifact.size,
+                "media_type" => artifact.media_type
+              }
+            ]}}
+
+      error ->
+        {:halt, error}
+    end
+  end
+
+  defp manifest(fixed, policy, summaries, artifacts) do
+    %{
+      "format" => "beamlet.trace",
+      "export_version" => @version,
+      "agent_id" => fixed.agent_id,
+      "authority_id" => fixed.agent["authority_id"],
+      "high_water" => %{
+        "history_seq" => fixed.history_seq,
+        "operations" =>
+          Map.new(fixed.operations, &{&1["operation"]["id"], &1["operation"]["history_seq"]})
+      },
+      "ordering" => "per_scope_sequence",
+      "files" => summaries,
+      "artifacts" => artifacts,
+      "missing" => fixed.missing,
+      "history_complete" => fixed.missing == [] and policy.redaction == :none,
+      "redaction" => %{
+        "policy" => to_string(policy.redaction),
+        "restorable" => policy.redaction == :none
+      },
+      "page_policy" => %{"page" => policy.page, "page_bytes" => policy.page_bytes},
+      "provenance" => %{
+        "fork" => fixed.control["fork"],
+        "performed_operations" =>
+          Enum.count(fixed.operations, &(&1["operation"]["owner_agent_id"] == fixed.agent_id)),
+        "inherited_references" => length(fixed.control["inheritance"]["sources"]),
+        "inherited_counted_as_execution" => false,
+        "parent_history_required" => false
+      }
+    }
+  end
+
+  def verify(dir) do
+    with {:ok, bytes} <- read_file(Path.join(dir, "manifest.json"), 4_194_304),
+         {:ok, manifest} <- decode(bytes),
+         :ok <- header(manifest),
+         :ok <- package_budget(dir, manifest),
+         {:ok, files} <- verify_files(dir, manifest),
+         {:ok, artifacts} <- verify_artifacts(dir, manifest),
+         :ok <- content(manifest, files, artifacts),
+         complete = manifest["missing"] == [] and manifest["redaction"]["restorable"],
+         true <- manifest["history_complete"] == complete do
+      {:ok,
+       %{
+         "events" => length(files["events"]),
+         "operations" => length(files["operations"]),
+         "artifacts" => map_size(artifacts),
+         "history_complete" => complete,
+         "execution_authority" => "none"
+       }}
     else
-      false -> {:error, :line_too_large}
-      {:error, reason} -> {:error, reason}
-      _ -> {:error, :invalid_line}
+      false -> {:error, :inconsistent_manifest}
+      error -> error
     end
   end
 
-  defp required_keys(line, keys) do
-    if Enum.all?(keys, &Map.has_key?(line, &1)),
+  defp header(%{"export_version" => version}) when version != @version,
+    do: {:error, {:unsupported_export_version, version}}
+
+  defp header(m) when is_map(m) do
+    if valid_identity?(m) and valid_collections?(m) and valid_highwater?(m["high_water"]),
       do: :ok,
-      else: {:error, {:missing_line_key, keys}}
+      else: {:error, :invalid_data}
   end
 
-  defp scope_match(line, %{expected: %{scope_id: scope}}) do
-    if line["scope_id"] == scope or line["agent_id"] == scope,
-      do: :ok,
-      else: {:error, :foreign_scope}
+  defp valid_identity?(m),
+    do:
+      m["format"] == "beamlet.trace" and Codec.uuid?(m["agent_id"]) and
+        Codec.uuid?(m["authority_id"])
+
+  defp valid_collections?(m) do
+    is_map(m["files"]) and Enum.sort(Map.keys(m["files"])) == Enum.sort(@files) and
+      Enum.all?(Map.values(m["files"]), &is_map/1) and
+      is_list(m["missing"]) and Enum.all?(m["missing"], &is_map/1) and
+      valid_artifact_list?(m["artifacts"]) and
+      is_map(m["redaction"]) and is_boolean(m["redaction"]["restorable"])
   end
 
-  defp seq_order(%{"seq" => seq}, %{last_seq: last, expected: %{through: through}})
-       when is_integer(seq) do
-    cond do
-      seq <= last -> {:error, :sequence_order}
-      through && seq > through -> {:error, :beyond_high_water}
-      true -> :ok
+  defp valid_artifact_list?(list) when is_list(list) and length(list) <= 1024,
+    do: Enum.all?(list, &(is_map(&1) and Codec.uuid?(&1["id"])))
+
+  defp valid_artifact_list?(_), do: false
+
+  defp package_budget(dir, manifest) do
+    paths =
+      Enum.map(@files, &Path.join(dir, &1 <> ".jsonl")) ++
+        Enum.map(manifest["artifacts"], &Path.join([dir, "artifacts", &1["id"] <> ".bin"]))
+
+    Enum.reduce_while(paths, {:ok, 0}, fn path, {:ok, bytes} ->
+      case File.lstat(path) do
+        {:ok, %File.Stat{type: :regular, size: size}} when bytes + size <= @max_bytes ->
+          {:cont, {:ok, bytes + size}}
+
+        _ ->
+          {:halt, {:error, {:missing_or_oversize_file, Path.basename(path)}}}
+      end
+    end)
+    |> case do
+      {:ok, _} -> :ok
+      error -> error
     end
   end
 
-  defp seq_order(%{"id" => _id}, _state), do: :ok
-  defp seq_order(_line, _state), do: {:error, :invalid_line}
+  defp valid_highwater?(%{"history_seq" => seq, "operations" => operations}),
+    do: is_integer(seq) and seq in 1..100_000 and is_map(operations)
 
-  defp verify_artifacts(_dir, %{"artifacts" => []}), do: {:ok, 0}
+  defp valid_highwater?(_), do: false
 
-  defp verify_artifacts(dir, %{"artifacts" => artifacts}) when is_list(artifacts) do
-    Enum.reduce_while(artifacts, {:ok, 0}, &verify_artifact(dir, &1, &2))
+  defp verify_files(dir, manifest) do
+    Enum.reduce_while(@files, {:ok, %{}}, fn name, {:ok, acc} ->
+      with {:ok, bytes} <- read_file(Path.join(dir, name <> ".jsonl"), @max_bytes),
+           true <- Codec.hash(bytes) == manifest["files"][name]["sha256"],
+           {:ok, rows} <- lines(bytes),
+           true <- length(rows) == manifest["files"][name]["count"] do
+        {:cont, {:ok, Map.put(acc, name, rows)}}
+      else
+        false -> {:halt, {:error, :digest_or_count_mismatch}}
+        error -> {:halt, error}
+      end
+    end)
   end
 
-  defp verify_artifacts(_dir, _manifest), do: {:error, :invalid_data}
-
-  defp verify_artifact(dir, artifact, {:ok, count}) do
-    path = Path.join(dir, artifact["path"] || "")
-
-    case read_file(path) do
-      {:ok, bytes} -> verify_artifact_bytes(bytes, artifact, count)
-      {:error, _reason} -> {:halt, {:error, {:artifact_missing, artifact["id"]}}}
+  defp lines(bytes) do
+    bytes
+    |> String.split("\n", trim: true)
+    |> Enum.reduce_while({:ok, []}, fn line, {:ok, acc} ->
+      case Codec.decode(line, :event) do
+        {:ok, row} when is_map(row) -> {:cont, {:ok, [row | acc]}}
+        _ -> {:halt, {:error, :invalid_line}}
+      end
+    end)
+    |> case do
+      {:ok, rows} -> {:ok, Enum.reverse(rows)}
+      error -> error
     end
   end
 
-  defp verify_artifact_bytes(bytes, artifact, count) do
-    cond do
-      byte_size(bytes) != artifact["size"] ->
-        {:halt, {:error, {:artifact_size, artifact["id"]}}}
+  defp verify_artifacts(dir, manifest) do
+    Enum.reduce_while(manifest["artifacts"], {:ok, %{}}, fn a, {:ok, acc} ->
+      with true <- is_map(a) and Codec.uuid?(a["id"]),
+           {:ok, bytes} <- read_file(Path.join([dir, "artifacts", a["id"] <> ".bin"]), 16_777_216),
+           true <- byte_size(bytes) == a["size"] and Codec.hash(bytes) == a["digest"] do
+        {:cont, {:ok, Map.put(acc, a["id"], bytes)}}
+      else
+        _ -> {:halt, {:error, :artifact_missing_or_corrupt}}
+      end
+    end)
+  end
 
-      Codec.hash(bytes) != artifact["digest"] ->
-        {:halt, {:error, {:artifact_digest, artifact["id"]}}}
+  defp content(m, files, artifacts) do
+    events = files["events"]
 
-      true ->
-        {:cont, {:ok, count + 1}}
+    with true <- Enum.map(events, & &1["seq"]) == Enum.to_list(1..m["high_water"]["history_seq"]),
+         true <- Enum.all?(events, &(&1["scope_id"] == m["agent_id"])),
+         true <-
+           length(files["definition"]) == 1 and hd(files["definition"])["id"] == m["agent_id"] do
+      verify_content(m, files, artifacts)
+    else
+      _ -> {:error, :invalid_history}
     end
   end
 
-  defp read_file(path) do
-    case File.read(path) do
-      {:ok, bytes} -> {:ok, bytes}
-      {:error, _reason} -> {:error, :invalid_data}
+  defp verify_content(
+         %{"redaction" => %{"policy" => "drop_content", "restorable" => false}},
+         files,
+         artifacts
+       ) do
+    if map_size(artifacts) == 0 and
+         Enum.all?(List.flatten(Map.values(files)), &Map.has_key?(&1, "redacted")),
+       do: :ok,
+       else: {:error, :inconsistent_manifest}
+  end
+
+  defp verify_content(
+         %{"redaction" => %{"policy" => "none", "restorable" => true}} = m,
+         files,
+         artifacts
+       ) do
+    with {:ok, control} <- Reducer.replay(Reducer.new(m["agent_id"]), files["events"]),
+         true <- Enum.all?(files["operations"], &valid_operation_record?/1),
+         true <-
+           Map.new(files["operations"], &{&1["operation"]["id"], &1["operation"]["history_seq"]}) ==
+             m["high_water"]["operations"],
+         {:ok, ids} <- References.ids(Map.values(files)),
+         true <- covered_artifacts?(ids, artifacts, m["missing"]),
+         true <- covered_operations?(control, files["operations"], m["missing"]),
+         :ok <- TraceVerifier.closure(control, files, artifacts, m["missing"]) do
+      :ok
+    else
+      _ -> {:error, :invalid_reference}
+    end
+  end
+
+  defp verify_content(_, _, _), do: {:error, :inconsistent_manifest}
+
+  defp valid_operation_record?(
+         %{
+           "operation" => op,
+           "prepared_event" => prepared,
+           "accepted_event" => accepted
+         } = row
+       ),
+       do:
+         TraceSnapshot.valid_operation(op, prepared, accepted) == :ok and
+           TraceSnapshot.valid_evidence(row) == :ok
+
+  defp valid_operation_record?(_), do: false
+
+  defp covered_artifacts?(ids, artifacts, missing),
+    do: Enum.all?(ids, &(Map.has_key?(artifacts, &1) or omitted?(missing, "artifact", &1)))
+
+  defp covered_operations?(control, rows, missing) do
+    ids = Enum.map(rows, & &1["operation"]["id"])
+
+    required =
+      Enum.map(control["pending"] ++ control["consumed"], & &1["operation_id"]) ++
+        Enum.flat_map(control["inheritance"]["closure"], fn ref ->
+          if ref["type"] == "inherited_result", do: [ref["reference"]["operation_id"]], else: []
+        end)
+
+    Enum.all?(required, &(&1 in ids or omitted?(missing, "operation", &1)))
+  end
+
+  defp omitted?(missing, kind, id),
+    do: Enum.any?(missing, &(&1["kind"] == kind and &1["id"] == id))
+
+  defp empty_directory(dir) do
+    with :ok <- mkdir(dir),
+         {:ok, []} <- File.ls(dir),
+         do: :ok,
+         else: (_ -> {:error, :export_directory_not_empty})
+  end
+
+  defp mkdir(dir), do: normalize_file(File.mkdir_p(dir))
+  defp file_write(path, bytes), do: normalize_file(File.write(path, bytes))
+  defp normalize_file(:ok), do: :ok
+  defp normalize_file(_), do: {:error, :invalid_data}
+
+  defp read_file(path, limit) do
+    with {:ok, %File.Stat{type: :regular, size: size}} <- File.lstat(path),
+         true <- size <= limit,
+         {:ok, bytes} <- File.read(path) do
+      {:ok, bytes}
+    else
+      _ -> {:error, {:missing_or_oversize_file, Path.basename(path)}}
     end
   end
 
   defp decode(bytes) do
     case Jason.decode(bytes) do
-      {:ok, value} -> {:ok, value}
+      {:ok, m} when is_map(m) -> {:ok, m}
       _ -> {:error, :invalid_data}
     end
   end
 
-  defp decode_line(chunk) do
-    bytes = String.trim_trailing(chunk, "\n")
-
-    case Jason.decode(bytes) do
-      {:ok, value} -> {:ok, value}
-      _ -> {:error, :invalid_line}
-    end
-  end
+  defp digest(hash), do: hash |> :crypto.hash_final() |> Base.encode16(case: :lower)
 end
