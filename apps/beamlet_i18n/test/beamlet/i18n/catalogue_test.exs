@@ -63,13 +63,13 @@ defmodule Beamlet.I18n.CatalogueTest do
     }
 
     lookups =
-      for app <- ["beamlet_web", "beamlet_cli"],
+      for app <- ["beamlet_app_web", "beamlet_cli"],
           source <- CatalogueFiles.sources(app),
           {:gettext, msgid} <- scan(source),
           do: {app, Path.basename(source), "default", msgid}
 
     error_lookups =
-      for app <- ["beamlet_web", "beamlet_cli"],
+      for app <- ["beamlet_app_web", "beamlet_cli"],
           source <- CatalogueFiles.sources(app),
           {:dgettext, domain, msgid} <- scan(source),
           do: {app, Path.basename(source), domain, msgid}

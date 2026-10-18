@@ -3,7 +3,7 @@
 ## 1. Scope / Trigger
 
 Use for the read-only management LiveViews, their bounded reads and diagnostics links.
-Sources: apps/beamlet_web/lib/beamlet_web/live/{management_reads,management_live}.ex,
+Sources: apps/beamlet_app_web/lib/beamlet_web/live/{management_reads,management_live}.ex,
 router.ex, and the workbench links/components. Management is discovery, not
 administration: navigation is not authorization and no mutation exists. Browser/visual
 verification was later executed in a real local browser (34/35 checks; the 390px viewport

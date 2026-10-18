@@ -20,7 +20,7 @@ This is text logging with request metadata, not JSON structured logging.
 level or formatter. Keep additions compatible with the existing request-ID
 surface rather than assuming fields such as Agent IDs or action IDs already exist.
 
-`apps/beamlet_web/lib/beamlet_web/endpoint.ex` installs `Plug.RequestId` before
+`apps/beamlet_app_web/lib/beamlet_web/endpoint.ex` installs `Plug.RequestId` before
 `Plug.Telemetry` with `event_prefix: [:phoenix, :endpoint]`. It also installs
 `Phoenix.LiveDashboard.RequestLogger` with `request_logger` parameter/cookie keys.
 For request diagnostics, inspect those framework hooks before adding a parallel
@@ -28,8 +28,8 @@ request logger.
 
 ## Metrics: Definitions, Events, and Reporters Are Separate
 
-`apps/beamlet_web/lib/beamlet_web/application.ex` starts `Beamlet.Web.Telemetry`.
-`apps/beamlet_web/lib/beamlet_web/telemetry.ex` defines Phoenix endpoint, router,
+`apps/beamlet_app_web/lib/beamlet_web/application.ex` starts `Beamlet.Web.Telemetry`.
+`apps/beamlet_app_web/lib/beamlet_web/telemetry.ex` defines Phoenix endpoint, router,
 socket/channel and VM metrics. Representative definitions are:
 
 ```elixir
@@ -51,17 +51,17 @@ an empty list. The console reporter is only commented out; there is no configure
 metrics exporter or app-defined event emission in current source.
 
 The development dashboard uses `metrics: Beamlet.Web.Telemetry` in
-`apps/beamlet_web/lib/beamlet_web/router.ex`. Dashboard metric display is not
+`apps/beamlet_app_web/lib/beamlet_web/router.ex`. Dashboard metric display is not
 persistent metric storage or error tracking. The actual web dependencies are in
-`apps/beamlet_web/mix.exs`; `telemetry` is transitive in `mix.lock`.
+`apps/beamlet_app_web/mix.exs`; `telemetry` is transitive in `mix.lock`.
 
 ## Development Diagnostics and Pitfalls
 
-- `apps/beamlet_web/assets/js/app.js` enables server-log streaming to the browser
+- `apps/beamlet_app_web/assets/js/app.js` enables server-log streaming to the browser
   when the live-reload hook attaches in development. Logs may be browser-visible;
   keep credentials and readable session contents out of diagnostic output (see
   [State and Persistence](./database-guidelines.md)).
-- `apps/beamlet_web/lib/beamlet_web/endpoint.ex` gates Tidewave, which permits
+- `apps/beamlet_app_web/lib/beamlet_web/endpoint.ex` gates Tidewave, which permits
   runtime code execution, on `Mix.env() == :dev`. Router debugger CSP allowances
   are also development-only; `config/dev.exs` binds LiveDebugger to loopback.
   Preserve those guards when modifying diagnostics.

@@ -6,7 +6,7 @@ import Config
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :beamlet_web, Beamlet.Web.Endpoint,
+config :beamlet_app_web, Beamlet.Web.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}],
@@ -53,4 +53,4 @@ config :live_debugger,
   port: 4007
 
 # Enable dev routes for dashboard and mailbox
-config :beamlet_web, dev_routes: true
+config :beamlet_app_web, dev_routes: true

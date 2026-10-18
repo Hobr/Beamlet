@@ -14,7 +14,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 dir="${DURABLE_E2E_DIR:-$(mktemp -d -t beamlet-durable-e2e-XXXXXX)}"
-test_file="apps/beamlet_daemon/test/beamlet/durable_e2e_test.exs"
+test_file="apps/beamlet_app_server/test/beamlet/durable_e2e_test.exs"
 
 mkdir -p "$dir"
 export DURABLE_E2E_DIR="$dir"

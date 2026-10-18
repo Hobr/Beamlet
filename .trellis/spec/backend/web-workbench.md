@@ -3,7 +3,7 @@
 ## 1. Scope / Trigger
 
 Use for LiveView command ownership, discovery, Agent observation and shared inspectors.
-Implemented sources: `apps/beamlet_web/lib/beamlet_web/live/{owned_call,workbench_commands,workbench_live}.ex`, adjacent HEEx, ObservationComponents and assets/js/app.js.
+Implemented sources: `apps/beamlet_app_web/lib/beamlet_web/live/{owned_call,workbench_commands,workbench_live}.ex`, adjacent HEEx, ObservationComponents and assets/js/app.js.
 Source engineering independently reviewed. A real local browser walkthrough was executed later (geckodriver0.36.0+Firefox158 headless, deterministic host) and passed34/35 checks with no product defect; the one blocked item is the390px viewport (see §6).
 
 ## 2. Signatures

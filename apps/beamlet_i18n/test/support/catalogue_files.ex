@@ -10,8 +10,8 @@ defmodule Beamlet.I18n.CatalogueFiles do
   @catalogues [
     shared_default: {:beamlet_i18n, "default"},
     shared_errors: {:beamlet_i18n, "errors"},
-    web_default: {:beamlet_web, "default"},
-    web_errors: {:beamlet_web, "errors"},
+    web_default: {:beamlet_app_web, "default"},
+    web_errors: {:beamlet_app_web, "errors"},
     cli_default: {:beamlet_cli, "default"}
   ]
 
@@ -72,7 +72,7 @@ defmodule Beamlet.I18n.CatalogueFiles do
     __DIR__
     |> Path.expand()
     |> ancestors()
-    |> Enum.find(fn dir -> File.dir?(Path.join([dir, "apps", "beamlet_web", "lib"])) end) ||
+    |> Enum.find(fn dir -> File.dir?(Path.join([dir, "apps", "beamlet_app_web", "lib"])) end) ||
       raise "could not locate the umbrella root from #{__DIR__}"
   end
 

@@ -137,13 +137,13 @@ supervisor explicitly starts `{Beamlet.Node, options}`; all seven combinations
 are tested as running trees, including a three-role local model turn through Gateway.
 `Beamlet.Node.Cluster` owns trusted-name validation, a single connection attempt
 with a five-second helper budget, and connected-node allowlist filtering (at most32
-trusted ASCII names, each at most255 bytes). No CLI/daemon dependency is introduced.
+trusted ASCII names, each at most255 bytes). No CLI/server dependency is introduced.
 CLI owns the terminal client and bounded foreground session; its opt-in Application
 starts only interaction, and ordinary loading remains empty.
-Daemon is disabled by default, explicitly supervises Node when enabled, and accepts
+Server is disabled by default, explicitly supervises Node when enabled, and accepts
 only authority/executor startup role selections. Its owned temporary task connects
 validated peers once after Node is ready, without blocking supervision or retrying
-business work. Daemon release/runtime config now replace the old Node entrypoint; see
+business work. Server release/runtime config now replace the old Node entrypoint; see
 [Backend CLI and Release](./backend-release.md).
 
 ## 4. Validation & Error Matrix

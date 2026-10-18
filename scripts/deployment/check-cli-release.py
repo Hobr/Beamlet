@@ -33,10 +33,10 @@ def main():
         manifest = "".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root / 'cli')}\n" for p in sorted((root / "cli").rglob("*")) if p.is_file())
         (logs / "copied-cli-manifest.sha256").write_text(manifest)
         (logs / "copied-cli-tree.sha256").write_text(hashlib.sha256(manifest.encode()).hexdigest() + "\n")
-        forbidden = re.compile(r"^(beamlet_config|beamlet_daemon|beamlet_web|phoenix.*|plug.*|bandit|websock.*)-")
+        forbidden = re.compile(r"^(beamlet_daemon|beamlet_web|beamlet_config|beamlet_app_server|beamlet_app_web|phoenix.*|plug.*|bandit|websock.*)-")
         assert not any(forbidden.match(p.name) for p in (root / "cli/lib").iterdir())
         cookie = secrets.token_hex(24)
-        daemon = named.Service(root, logs, "cli_authority", 'config :beamlet_daemon, node: [limits: [refresh_ms: 20]]', cookie)
+        daemon = named.Service(root, logs, "cli_authority", 'config :beamlet_app_server, node: [limits: [refresh_ms: 20]]', cookie)
         authority = daemon.env["RELEASE_NODE"]
         runtime = root / "cli/releases/0.1.0/runtime.exs"
         runtime.write_text(runtime.read_text() + f'\nconfig :beamlet_cli, allowed_nodes: ["{authority}"]\n')

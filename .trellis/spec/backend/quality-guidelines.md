@@ -5,17 +5,17 @@
 `.editorconfig` specifies UTF-8, LF, two-space indentation, final newline, and no
 trailing whitespace. Root `.formatter.exs` includes root Mix/config/benchmark
 files and delegates to `apps/*`. Child formatters cover Elixir source/tests;
-`apps/beamlet_web/.formatter.exs` imports Phoenix and uses
+`apps/beamlet_app_web/.formatter.exs` imports Phoenix and uses
 `Phoenix.LiveView.HTMLFormatter` for HEEx. Use those formatters rather than
 reformatting by hand.
 
 Follow nearby modules: snake_case file/function names and `Beamlet.*` modules
 (e.g. `apps/beamlet_agent/lib/beamlet/agent.ex` and
-`apps/beamlet_web/lib/beamlet_web/controllers/page_controller.ex`). Public stub
+`apps/beamlet_app_web/lib/beamlet_web/controllers/page_controller.ex`). Public stub
 modules have `@moduledoc`/`@doc` with doctests, while Application callbacks use
 `@moduledoc false` and `@impl true`; this is scaffolding evidence, not a mature
 domain typing or documentation policy. Web setup belongs in
-`apps/beamlet_web/lib/beamlet_web.ex`; reuse its imports and verified routes.
+`apps/beamlet_app_web/lib/beamlet_web.ex`; reuse its imports and verified routes.
 
 ## Commands and Their Scope
 
@@ -32,15 +32,24 @@ Run these from the repository root unless noted:
 | Compile | `mix compile` (`README.md`) |
 | Format/check Elixir and HEEx | `mix format` / `mix format --check-formatted` (`.formatter.exs`, child formatters, `.pre-commit-config.yaml`) |
 | All app tests | `mix test` (`README.md`, pre-commit test hook) |
-| Focused web regression | `mix test apps/beamlet_web/test/beamlet_web/controllers/page_controller_test.exs` from the umbrella root (child-dir form is blocked by an umbrella `:only` mismatch; see below) |
-| Static checks | `mix dialyzer`, `mix credo`, `mix sobelow` (`.pre-commit-config.yaml`, root tool deps); root alias runs `sobelow --root apps/beamlet_web --private` |
+| Focused web regression | `mix test apps/beamlet_app_web/test/beamlet_web/controllers/page_controller_test.exs` from the umbrella root (child-dir form is blocked by an umbrella `:only` mismatch; see below) |
+| Static checks | `mix dialyzer`, `mix credo`, `mix sobelow` (`.pre-commit-config.yaml`, root tool deps); root alias runs `sobelow --root apps/beamlet_app_web --private` |
 | Repository hooks | `pre-commit run --all-files` (`README.md`, `.pre-commit-config.yaml`); this includes general file hygiene, Elixir test/format hooks, Dialyzer, Credo, Sobelow, the example benchmark and CycloneDX SBoM generation |
-| Asset changes | `mix tailwind beamlet_web`, `mix esbuild beamlet_web`; add `--minify` for deploy output and `mix phx.digest` for digests. Run from the umbrella root: `cd apps/beamlet_web && mix assets.build` currently fails on an umbrella dependency-consistency check |
+| Asset changes | `mix tailwind beamlet_web`, `mix esbuild beamlet_web`; add `--minify` for deploy output and `mix phx.digest` for digests. Run from the umbrella root: `cd apps/beamlet_app_web && mix assets.build` currently fails on an umbrella dependency-consistency check |
 | Catalogue regeneration after any copy change | `mix gettext.extract --merge` from the umbrella root (it recurses over all apps, so the shared, Web and CLI catalogues are refreshed in one run); do not run extraction inside a child directory |
 | Catalogue drift gate | `mix gettext.extract --check-up-to-date` from the umbrella root; a clean exit is required before claiming the catalogues match the source |
 | Benchmark setup smoke check | `mix bench` (root alias runs `bench/enum.exs` without starting apps); this compares Enum/comprehension, not Beamlet performance |
 
-Umbrella child-directory commands are unreliable: `apps/beamlet_web` and `apps/beamlet_cli` declare `beamlet_runtime` (and CLI also `beamlet_harness`) with `only: :test`, while `apps/beamlet_node` declares `beamlet_runtime` without it, so Mix aborts any task started inside those child directories ("does not match the :only option calculated"). Root-level equivalents are authoritative until that pre-existing manifest inconsistency is resolved; do not silently drop the restriction just to make a child command run.
+Before building production assets in a fresh checkout/build environment, run
+`MIX_ENV=prod mix compile --warnings-as-errors`. Phoenix generates colocated assets
+under `_build/prod/phoenix-colocated/beamlet_app_web` during compilation; Tailwind
+and esbuild must consume that same environment. Keep their `beamlet_web` profile
+labels and the `beamlet_web` release name distinct from the OTP app identity.
+Development Endpoint watchers must also pass `:beamlet_web` to
+`Esbuild.install_and_run/2` and `Tailwind.install_and_run/2`; passing the OTP app
+`:beamlet_app_web` fails profile lookup even when production asset builds pass.
+
+Umbrella child-directory commands are unreliable: `apps/beamlet_app_web` and `apps/beamlet_cli` declare `beamlet_runtime` (and CLI also `beamlet_harness`) with `only: :test`, while `apps/beamlet_node` declares `beamlet_runtime` without it, so Mix aborts any task started inside those child directories ("does not match the :only option calculated"). Root-level equivalents are authoritative until that pre-existing manifest inconsistency is resolved; do not silently drop the restriction just to make a child command run.
 
 The local hooks use system `mix`; test and format hooks match Elixir files.
 Dialyzer, Credo, Sobelow, benchmark and SBoM hooks also match root `mix.lock`
@@ -90,7 +99,7 @@ behavioral validation, composition, lifecycle, limit and distributed tests; the
 Harness tests independently cover native contracts and actual TCP/TLS/workspace
 behavior; Agent/Node tests cover orchestration, roles, lifecycle ownership and actual peer VMs.
 
-Web tests use `apps/beamlet_web/test/support/conn_case.ex`, which imports
+Web tests use `apps/beamlet_app_web/test/support/conn_case.ex`, which imports
 `Plug.Conn`, `Phoenix.ConnTest`, and verified routes and builds a connection in
 setup with an explicit **English** session locale (`@test_locale "en"`), because
 the product ships Chinese copy by default and behaviour assertions must not depend
@@ -104,10 +113,10 @@ CLI tests that assert terminal copy set `config :beamlet_cli, :locale, "en"` and
 `Beamlet.CLI.Locale.put("en")` in setup and restore both in `on_exit`, so
 `Runner`-driven locale installation cannot leak into later assertions. Locale
 behaviour itself is covered by `apps/beamlet_cli/test/beamlet/i18n_test.exs`,
-`apps/beamlet_web/test/beamlet_web/i18n_test.exs` and the catalogue ownership
+`apps/beamlet_app_web/test/beamlet_web/i18n_test.exs` and the catalogue ownership
 tests in `apps/beamlet_i18n/test`.
 
-From `apps/beamlet_web/test/beamlet_web/controllers/page_controller_test.exs`:
+From `apps/beamlet_app_web/test/beamlet_web/controllers/page_controller_test.exs`:
 
 ```elixir
 test "GET /", %{conn: conn} do
@@ -120,8 +129,8 @@ The same file tests the CSP nonce in both response policy and rendered script,
 a 16-byte decoded nonce, a fresh value per response, secure headers, and absence
 of unsafe script policy/debugger allowance in test. Preserve this router/layout
 contract when editing scripts:
-`apps/beamlet_web/lib/beamlet_web/router.ex` assigns the nonce and
-`apps/beamlet_web/lib/beamlet_web/components/layouts/root.html.heex` consumes it.
+`apps/beamlet_app_web/lib/beamlet_web/router.ex` assigns the nonce and
+`apps/beamlet_app_web/lib/beamlet_web/components/layouts/root.html.heex` consumes it.
 Do not relax CSP to bypass a rendering failure. Error HTML/JSON tests in that
 controller test directory use `ConnCase, async: true` and check 404/500 renderers;
 the page tests do not opt into async. Follow a test's actual state needs rather
@@ -219,7 +228,7 @@ release. Do not infer cross-VM ordering from an unsorted trace.
 
 The deadline repair independent gate passed25 focused plus5 temporary adversarial
 cases. Inspected broader gates passed230 ordinary/29 distributed excluded and27
-named Runtime/Node/CLI distributed/129 ordinary excluded; two Daemon distributed
+named Runtime/Node/CLI distributed/129 ordinary excluded; two Server distributed
 cases were not included. Existing-PLT Dialyzer passed with no refresh. The earlier
 60s-interrupted distributed run is incomplete, not a pass. Preserve it separately
 from the bounded replacement. One historical composition100ms failure remains

@@ -8,13 +8,79 @@ adapter and its HTTP/workspace integration test belong to CLI:
 Trusted cluster naming/connection/filtering belongs to
 `apps/beamlet_node/lib/beamlet/node/cluster.ex`. Agent remains the business loop.
 
-Daemon and CLI are opt-in hosts with separate beamlet_daemon/beamlet_cli releases.
+Server and Web are independent OTP hosts `beamlet_app_server` and `beamlet_app_web`,
+with callbacks `Beamlet.Server.Application` and `Beamlet.Web.Application`. Their
+native releases are `beamlet_server` (also the default for unnamed `mix release`)
+and `beamlet_web`; CLI retains `beamlet_cli`. `app` identifies a standalone host,
+not whether the remaining libraries are OTP applications. This migration removes
+the former host app/module identities without compatibility. Rebuild complete
+artifacts and update config namespaces; see `scripts/deployment/README.md` for
+the old-to-new mapping. Use foreground `start` under systemd/containers; native
+Unix `daemon`, `remote`, `rpc`, `pid` and `stop` remain available.
 CLI owns a foreground command session and uses shared discovery/lookup APIs.
 Independent CLI repair review returned READY and parent AC1–AC9 acceptance is
 recorded in the parent task's research/final-acceptance.md. The approved commit
 batch is recorded separately; archive/journal remain deferred. The old Node release,
 backend_runtime.exs and node example
 are removed, without compatibility forwarding.
+
+## Scenario: keep host identity separate from release and asset profiles
+
+### 1. Scope / Trigger
+
+Use when renaming a host, changing release selection or moving Phoenix assets.
+Host application identity, executable name and asset profile are separate contracts.
+
+### 2. Signatures
+
+```text
+BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release
+BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_server
+MIX_ENV=prod mix release beamlet_web
+bin/beamlet_server start|daemon|remote|pid|stop
+bin/beamlet_server rpc 'Beamlet.Node.observation()'
+```
+
+### 3. Contracts
+
+The default/explicit Server release starts `:beamlet_app_server`; the Web release
+starts `:beamlet_app_web`. Both use the default bundled runtime.exs and native
+RELEASE_NAME/RELEASE_NODE/RELEASE_COOKIE settings. Source loading stays opt-in.
+Web asset profiles and development watcher arguments remain `:beamlet_web`.
+Compile production Web before building colocated assets in that environment;
+see quality-guidelines.md for commands. No legacy app/module/config aliases exist.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| No release argument | Select beamlet_server |
+| Removed beamlet_daemon release argument | Unknown release; no forwarding |
+| Web production without SECRET_KEY_BASE | Startup configuration fails |
+| Server production without Web secret | Server still starts |
+| Watcher uses app identity as profile | Invalid setup; profile lookup fails |
+| Failed daemon readiness/control | Original failure retained; owned VM cleaned |
+
+### 5. Good / Base / Bad Cases
+
+Good: configure `:beamlet_app_web` and run `mix esbuild beamlet_web`.
+Base: run foreground start under a service manager.
+Bad: substitute an OTP app atom into every release/profile position or overlay
+old lib contents onto a renamed artifact.
+
+### 6. Tests Required
+
+Inspect actual .rel/.app closures and removed modules in fresh artifacts; execute
+copied start/RPC/pid/stop and Unix daemon launch/readiness/actual exit. Verify
+failed-readiness cleanup as well as normal shutdown. Exercise Web HTTP, digested
+CSS/JS, secret rejection and both actual watcher profile lookups. Preserve named
+role/bootstrap tests and verify ordinary loading creates no Node tree.
+
+### 7. Wrong vs Correct
+
+Wrong: infer development watchers work because production assets passed.
+Correct: check Esbuild/Tailwind profile lookups with the configured watcher
+arguments, in addition to production compilation and copied HTTP checks.
 
 ## 2. Current interfaces
 
@@ -74,9 +140,9 @@ history; subscriber loss does not own the Agent lifetime.
 | Receive deadline/loss | timeout_or_loss, or underlying unavailable during control |
 | Dead ref/start failure | public Agent error; no fallback/retry |
 
-## 4. Daemon host, runtime and packaging
+## 4. Server host, runtime and packaging
 
-Beamlet.Daemon.configuration/1 normalizes enabled/node/allowed_nodes/peers, rejects
+Beamlet.Server.configuration/1 normalizes enabled/node/allowed_nodes/peers, rejects
 unknown/duplicate host and Node option keys, and delegates resource/provider
 validation to Node.configuration/1. enabled defaults false; node.roles defaults
 [:authority, :executor]. Only [:authority], [:executor] or either ordering of both
@@ -84,7 +150,7 @@ are valid. Empty, duplicate, interaction and unknown roles reject before any rol
 starts. No runtime reconfiguration/role switching API exists. A fixed-name Node
 still means one tree per VM, not simultaneous enabled hosts in the umbrella.
 
-Daemon.Application explicitly supervises Node then a temporary Bootstrap Task when
+Server.Application explicitly supervises Node then a temporary Bootstrap Task when
 enabled. The task connects distinct peers (max32, subset of validated allowed_nodes)
 sequentially once via Cluster. Network completion does not block Supervisor.init.
 Each attempt has Cluster's five-second helper budget; a full failed list can take
@@ -100,7 +166,7 @@ default bundled `config/runtime.exs` (`releases/<version>/runtime.exs`); there i
 custom runtime_config_path, config provider, external-config discovery, CLI
 `--config` flag, wrapper or deployment environment variable. `runtime.exs` reads the
 native `RELEASE_NAME` only to enable the selected host; ordinary source/library
-loading stays opt-in. Daemon/CLI production releases do not configure Web or need
+loading stays opt-in. Server/CLI production releases do not configure Web or need
 SECRET_KEY_BASE; packaged Web and source-run production Web still fail fast without
 it. There is no custom `rel/env.sh.eex`: node identity, cookie, distribution and VM
 options are native Mix Release settings, so no Beamlet variable or fixed service
@@ -108,11 +174,12 @@ port is required. Config scripts, including an edited bundled runtime.exs, are
 trusted executable code, not a sandbox, and their native reader exceptions are not
 sanitized by Beamlet.
 
-check-release.sh verifies copied daemon, CLI and Web .rel/.app/lib closures without
+check-release.sh verifies copied server, CLI and Web .rel/.app/lib closures without
 the opposite host, Web/Phoenix/Plug/Bandit/WebSock in backend artifacts, or the
-presentation-only `beamlet_i18n`/`gettext`/`expo` set (the daemon must never ship
-them; the CLI release legitimately does). check-named-release.py copies the daemon
+presentation-only `beamlet_i18n`/`gettext`/`expo` set (the server must never ship
+them; the CLI release legitimately does). check-named-release.py copies the server
 artifact per fixture and edits each copy's bundled runtime.exs for
+native Unix daemon launch/readiness/RPC/pid/stop/actual exit as well as
 default/authority-only/executor-only named start/RPC/pid/stop, then
 authority→executor bootstrap and a deterministic remote Gateway turn. It checks
 failed-peer local continuation, host-validation rejection without sentinel leakage
@@ -122,10 +189,10 @@ artifact and exercises native pid/rpc/stop. Copied-file manifest/hash and logs a
 retained in a printed evidence directory, overridable with BEAMLET_CHECK_LOG_DIR.
 check-release.sh expects all three artifacts (backend build plus Web assets/digest
 and `mix release beamlet_web`); a backend-only run must not be reported as a full
-pass. Seven combinations remain library tests, not daemon modes or role-specific
+pass. Seven combinations remain library tests, not server modes or role-specific
 build artifacts.
 
-Deployment instructions/example are under scripts/deployment (daemon.example.exs).
+Deployment instructions/example are under scripts/deployment (server.example.exs).
 The unchanged bounded Python HTTP fixture and migrated CLI integration retain
 complete Tool-observation digest/correlation, wrong environment, fresh capacity,
 held-request stop and executor loss/no replay. check-local runs all three release
@@ -138,9 +205,9 @@ physical deployment or paid provider evidence is implied.
 
 ## 5. Durable storage in the packaged hosts
 
-`storage:` is optional daemon application configuration in shared config or the
+`storage:` is optional server application configuration in shared config or the
 packaged release's bundled `runtime.exs`; it is not a separate external document.
-The daemon release ships `beamlet_storage`/Ecto/Exqlite/Postgrex in its
+The server release ships `beamlet_storage`/Ecto/Exqlite/Postgrex in its
 closure and opens exactly the datasets the configured roles need. The CLI host is
 fixed interaction-only: no database, no storage key, release entrypoint unchanged.
 `Beamlet.Storage.Host.status/1` reports durable admission (a live format check plus
@@ -148,9 +215,10 @@ a real rolled-back write) separately from Node/Repo readiness; durable
 submit/accept are refused while it is off, and recovery re-admits on a fresh probe
 without a restart. Migration is the explicit `mix beamlet.storage.migrate` (or
 `Beamlet.Storage.Operator.initialize/2` via release `eval`) operator action; boot
-never migrates, creates or repairs a dataset. `$REL start` is foreground and
-`$REL rpc` is unusable in this environment; probe with a separate
-`erl -name ... -setcookie ... -eval 'rpc:call(...)'` node.
+never migrates, creates or repairs a dataset. `$REL start` is foreground;
+`$REL rpc`, `pid`, and `stop` are the native controls. The durable e2e fixture
+also uses a separate Erlang RPC node; its historical control-port workaround
+does not replace the native copied-release controls gate.
 
 ## 6. Tests and evidence boundaries
 
@@ -187,14 +255,14 @@ artifacts. Current stage evidence lives in the node-library task research note.
 Active LSP timeout/unavailability is inconclusive, not clean. Physical multi-host
 and paid provider execution remain untested and are not claimed.
 
-Daemon-stage regression evidence is recorded separately in
+Server-stage regression evidence is recorded separately in
 `.trellis/tasks/archive/2026-10/10-17-daemon-host/research/implementation-evidence.md`; prerequisite
-Node evidence above is not proof of this new release. Daemon tests assert empty
+Node evidence above is not proof of this new release. Server tests assert empty
 ordinary startup, all three actual trees, safe invalid host/resource rejection,
 failed-peer continuation and actual startup task/controller/helper DOWN while a
 peer remains suspended, both on deadline and host loss.
 
-Daemon independent acceptance resolved two startup/checker regressions: Node must
+Server independent acceptance resolved two startup/checker regressions: Node must
 validate common Runtime limits for every role set before returning children, and
 copied-service cleanup must attempt both services even when the first stop fails.
 Preserve the original startup/RPC exception and every nested cleanup note so a
@@ -202,7 +270,7 @@ failed fallback wait remains visible in the final traceback. The six Python
 fault-injection regressions cover stop/timeout/nonzero, fallback failures and
 composed multi-service failures with and without an original RPC exception.
 Deployment checks require Python3.11+ (`sys.exception`/`add_note`). Final independent
-review verified all six tests plus the original composed probe; daemon acceptance
+review verified all six tests plus the original composed probe; server acceptance
 does not attest pending parent static-analysis or CLI integration gates.
 
 ## Foreground CLI host
@@ -221,9 +289,9 @@ Only successful explicit close removes aliases for that Ref. Watch remains in th
 same subscribe/ack sink with existing limits and injectable output.
 
 Root backend compilation includes both hosts; each `mix release` closes over its
-own dependencies. CLI excludes daemon/Web and daemon excludes CLI/Web. Both use
+own dependencies. CLI excludes server/Web and server excludes CLI/Web. Both use
 host-specific runtime Config and preserve named service/control port policy.
-Deployment checks cover copied closure, same-daemon three modes, and independent
+Deployment checks cover copied closure, same-server three modes, and independent
 foreground CLI sessions with identity retained across quit and EOF. Validation
 counts/fingerprints belong in current CLI research evidence, not historical gates.
 

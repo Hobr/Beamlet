@@ -2,12 +2,25 @@
 set -euo pipefail
 # One copied artifact, three startup configurations; library tests own seven roles.
 script_dir=$(cd "$(dirname "$0")" && pwd)
-release=$(realpath "${1:-_build/backend/prod/rel/beamlet_daemon}")
+release=$(realpath "${1:-_build/backend/prod/rel/beamlet_server}")
 cli_release=$(realpath "${2:-_build/backend/prod/rel/beamlet_cli}")
 web_release=$(realpath "${3:-_build/prod/rel/beamlet_web}")
 work=$(mktemp -d /tmp/beamlet-release.XXXXXX)
 logs=${BEAMLET_CHECK_LOG_DIR:-$(mktemp -d /tmp/beamlet-release-logs.XXXXXX)}
 mkdir -p "$logs"
+# Inspect every complete artifact, including modules that are not loaded by boot.
+python3 - "$release" "$cli_release" "$web_release" <<'PY'
+import sys
+from pathlib import Path
+
+for artifact, expected in zip(sys.argv[1:], ["beamlet_app_server", "beamlet_cli", "beamlet_app_web"]):
+    root = Path(artifact)
+    apps = {p.stem for p in root.glob("lib/*/ebin/*.app")}
+    assert expected in apps, (artifact, expected)
+    assert not {"beamlet_daemon", "beamlet_web"} & apps, (artifact, apps)
+    assert not list(root.glob("lib/*/ebin/Elixir.Beamlet.Daemon*.beam")), artifact
+    assert not (root / "bin/beamlet_daemon").exists(), artifact
+PY
 trap 'rm -rf "$work"' EXIT
 cp -a "$release" "$work/release"
 printf 'Release evidence: %s\n' "$logs"
@@ -18,20 +31,20 @@ printf 'Release evidence: %s\n' "$logs"
 sha256sum "$logs/copied-manifest.sha256" | tee "$logs/copied-tree.sha256"
 # Presentation-only apps (and their Gettext/Expo dependencies) must stay out of the
 # daemon closure too: `beamlet_i18n` is a leaf for Web and CLI copy, not core.
-if find "$work/release/lib" -maxdepth 1 -type d | grep -Ei '/(beamlet_config|beamlet_cli|beamlet_web|beamlet_i18n|gettext|expo|phoenix[^/]*|bandit|plug[^/]*|websock[^/]*)-'; then
+if find "$work/release/lib" -maxdepth 1 -type d | grep -Ei '/(beamlet_daemon|beamlet_web|beamlet_config|beamlet_cli|beamlet_app_web|beamlet_i18n|gettext|expo|phoenix[^/]*|bandit|plug[^/]*|websock[^/]*)-'; then
   echo 'Forbidden host/Web artifact shipped' >&2
   exit 1
 fi
-cat "$work/release/releases/0.1.0/beamlet_daemon.rel" >"$logs/release.rel"
+cat "$work/release/releases/0.1.0/beamlet_server.rel" >"$logs/release.rel"
 find "$work/release/lib" -name '*.app' -print | sort >"$logs/app-paths.log"
 export RELEASE_NODE="closure_$$@127.0.0.1" RELEASE_DISTRIBUTION=name
 export RELEASE_COOKIE
 RELEASE_COOKIE=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 unset SECRET_KEY_BASE BEAMLET_MODEL_KEY BEAMLET_CONFIG BEAMLET_DIST_PORT
 # Native usage/version are available without former mandatory shell settings.
-for name in beamlet_daemon beamlet_cli beamlet_web; do
+for name in beamlet_server beamlet_cli beamlet_web; do
   case "$name" in
-  beamlet_daemon) artifact="$work/release" ;;
+  beamlet_server) artifact="$work/release" ;;
   beamlet_cli) artifact="$cli_release" ;;
   beamlet_web) artifact="$web_release" ;;
   esac
@@ -43,13 +56,13 @@ for name in beamlet_daemon beamlet_cli beamlet_web; do
   ! grep -q 'BEAMLET_' "$artifact/releases/0.1.0/env.sh"
 done
 cd "$work"
-./release/bin/beamlet_daemon eval '
+./release/bin/beamlet_server eval '
   forbidden? = fn app ->
-    Regex.match?(~r/\A(beamlet_config|beamlet_cli|beamlet_web|beamlet_i18n|gettext|expo|phoenix.*|plug.*|bandit|websock.*)\z/, Atom.to_string(app))
+    Regex.match?(~r/\A(beamlet_daemon|beamlet_web|beamlet_config|beamlet_cli|beamlet_app_web|beamlet_i18n|gettext|expo|phoenix.*|plug.*|bandit|websock.*)\z/, Atom.to_string(app))
   end
   root = System.fetch_env!("RELEASE_ROOT")
   {:ok, [{:release, _, _, apps}]} =
-    :file.consult(String.to_charlist(Path.join(root, "releases/0.1.0/beamlet_daemon.rel")))
+    :file.consult(String.to_charlist(Path.join(root, "releases/0.1.0/beamlet_server.rel")))
   false = Enum.any?(apps, fn app -> forbidden?.(elem(app, 0)) end)
   for file <- Path.wildcard(Path.join(root, "lib/*/ebin/*.app")) do
     {:ok, [{:application, app, properties}]} = :file.consult(String.to_charlist(file))
@@ -93,7 +106,7 @@ from pathlib import Path
 
 root, logs, scripts = map(Path, sys.argv[1:])
 report_cleanup_failures = runpy.run_path(str(scripts / "check-named-release.py"))["report_cleanup_failures"]
-assert not any(re.match(r"beamlet_(daemon|cli|config)-", p.name) for p in (root / "lib").iterdir())
+assert not any(re.match(r"beamlet_(daemon|app_server|cli|config)-", p.name) for p in (root / "lib").iterdir())
 launcher = str(root / "bin/beamlet_web")
 env = os.environ.copy()
 for key in ["BEAMLET_CONFIG", "BEAMLET_DIST_PORT", "RELEASE_NODE", "RELEASE_COOKIE", "RELEASE_DISTRIBUTION", "SECRET_KEY_BASE"]:
@@ -106,7 +119,7 @@ with socket.socket() as sock:
     port = sock.getsockname()[1]
 # Test-only listener fixture in the copied artifact; no new deployment variable.
 runtime = root / "releases/0.1.0/runtime.exs"
-runtime.write_text(runtime.read_text() + f'\nconfig :beamlet_web, Beamlet.Web.Endpoint, http: [ip: {{127, 0, 0, 1}}, port: {port}]\n')
+runtime.write_text(runtime.read_text() + f'\nconfig :beamlet_app_web, Beamlet.Web.Endpoint, http: [ip: {{127, 0, 0, 1}}, port: {port}]\n')
 env["SECRET_KEY_BASE"] = secrets.token_urlsafe(64)
 process = None
 with (logs / "web-boot.log").open("wb") as log:
@@ -130,7 +143,7 @@ with (logs / "web-boot.log").open("wb") as log:
                 body = response.read()
                 assert response.status == 200 and body
                 (logs / f"web-static-{index}.log").write_text(f"{path}: HTTP 200, {len(body)} bytes, {response.headers['Content-Type']}\n")
-        rpc = subprocess.run([launcher, "rpc", 'true = Process.whereis(Beamlet.Node) != nil; false = Code.ensure_loaded?(Beamlet.Daemon); false = Code.ensure_loaded?(Beamlet.CLI); IO.puts("Web host isolation passed")'], cwd=root, env=env, capture_output=True, timeout=10)
+        rpc = subprocess.run([launcher, "rpc", 'true = Process.whereis(Beamlet.Node) != nil; false = Code.ensure_loaded?(Beamlet.Server); false = Code.ensure_loaded?(Beamlet.CLI); IO.puts("Web host isolation passed")'], cwd=root, env=env, capture_output=True, timeout=10)
         (logs / "web-rpc.log").write_bytes(rpc.stdout + rpc.stderr)
         assert rpc.returncode == 0
         assert subprocess.run([launcher, "pid"], cwd=root, env=env, capture_output=True, timeout=10).returncode == 0

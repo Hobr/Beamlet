@@ -9,17 +9,17 @@
 # move said applications out of the umbrella.
 import Config
 
-config :beamlet_web,
+config :beamlet_app_web,
   namespace: Beamlet.Web,
   generators: [context_app: false]
 
 # Product copy locale. `zh_CN` is the default for Web and CLI; `en` is the other
 # supported catalogue. See apps/beamlet_i18n.
-config :beamlet_web, :default_locale, "zh_CN"
+config :beamlet_app_web, :default_locale, "zh_CN"
 config :beamlet_cli, :default_locale, "zh_CN"
 
 # Configures the endpoint
-config :beamlet_web, Beamlet.Web.Endpoint,
+config :beamlet_app_web, Beamlet.Web.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
@@ -35,7 +35,7 @@ config :esbuild,
   beamlet_web: [
     args:
       ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
-    cd: Path.expand("../apps/beamlet_web/assets", __DIR__),
+    cd: Path.expand("../apps/beamlet_app_web/assets", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]
 
@@ -47,7 +47,7 @@ config :tailwind,
       --input=assets/css/app.css
       --output=priv/static/assets/css/app.css
     ),
-    cd: Path.expand("../apps/beamlet_web", __DIR__),
+    cd: Path.expand("../apps/beamlet_app_web", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]
 

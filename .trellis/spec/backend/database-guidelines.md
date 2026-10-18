@@ -3,7 +3,7 @@
 ## Current Scope: Ephemeral and Opt-in Durable Modes
 
 Beamlet implements opt-in Ecto storage through `apps/beamlet_storage` and the
-daemon host's `storage:` configuration. Without durable wiring, the process-state
+server host's `storage:` configuration. Without durable wiring, the process-state
 boundaries below remain ephemeral.
 Runtime owns ephemeral process state: Directory snapshots, coordinator terminal
 retention, and gateway admission accounting/tombstones. None survives infrastructure
@@ -28,7 +28,7 @@ durable deduplication promises.
 ## Implemented Storage Foundation (Stage A)
 
 `apps/beamlet_storage` is an Ecto library for the persistence contract;
-Agent/Runtime durable transitions and daemon host wiring build on this foundation.
+Agent/Runtime durable transitions and server host wiring build on this foundation.
 Read `apps/beamlet_storage/README.md` before changing it. Established facts:
 
 - Authority tables: `agents`, `checkpoints`, `events`, `operations`, `executions`,
@@ -56,7 +56,7 @@ Read `apps/beamlet_storage/README.md` before changing it. Established facts:
 
 ## Implemented Durable Host Wiring (Stage F)
 
-`Beamlet.Storage.Host` is the only host wiring. `Beamlet.Daemon.configuration/1`
+`Beamlet.Storage.Host` is the only host wiring. `Beamlet.Server.configuration/1`
 accepts an optional trusted `storage:` block (`:adapter` `:sqlite` default or
 `:postgres`, `:database`, `:dataset_id`, `:journal` `[:database, :dataset_id,
 :peer_database]`, `:executor_id`); it opens only the datasets the configured roles
@@ -106,7 +106,7 @@ requirements add no Display/Observation table or new durable primitive.
 
 ## Existing State Boundaries
 
-`apps/beamlet_web/lib/beamlet_web/endpoint.ex` configures a cookie session:
+`apps/beamlet_app_web/lib/beamlet_web/endpoint.ex` configures a cookie session:
 
 ```elixir
 @session_options [
@@ -121,20 +121,20 @@ The endpoint passes these options to both LiveView socket transports and
 `Plug.Session`. As the source comment states, the session is **signed, not
 encrypted**: clients can read its contents. Keep sensitive server-only data out
 of it. The browser pipeline fetches the session; this is not a server-side
-persistence service (`apps/beamlet_web/lib/beamlet_web/router.ex`).
+persistence service (`apps/beamlet_app_web/lib/beamlet_web/router.ex`).
 
 Other current state is boundary-local: the router assigns a fresh CSP nonce per
-request, and `apps/beamlet_web/lib/beamlet_web/components/layouts/root.html.heex`
+request, and `apps/beamlet_app_web/lib/beamlet_web/components/layouts/root.html.heex`
 stores a theme preference in browser `localStorage`. Neither is Agent storage.
 `config/runtime.exs` supplies production `SECRET_KEY_BASE` from the environment;
 `config/dev.exs` and `config/test.exs` have local-only defaults.
 
 ## Misleading Scaffolding to Check
 
-`apps/beamlet_web/test/support/conn_case.ex` mentions SQL sandboxing in its
+`apps/beamlet_app_web/test/support/conn_case.ex` mentions SQL sandboxing in its
 generated module documentation, but its actual setup only returns
 `{:ok, conn: Phoenix.ConnTest.build_conn()}`. No SQL sandbox is configured.
-`apps/beamlet_web/lib/beamlet_web/components/core_components.ex` accepts
+`apps/beamlet_app_web/lib/beamlet_web/components/core_components.ex` accepts
 `Phoenix.HTML.FormField` and translates error tuples; that UI helper is not proof
 of Ecto changesets or persisted models. `priv/` currently contains static and
 translation resources, not database migrations.

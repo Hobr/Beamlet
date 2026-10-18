@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """One copied daemon, three named boots, bounded controls and a remote model turn."""
+import contextlib
 import os
 import secrets
 import shutil
@@ -19,7 +20,7 @@ class Service:
         # configuration interface. Controls remain the native Mix launcher.
         release = root / label
         shutil.copytree(root / "release", release)
-        self.executable = str(release / "bin/beamlet_daemon")
+        self.executable = str(release / "bin/beamlet_server")
         runtime = release / "releases/0.1.0/runtime.exs"
         runtime.write_text(runtime.read_text() + "\n" + settings + "\n")
         self.env = os.environ.copy()
@@ -105,6 +106,85 @@ def stop_services(*services):
     report_cleanup_failures(failures, primary)
 
 
+def daemon_smoke(root, logs, cookie):
+    """Exercise native Unix background launch and observe the actual VM exit."""
+    service = Service(root, logs, "background", "", cookie)
+    pid = None
+    try:
+        result = service.command("daemon")
+        (logs / "daemon-launch.log").write_text(result.stdout + result.stderr)
+        assert result.returncode == 0, "native daemon launch failed"
+        deadline = time.monotonic() + 20
+        while True:
+            result = service.command("rpc", "IO.puts(System.pid())", timeout=5)
+            if result.returncode == 0:
+                pid = int(result.stdout.strip())
+                break
+            assert time.monotonic() < deadline, "native daemon readiness failed"
+            time.sleep(0.1)
+        result = service.command("pid")
+        assert result.returncode == 0 and int(result.stdout.strip()) == pid
+        service.rpc("true = Process.whereis(Beamlet.Server.Supervisor) != nil")
+        assert service.command("stop").returncode == 0
+        deadline = time.monotonic() + 10
+        while vm_running(pid):
+            assert time.monotonic() < deadline, "native daemon did not exit"
+            time.sleep(0.1)
+        print("copied Server: native daemon launch/RPC/pid/stop and actual exit passed")
+    finally:
+        primary = sys.exception()
+        failures = []
+        try:
+            result = service.command("pid")
+            if result.returncode == 0:
+                pid = int(result.stdout.strip())
+            stopped = service.command("stop")
+            if pid is not None and vm_running(pid):
+                assert stopped.returncode == 0, "background cleanup stop failed"
+                deadline = time.monotonic() + 10
+                while vm_running(pid) and time.monotonic() < deadline:
+                    time.sleep(0.1)
+        except Exception as error:
+            failures.append(error)
+        # If control readiness failed, locate only this copied artifact's VM.
+        # The private copy path is unique; never print process args/cookies.
+        try:
+            result = subprocess.run(
+                ["ps", "-axo", "pid=,args="], capture_output=True, text=True,
+                timeout=5, check=True,
+            )
+            release_root = str(Path(service.executable).parents[1])
+            owned = {
+                int(line.split(None, 1)[0]) for line in result.stdout.splitlines()
+                if "beam.smp" in line and f"-root {release_root} " in line
+            }
+            if pid is not None:
+                owned.add(pid)
+            for owned_pid in owned:
+                if vm_running(owned_pid):
+                    with contextlib.suppress(ProcessLookupError):
+                        os.kill(owned_pid, 9)
+                    failures.append(AssertionError("background cleanup required killing VM"))
+        except Exception as error:
+            failures.append(error)
+        report_cleanup_failures(failures, primary)
+
+
+def vm_running(pid):
+    # A reaped-by-init zombie is no longer a running VM (container PID 1 may lag).
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    stat = Path(f"/proc/{pid}/stat")
+    if Path("/proc/self/stat").exists():
+        try:
+            return stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+        except FileNotFoundError:
+            return False
+    return True
+
+
 def main():
     logs = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(tempfile.mkdtemp(prefix="beamlet-named-logs-"))
     logs.mkdir(parents=True, exist_ok=True)
@@ -112,10 +192,11 @@ def main():
         root = Path(work)
         shutil.copytree(sys.argv[1], root / "release")
         cookie = secrets.token_hex(24)
+        daemon_smoke(root, logs, cookie)
         for role in ["default", "authority", "executor"]:
             node = "[]" if role == "default" else f"[roles: [:{role}]]"
             failed_peer = ', allowed_nodes: ["missing@127.0.0.1"], peers: ["missing@127.0.0.1"]' if role == "default" else ""
-            service = Service(root, logs, role, f"config :beamlet_daemon, node: {node}{failed_peer}", cookie)
+            service = Service(root, logs, role, f"config :beamlet_app_server, node: {node}{failed_peer}", cookie)
             try:
                 service.start()
                 service.rpc(f'''
@@ -131,7 +212,7 @@ def main():
                 if role == "default":
                     service.rpc('''
                       wait = fn wait, n ->
-                        if Enum.any?(Supervisor.which_children(Beamlet.Daemon.Supervisor), fn {id, _, _, _} -> id == Beamlet.Daemon.Bootstrap end) do
+                        if Enum.any?(Supervisor.which_children(Beamlet.Server.Supervisor), fn {id, _, _, _} -> id == Beamlet.Server.Bootstrap end) do
                           true = n > 0
                           Process.sleep(20)
                           wait.(wait, n - 1)
@@ -144,13 +225,13 @@ def main():
             finally:
                 service.stop()
             if role == "default":
-                assert "daemon startup peer 1: unavailable" in (logs / "default-boot.log").read_text()
+                assert "server startup peer 1: unavailable" in (logs / "default-boot.log").read_text()
 
         # Same copy simultaneously hosts two only configurations. Authority's
         # one-shot bootstrap connects executor; placement forbids local fallback.
-        executor = Service(root, logs, "remote_executor", "config :beamlet_daemon, node: [roles: [:executor], limits: [refresh_ms: 20]]", cookie)
+        executor = Service(root, logs, "remote_executor", "config :beamlet_app_server, node: [roles: [:executor], limits: [refresh_ms: 20]]", cookie)
         executor_name = executor.env["RELEASE_NODE"]
-        authority = Service(root, logs, "remote_authority", f'config :beamlet_daemon, node: [roles: [:authority], limits: [refresh_ms: 20]], allowed_nodes: ["{executor_name}"], peers: ["{executor_name}"]', cookie)
+        authority = Service(root, logs, "remote_authority", f'config :beamlet_app_server, node: [roles: [:authority], limits: [refresh_ms: 20]], allowed_nodes: ["{executor_name}"], peers: ["{executor_name}"]', cookie)
         try:
             executor.start()
             authority.start()
@@ -199,15 +280,15 @@ def main():
         # start. Native Config scripts are trusted code, not sanitized readers.
         sentinel = "PRIVATE_CONFIG_SENTINEL"
         cases = {
-            "authority-limits": f'config :beamlet_daemon, node: [roles: [:authority], limits: "{sentinel}"]',
-            "interaction": 'config :beamlet_daemon, node: [roles: [:interaction]]',
-            "empty": "config :beamlet_daemon, node: [roles: []]",
-            "duplicate": "config :beamlet_daemon, node: [roles: [:authority, :authority]]",
-            "unknown-role": "config :beamlet_daemon, node: [roles: [:unknown]]",
-            "unknown-key": f'config :beamlet_daemon, unknown: "{sentinel}"',
-            "bad-provider": f'config :beamlet_daemon, node: [model_providers: %{{"{sentinel}" => String}}]',
-            "untrusted-peer": 'config :beamlet_daemon, peers: ["missing@127.0.0.1"]',
-            "invalid-storage": f'config :beamlet_daemon, storage: [adapter: :unknown, database: "{sentinel}"]',
+            "authority-limits": f'config :beamlet_app_server, node: [roles: [:authority], limits: "{sentinel}"]',
+            "interaction": 'config :beamlet_app_server, node: [roles: [:interaction]]',
+            "empty": "config :beamlet_app_server, node: [roles: []]",
+            "duplicate": "config :beamlet_app_server, node: [roles: [:authority, :authority]]",
+            "unknown-role": "config :beamlet_app_server, node: [roles: [:unknown]]",
+            "unknown-key": f'config :beamlet_app_server, unknown: "{sentinel}"',
+            "bad-provider": f'config :beamlet_app_server, node: [model_providers: %{{"{sentinel}" => String}}]',
+            "untrusted-peer": 'config :beamlet_app_server, peers: ["missing@127.0.0.1"]',
+            "invalid-storage": f'config :beamlet_app_server, storage: [adapter: :unknown, database: "{sentinel}"]',
         }
         for label, content in cases.items():
             probe = Service(root, logs, "invalid-" + label, content, cookie)
@@ -215,14 +296,14 @@ def main():
             output = result.stdout + result.stderr
             (logs / f"reject-{label}.log").write_text(output)
             assert result.returncode != 0
-            assert "invalid_daemon_configuration" in output
+            assert "invalid_server_configuration" in output
             assert sentinel not in output
             assert "invalid runtime limit" not in output
             assert "failed to start child" not in output
         # A configured but absent dataset must not be created/migrated by boot.
         database = root / "must-not-be-created.db"
         journal = root / "must-not-be-created-journal.db"
-        probe = Service(root, logs, "missing-dataset", f'''config :beamlet_daemon,
+        probe = Service(root, logs, "missing-dataset", f'''config :beamlet_app_server,
           node: [roles: [:authority]],
           storage: [database: "{database}", dataset_id: "00000000-0000-4000-8000-000000000001",
             journal: [database: "{journal}", dataset_id: "00000000-0000-4000-8000-000000000002"],

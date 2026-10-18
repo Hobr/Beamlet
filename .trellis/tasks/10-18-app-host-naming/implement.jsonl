@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend app and library ownership"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Application layout, supervision and Phoenix path conventions"}
+{"file":".trellis/spec/backend/backend-release.md","reason":"Native runtime configuration, release closure and copied named checks"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Required verification and evidence limits"}
+{"file":".trellis/spec/backend/web-host.md","reason":"Opt-in Web host and one Node tree per VM"}
+{"file":".trellis/spec/backend/i18n.md","reason":"OTP app identity and catalogue ownership"}
+{"file":".trellis/tasks/10-18-app-host-naming/research/current-state.md","reason":"Baseline migration inventory and unresolved compatibility policy"}

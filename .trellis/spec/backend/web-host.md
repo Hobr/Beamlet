@@ -3,8 +3,8 @@
 ## 1. Scope / Trigger
 
 Use for Web startup, preset selection, creation callers and temporary navigation.
-Sources: `apps/beamlet_web/lib/beamlet_web/{host,presets,agents,handles}.ex`,
-`host/bootstrap.ex`, and the complete operator schema in `apps/beamlet_web/HOST.md`.
+Sources: `apps/beamlet_app_web/lib/beamlet_web/{host,presets,agents,handles}.ex`,
+`host/bootstrap.ex`, and the complete operator schema in `apps/beamlet_app_web/HOST.md`.
 This is the implemented adapter layer; workbench/management UI remain separate.
 Core libraries have no Phoenix dependency. No database, transcript, replay or
 online catalogue mutation is provided.
@@ -24,12 +24,12 @@ input_outcome = Beamlet.Web.Agents.input(ref, text)
 
 ## 3. Contracts
 
-Startup-only `config :beamlet_web, :host, settings` is a unique-key keyword list:
+Startup-only `config :beamlet_app_web, :host, settings` is a unique-key keyword list:
 `enabled` defaults false, `node` defaults `[roles: [:interaction]]`, `allowed_nodes`
 and `peers` default empty, `catalogue` defaults empty. Unknown/duplicate keys reject.
 Node validates its options; roles must include interaction. Ordinary loading starts
 an empty Host tree and performs no network/provider work. Explicit enabled Host
-owns one Node per VM. Keep daemon/CLI hosts disabled in that VM.
+owns one Node per VM. Keep server/CLI hosts disabled in that VM.
 
 Application supervises Host separately from Telemetry/PubSub/Endpoint. Enabled Host
 uses rest_for_one ordered Node, Presets, Handles, temporary Bootstrap. Navigation

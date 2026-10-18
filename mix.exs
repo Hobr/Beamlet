@@ -12,9 +12,10 @@ defmodule Beamlet.Umbrella.MixProject do
       deps: deps(),
       dialyzer: [plt_add_apps: [:mix]],
       aliases: aliases(),
+      default_release: :beamlet_server,
       releases: [
-        beamlet_daemon: [applications: [beamlet_daemon: :permanent]],
-        beamlet_web: [applications: [beamlet_web: :permanent]],
+        beamlet_server: [applications: [beamlet_app_server: :permanent]],
+        beamlet_web: [applications: [beamlet_app_web: :permanent]],
         beamlet_cli: [
           applications: [beamlet_cli: :permanent],
           steps: [:assemble, &cli_entrypoint/1, :tar]
@@ -58,7 +59,7 @@ defmodule Beamlet.Umbrella.MixProject do
         :beamlet_harness,
         :beamlet_agent,
         :beamlet_node,
-        :beamlet_daemon,
+        :beamlet_app_server,
         :beamlet_i18n,
         :beamlet_cli
       ],
@@ -67,7 +68,7 @@ defmodule Beamlet.Umbrella.MixProject do
 
   defp aliases do
     [
-      sobelow: ["sobelow --root apps/beamlet_web --private"],
+      sobelow: ["sobelow --root apps/beamlet_app_web --private"],
       bench: ["run --no-start bench/enum.exs"]
     ]
   end

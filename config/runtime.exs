@@ -5,15 +5,15 @@ import Config
 release = System.get_env("RELEASE_NAME")
 
 case release do
-  "beamlet_daemon" ->
-    config :beamlet_daemon, enabled: true
+  "beamlet_server" ->
+    config :beamlet_app_server, enabled: true
 
   "beamlet_cli" ->
     config :beamlet_cli, enabled: true
 
   "beamlet_web" ->
-    config :beamlet_web, :host, enabled: true
-    config :beamlet_web, Beamlet.Web.Endpoint, server: true
+    config :beamlet_app_web, :host, enabled: true
+    config :beamlet_app_web, Beamlet.Web.Endpoint, server: true
 
   _ ->
     :ok
@@ -21,7 +21,7 @@ end
 
 # Backend releases do not ship Phoenix or need a Web signing secret. Keep the
 # production source-run Web check as well as the packaged Web check.
-if config_env() == :prod and release not in ["beamlet_daemon", "beamlet_cli"] do
+if config_env() == :prod and release not in ["beamlet_server", "beamlet_cli"] do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want
@@ -34,7 +34,7 @@ if config_env() == :prod and release not in ["beamlet_daemon", "beamlet_cli"] do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  config :beamlet_web, Beamlet.Web.Endpoint,
+  config :beamlet_app_web, Beamlet.Web.Endpoint,
     http: [
       # Enable IPv6 and bind on all interfaces.
       # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
@@ -50,7 +50,7 @@ if config_env() == :prod and release not in ["beamlet_daemon", "beamlet_cli"] do
   # To get SSL working, you will need to add the `https` key
   # to your endpoint configuration:
   #
-  #     config :beamlet_web, Beamlet.Web.Endpoint,
+  #     config :beamlet_app_web, Beamlet.Web.Endpoint,
   #       https: [
   #         ...,
   #         port: 443,
@@ -72,7 +72,7 @@ if config_env() == :prod and release not in ["beamlet_daemon", "beamlet_cli"] do
   # We also recommend setting `force_ssl` in your config/prod.exs,
   # ensuring no data is ever sent via http, always redirecting to https:
   #
-  #     config :beamlet_web, Beamlet.Web.Endpoint,
+  #     config :beamlet_app_web, Beamlet.Web.Endpoint,
   #       force_ssl: [hsts: true]
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.

@@ -1,11 +1,31 @@
-# Daemon deployment and acceptance
+# Server deployment and acceptance
+
+The independent hosts are `beamlet_app_server` (`Beamlet.Server`) and
+`beamlet_app_web` (`Beamlet.Web`); the other OTP apps remain embeddable capabilities.
+
+## Breaking migration
+
+| Old | New |
+| --- | --- |
+| `apps/beamlet_daemon`, `:beamlet_daemon` | `apps/beamlet_app_server`, `:beamlet_app_server` |
+| `Beamlet.Daemon` and submodules | `Beamlet.Server` and submodules |
+| `apps/beamlet_web`, `:beamlet_web` | `apps/beamlet_app_web`, `:beamlet_app_web` |
+| `bin/beamlet_daemon` | `bin/beamlet_server` |
+| `daemon.example.exs` | `server.example.exs` |
+
+Update config namespaces and service commands and deploy a rebuilt complete artifact
+with matching config. There are no old aliases, forwarding modules or config fallbacks.
+The Web release stays `beamlet_web`; its module namespace, session cookie and salts
+stay unchanged. CLI naming stays unchanged. Unnamed `mix release` now selects
+`beamlet_server`; `mix release beamlet_daemon` is no longer supported.
+
 
 ## One artifact, three startup configurations
 
 Build from the checkout with the project OTP/Elixir toolchain:
 
 ```sh
-BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_daemon --overwrite
+BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_server --overwrite
 bash scripts/deployment/check-release.sh
 ```
 
@@ -31,6 +51,7 @@ directory before rebuilding; deploy a complete fresh tree, not an overlay.
 Build assets before assembling Web:
 
 ```sh
+MIX_ENV=prod mix compile --warnings-as-errors
 MIX_ENV=prod mix tailwind beamlet_web --minify
 MIX_ENV=prod mix esbuild beamlet_web --minify
 MIX_ENV=prod mix phx.digest
@@ -44,12 +65,12 @@ Production source-run Web retains its required-secret check. Backend releases
 neither ship Web nor need a dummy secret.
 
 **Do not build role-specific artifacts.** Application settings examples in
-[daemon.example.exs](daemon.example.exs) and [cli.example.exs](cli.example.exs)
+[server.example.exs](server.example.exs) and [cli.example.exs](cli.example.exs)
 are snippets to adapt in shared build config or the bundled `runtime.exs`, not
 automatically loaded external files. For example:
 
 ```elixir
-config :beamlet_daemon,
+config :beamlet_app_server,
   node: [], # default [:authority, :executor]
   allowed_nodes: ["executor@c.example.internal"],
   peers: ["executor@c.example.internal"]
@@ -89,15 +110,18 @@ Use native Mix Release defaults, or its supported `RELEASE_NODE`,
 variables or pins a distribution port. Consult `mix help release` on the build
 host for native settings and writable runtime configuration requirements.
 
-Run `bin/beamlet_daemon start` under a service manager (or `start_iex` for a
-trusted session). Native `pid`, `rpc`, `remote`, `restart`, and `stop` controls
+Run `bin/beamlet_server start` in the foreground under systemd or containers
+(or `start_iex` for a trusted session). On Unix, `bin/beamlet_server daemon`
+provides native background operation; use native `pid`, `rpc`, and `stop` to
+inspect and stop it. The copied-artifact check verifies background launch and
+actual VM exit. Native `pid`, `rpc`, `remote`, `restart`, and `stop` controls
 remain available with the service's identity/cookie. Native defaults include a
 release cookie generated at build and a release-named node; use unique names for
 simultaneous copies and rotate/provision cookies securely for trusted clustering.
 Do not log cookies or enable shell tracing. `help` and `version` need no
 application configuration or Web secret.
 
-Stop with `bin/beamlet_daemon stop`; inspect the service manager and sockets
+Stop with `bin/beamlet_server stop`; inspect the service manager and sockets
 before treating shutdown as complete. EPMD TCP4369 and configured/native
 distribution listeners must be reachable bidirectionally; choose any required
 port restriction with native VM arguments, not a Beamlet fixed-port variable.
@@ -225,7 +249,7 @@ temporary permitted fixtures and revokes any temporary credentials.
 ## Foreground interaction CLI
 
 Build both backends with `BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release
-beamlet_daemon --overwrite` and the equivalent `mix release beamlet_cli --overwrite`.
+beamlet_server --overwrite` and the equivalent `mix release beamlet_cli --overwrite`.
 The backend compilation selector includes both hosts; each release dependency
 closure contains only its own host and excludes Web. Ordinary umbrella loading
 starts neither host's Node and never reads stdin.
@@ -344,7 +368,7 @@ runbook and the full evidence are in
 [the stage F release evidence](../../.trellis/tasks/archive/2026-10/10-18-durable-release-operations/research/release-evidence.md).
 
 ```elixir
-config :beamlet_daemon,
+config :beamlet_app_server,
   enabled: true,
   node: [roles: [:authority, :executor]],
   storage: [

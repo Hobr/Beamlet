@@ -6,7 +6,7 @@ Agent implements bounded asynchronous orchestration with one immutable Agent-own
 model binding; Harness owns neutral model/history contracts and explicit provider
 invocations. Node composes opt-in roles and trusted local model provider registries.
 Node is an explicitly supervised library; CLI owns the migrated terminal adapter.
-Daemon is an opt-in host with startup-only authority/executor selection and an
+Server is an opt-in host with startup-only authority/executor selection and an
 isolated release; CLI is an opt-in fixed interaction host with a foreground standalone session. Agent discovery now provides safe live identity list/lookup and bounded trusted-connected
 aggregation through finite local reads/OTP erpc, with query failures isolated from the identity island. The standalone CLI release owns bounded stdin, local Ref aliases and explicit reattachment.
 Cross-physical-host acceptance was removed by user decision; no physical execution is claimed. Phoenix provides the web scaffold and disabled-by-default trusted Host/preset/navigation adapters; LiveView workbench and read-only management source are independently checked, and a real local browser walkthrough passed34/35 checks (390px viewport blocked by a Firefox minimum-width clamp). Web and CLI copy is Gettext-translated into `zh_CN` (default) and `en`, with one shared catalogue app plus per-surface catalogues.
@@ -56,5 +56,5 @@ commands for the change are identified.
 
 Evidence anchors: root `mix.exs`, `apps/*/mix.exs`,
 `apps/beamlet_node/lib/beamlet/node.ex`, and
-`apps/beamlet_web/lib/beamlet_web/application.ex`. Consult the topic files for
+`apps/beamlet_app_web/lib/beamlet_web/application.ex`. Consult the topic files for
 concrete source and test examples.
