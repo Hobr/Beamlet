@@ -93,7 +93,7 @@ bash scripts/deployment/check-release.sh
 - [x] 独立 check 对照 AC1–AC8 审查所有阶段累计 diff，重点排查基础层反向依赖、隐藏 Agent schema/词汇、参与事务早提交、锁序、伪造/错配 prepared identity、旧格式写入和缺失 PG 覆盖。
 - [x] 在 research/implementation-evidence.md 逐项记录命令、环境、实际结果、失败及解决，不把当前规划当作通过证据。
 - [x] 按 trellis-update-spec 更新已实现契约（Phase 3.3）；文档链接、源码签名、旧 API 与 whitespace 核验通过，见 research/spec-sync.md。
-- [ ] 仅在适用检查通过后进行 workflow 的批量提交审阅，再 finish-work 归档和 journal。
+- [x] 适用检查通过，用户确认拆分方案后完成 7 个工作提交；finish-work 已归档任务，journal 由后续收尾步骤记录。
 
 ## 风险与回退点
 

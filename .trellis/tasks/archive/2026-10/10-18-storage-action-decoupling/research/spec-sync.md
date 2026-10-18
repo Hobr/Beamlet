@@ -3,7 +3,7 @@
 Documentation-only synchronization after independent Check **READY**, baseline
 `a8acffd`, branch `refactor/storage-action-decoupling`. Source/README facts were
 read directly; design alone was not treated as evidence. Applied
-[trellis-update-spec](../../../../.agents/skills/trellis-update-spec/SKILL.md), including
+[trellis-update-spec](../../../../../../.agents/skills/trellis-update-spec/SKILL.md), including
 seven-section executable contracts for changed infrastructure/cross-layer behavior.
 No product source, tests, configuration, manifests, scripts or workflow infrastructure
 were edited. No formatting mutation, staging, commit, branch/status change, push or

@@ -189,7 +189,7 @@ rollback and projection assertions on SQLite and actual PG. Node host tests cove
 both-resource admission, stopped journal, owned shutdown and interaction-only mode.
 Use private PG via BEAMLET_PG_SOCKET_DIR/BEAMLET_PG_PORT/BEAMLET_PG_USER; never count
 excluded adapters as passed. Exact final counts and reviewed assertion transfer are
-in the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md).
+in the [independent review](../../tasks/archive/2026-10/10-18-storage-action-decoupling/research/independent-review.md).
 
 ### 7. Wrong vs Correct
 
@@ -218,7 +218,7 @@ usage as new execution. Redaction explicitly prevents restoration claims.
 Durable writes remain business transitions, not snapshots/subscriptions. First stop
 trigger and actual termination are separate evidence; cancel/deadline never rewrite
 accepted Results. Admission is checked independently of Repo/Node registration.
-Real adapter, process-window, named-peer and release results belong in the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md), not inferred from archived Stage A–F's old representation. No physical
+Real adapter, process-window, named-peer and release results belong in the [independent review](../../tasks/archive/2026-10/10-18-storage-action-decoupling/research/independent-review.md), not inferred from archived Stage A–F's old representation. No physical
 host, power-cut, paid provider or external exactly-once guarantee is claimed.
 
 ## Existing State Boundaries

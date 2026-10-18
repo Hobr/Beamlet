@@ -1,9 +1,9 @@
 # Storage decoupling: Phase 3.4 commit review
 
-Status: revised seven-commit batch approved by the user (“行”). Execute the exact
-ordered file groups below, then archive and record the session. The user requested
-multiple commits in place of the original single work commit; this plan replaces
-that proposal. Commit results will be recorded in the session journal.
+Status: revised seven-commit batch approved by the user (“行”) and executed in
+order. The task is archived; journal recording follows. The file lists below are
+the approved historical staging boundaries before archival, not current paths.
+The user requested multiple commits in place of the original single work commit.
 
 Branch: `refactor/storage-action-decoupling`; baseline/current HEAD: `a8acffd`.
 
@@ -281,5 +281,25 @@ No push or amend is part of the plan.
 
 Approval source: `.trellis/workflow.md`, Phase 3.4 step 5, says:
 “Present the plan once, ask for one-shot confirmation.”
-The user explicitly requested revised grouping; the revised batch is presented
-as one plan, without per-commit prompts.
+The user explicitly requested revised grouping and approved the complete revised
+batch with “行”; no per-commit confirmation was needed.
+
+## Execution result
+
+1. `ae0668a` — generic Storage infrastructure.
+2. `4fb6efb` — neutral Actions persistence.
+3. `9ed8227` — Agent persistence.
+4. `bb14c6b` — Runtime integration.
+5. `182c656` — Agent adapters.
+6. `306cb6a` — Node/Server/deployment composition.
+7. `e9da8c1` — contracts and verification evidence.
+
+Final committed file states were compared with the approved snapshot; all 162
+paths matched, except the deliberate removal of an extra EOF blank line in two
+task handoff/review Markdown documents. All 138 reviewed product states remained
+unchanged. The working tree was clean before archival.
+
+Archive bookkeeping rebased evidence links and context self-references to the
+archive directory and recorded task completion. No product source or tests were
+changed by the commit/finish phase, and no runtime gates were rerun solely for
+these documentation changes.

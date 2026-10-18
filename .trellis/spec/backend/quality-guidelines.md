@@ -93,7 +93,7 @@ exit 0 with no findings. Keep it that way, and keep the remedy a refactor:
 
 ## Checked format3 migration evidence
 
-The authoritative [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md)
+The authoritative [independent review](../../tasks/archive/2026-10/10-18-storage-action-decoupling/research/independent-review.md)
 records the corrected full candidate, exact per-app/adapter accounting, commands,
 retained logs and AC1–AC8 assessment. Ordinary552/37 excluded, named587/2 excluded
 (the separately executed E2E phase tags), and actual Agent PG109 passed. Foundation:

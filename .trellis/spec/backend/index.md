@@ -17,7 +17,7 @@ The revised [durable design](../../../docs/architecture/agent-operation-persiste
 uses format3 explicit foundation/Actions/Agent installations, event-reduced Agent
 control and direct reference fork/history/export with trace format2. See [Event-reduced Agent](./agent-durable.md) and
 [Durable references](./durable-references.md). No message-checkpoint/transcript-copy
-API or old-format fallback exists. Checked migration results and evidence limits live in the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md).
+API or old-format fallback exists. Checked migration results and evidence limits live in the [independent review](../../tasks/archive/2026-10/10-18-storage-action-decoupling/research/independent-review.md).
 
 ## Pre-Development Checklist
 

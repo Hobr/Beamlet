@@ -142,7 +142,7 @@ Actions `test/actions_contract_test.exs` shared SQLite/PG regression corrupts st
 description and checks prepare replay/claim/accept; corrupt attempt budget checks
 evidence. Assert rollback, safe atoms and unrelated ArgumentError propagation.
 Preserve Agent malformed-read/write coverage and optional checkpoint fallback.
-See the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md)
+See the [independent review](../../tasks/archive/2026-10/10-18-storage-action-decoupling/research/independent-review.md)
 for the original failing reproduction and final fixed gates.
 
 ### 7. Wrong vs Correct

@@ -230,7 +230,7 @@ domain facade/Repo beam files. Actions-only dependency startup excludes Agent/No
 hosts; Agent Storage excludes Agent/Core/Runtime/Node/hosts. Neither starts a Repo.
 Dataset format3 does not change Agent trace format2. Full fresh Server/CLI/Web
 release, named native controls and two-process durable E2E results are recorded in
-the [independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md).
+the [independent review](../../tasks/archive/2026-10/10-18-storage-action-decoupling/research/independent-review.md).
 Earlier gate logs/counts below remain historical evidence for their stated stages.
 
 ## 6. Tests and evidence boundaries

@@ -10,7 +10,7 @@ and `apps/beamlet_agent_storage/lib/beamlet/agent/storage/`. See
 [State and Persistence](./database-guidelines.md) for profiles/installation and
 [direct reference fork/history/export](./durable-references.md) for trace format2.
 Independent final evidence is in the
-[independent review](../../tasks/10-18-storage-action-decoupling/research/independent-review.md).
+[independent review](../../tasks/archive/2026-10/10-18-storage-action-decoupling/research/independent-review.md).
 
 ## 2. Signatures
 

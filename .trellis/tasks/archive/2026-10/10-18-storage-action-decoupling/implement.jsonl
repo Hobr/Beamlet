@@ -6,4 +6,4 @@
 {"file":".trellis/spec/backend/durable-references.md","reason":"Fork/history/export integrity and offline verification"}
 {"file":".trellis/spec/backend/backend-release.md","reason":"Release closure and copied named runtime checks"}
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"Required validation, no skip-as-pass or suppressed checks"}
-{"file":".trellis/tasks/10-18-storage-action-decoupling/research/boundary-findings.md","reason":"Source evidence and pre-migration ownership map"}
+{"file":".trellis/tasks/archive/2026-10/10-18-storage-action-decoupling/research/boundary-findings.md","reason":"Source evidence and pre-migration ownership map"}
