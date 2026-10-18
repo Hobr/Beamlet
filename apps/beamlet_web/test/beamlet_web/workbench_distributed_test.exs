@@ -2,8 +2,14 @@ defmodule Beamlet.Web.WorkbenchDistributedTest do
   use ExUnit.Case
   use Beamlet.Web, :verified_routes
   @endpoint Beamlet.Web.Endpoint
+  # Copy assertions must not depend on the shipped Chinese default: use the same
+  # explicit English session locale as `Beamlet.Web.ConnCase`.
   setup do
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+    conn =
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Test.init_test_session(%{"locale" => "en"})
+
+    {:ok, conn: conn}
   end
 
   import Phoenix.ConnTest, only: [get: 2]

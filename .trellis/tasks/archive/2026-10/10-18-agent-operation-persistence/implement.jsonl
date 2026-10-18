@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/index.md","reason":"现有包归属与开发/质量路由"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"实际质量命令和证据边界"}
+{"file":".trellis/tasks/10-18-agent-operation-persistence/research/design-1-5.md","reason":"实施参考：持久化设计原文快照：范围、职责与数据契约（1–5）；分片避免上下文截断，开工前核对权威主设计差异"}
+{"file":".trellis/tasks/10-18-agent-operation-persistence/research/design-6-7.md","reason":"实施参考：持久化设计原文快照：事务与恢复（6–7）；分片避免上下文截断，开工前核对权威主设计差异"}
+{"file":".trellis/tasks/10-18-agent-operation-persistence/research/design-8-13.md","reason":"实施参考：持久化设计原文快照：导出、fork、数据库与故障（8–13）；分片避免上下文截断，开工前核对权威主设计差异"}
+{"file":"docs/architecture/persistence-delivery.md","reason":"阶段依赖、故障注入和验收标准"}
+{"file":"GLOSSARY.md","reason":"统一 Agent/Operation/Execution/Result 与持久术语"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"本阶段 database-guidelines 的现有契约；未来设计不等于已实现能力"}
+{"file":".trellis/spec/backend/agent-orchestration.md","reason":"本阶段 agent-orchestration 的现有契约；未来设计不等于已实现能力"}
+{"file":".trellis/spec/backend/operation-runtime.md","reason":"本阶段 operation-runtime 的现有契约；未来设计不等于已实现能力"}
+{"file":".trellis/spec/backend/backend-release.md","reason":"本阶段 backend-release 的现有契约；未来设计不等于已实现能力"}

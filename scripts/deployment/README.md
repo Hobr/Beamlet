@@ -293,3 +293,35 @@ No shell grammar/eval or shared Agent ID restriction was introduced.
 Installed Owl uses Ucwidth for CJK/emoji/combining terminal column measurement,
 wrapping and truncation; actual beam behavior and copied closure are checked.
 The independent4096-codepoint watch limit remains distinct from display width.
+
+## Durable storage (stage F)
+
+Durable storage is opt-in and configured only in the daemon host's trusted
+`BEAMLET_CONFIG` file; omit the `storage:` block and the host stays ephemeral and
+starts no database. Keys, the explicit migration command, the backup/restore
+runbook and the full evidence are in
+[the stage F release evidence](../../.trellis/tasks/10-18-durable-release-operations/research/release-evidence.md).
+
+```elixir
+config :beamlet_daemon,
+  enabled: true,
+  node: [roles: [:authority, :executor]],
+  storage: [
+    adapter: :sqlite,
+    database: "/var/lib/beamlet/authority.db",
+    dataset_id: "<authority uuid>",
+    journal: [database: "/var/lib/beamlet/journal.db", dataset_id: "<journal uuid>"],
+    executor_id: "<stable executor uuid>"
+  ]
+```
+
+Install the datasets once, as an operator action — never at boot:
+
+```sh
+mix beamlet.storage.migrate --storage /etc/beamlet/storage.exs --roles authority,executor
+```
+
+`Beamlet.Storage.Host.status/1` reports `admission` (a live probe of the dataset,
+distinct from Node/Repo readiness) and each dataset's open state. A restored
+backup must be marked before use and stays refused, with admission off, until an
+operator resolves it. The CLI host is interaction-only and needs no database.

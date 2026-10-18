@@ -49,6 +49,24 @@ cross-physical-host acceptance was removed by the user; physical execution is un
 [Operation Runtime](./operation-runtime.md) and [Native Harness](./harness-providers.md)
 for actual APIs. Do not infer other callable APIs from the architecture.
 
+## Storage App
+
+`apps/beamlet_storage` is an internal Ecto library owned by stage A of the
+[persistence plan](../../../docs/architecture/persistence-delivery.md). It declares
+`ecto`, `ecto_sql`, `ecto_sqlite3`, `postgrex` and `jason` directly (no sibling
+dependency and no override) and has **no** Application callback: loading it starts
+no Repo, creates no database file and runs no migration. Repos are started
+explicitly through `Beamlet.Storage.Dataset` by an embedding supervisor or a test.
+
+Layout: `lib/beamlet/storage/*.ex` (Repos, `Dataset`, `Connections`,
+`Transaction`, `Codec`/`JSON`, `Migrations`, `Artifacts`, `TerminalArtifacts` and
+the record facades `AgentRecords`/`OperationRecords`/`ExecutorJournal`),
+`lib/beamlet/storage/schema/` (Ecto schemas), `priv/{authority,journal}_migrations/`,
+and `test/beamlet/storage/` plus `test/support/contract_fixture.ex`. The shared
+adapter contract suite is `test/beamlet/storage/storage_contract_test.exs`; it needs
+an isolated PostgreSQL cluster via `BEAMLET_PG_SOCKET_DIR`/`BEAMLET_PG_PORT` and must
+not be reported as passing when that adapter did not run.
+
 ## OTP Ownership
 
 An embedding supervisor explicitly starts `{Beamlet.Node, options}` (one per VM).

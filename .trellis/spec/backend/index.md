@@ -49,7 +49,7 @@ commands for the change are identified.
 | [Internationalisation](./i18n.md) | Shared vs surface catalogues, locale precedence, default Chinese, extraction and ownership invariants |
 | [Live Observation](./live-observation.md) | Opt-in Agent display/metadata, safe report ages, Node readiness and bounded aggregation |
 | [Backend CLI and Release](./backend-release.md) | CLI bounds, isolated packaging/config, named control ports and deployment evidence |
-| [State and Persistence](./database-guidelines.md) | Absence of a database, cookie sessions, configuration and storage pitfalls |
+| [State and Persistence](./database-guidelines.md) | Stage-A `beamlet_storage` tables/transactions, cookie sessions, configuration and storage pitfalls |
 | [Error Handling](./error-handling.md) | OTP startup propagation, status renderers, component feedback and gaps |
 | [Quality Guidelines](./quality-guidelines.md) | Formatting, build/test/static-analysis commands, test examples and coverage limits |
 | [Logging and Telemetry](./logging-guidelines.md) | Request IDs, formatter, Phoenix/VM metrics, development diagnostics |

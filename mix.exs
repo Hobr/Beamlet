@@ -10,6 +10,7 @@ defmodule Beamlet.Umbrella.MixProject do
       version: "0.1.0",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      dialyzer: [plt_add_apps: [:mix]],
       aliases: aliases(),
       releases: [
         beamlet_daemon: [
@@ -55,6 +56,7 @@ defmodule Beamlet.Umbrella.MixProject do
     if System.get_env("BEAMLET_BACKEND_BUILD") == "1",
       do: [
         :beamlet_actions,
+        :beamlet_storage,
         :beamlet_runtime,
         :beamlet_harness,
         :beamlet_agent,

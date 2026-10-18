@@ -1,0 +1,552 @@
+defmodule Beamlet.Storage.History do
+  @moduledoc """
+  Read-only queries over committed authority facts. Nothing here starts an Agent,
+  consults a coordinator or depends on Runtime retention; the current runtime
+  observation stays with Runtime/Node and is deliberately not part of this module.
+
+  Pages are keyset-paginated as one bounded statement each, with no enclosing read transaction and bounded by
+  a row count plus a byte budget. A page never splits a record: a record larger
+  than the byte budget is returned alone with `over_budget: true` and stays
+  bounded by its own codec limit. Checkpoints carry no history sequence, so
+  `checkpoint_at/3` maps an event cursor to the newest checkpoint committed at or
+  before it and reports that derivation explicitly.
+  """
+  import Ecto.Query
+  alias Beamlet.Storage.{Records, Transaction}
+  alias Beamlet.Storage.Schema.{Checkpoint, Event, Execution, ExecutionEvidence, Operation}
+
+  @page_default 100
+  @page_max 500
+  @page_bytes 4_194_304
+  @min_bytes 4_096
+  @view_max 50
+
+  @doc """
+  Bounded event page for one scope, optionally capped at a fixed high-water
+  sequence and filtered by type/turn/operation/origin. `origin` distinguishes
+  records this scope performed from records inherited with a source marker.
+  """
+  def event_page(repo, scope_id, opts \\ []) do
+    with {:ok, scope} <- Records.uuid(scope_id),
+         {:ok, filters} <- event_filters(opts) do
+      Transaction.read(fn -> read_events(repo, scope, filters) end)
+    end
+  end
+
+  @doc "One recorded event by scope and sequence, `:conflict` when absent."
+  def event(repo, scope_id, seq) do
+    with {:ok, scope} <- Records.uuid(scope_id),
+         {:ok, seq} <- Records.count(seq) do
+      Transaction.read(fn ->
+        query =
+          from(e in Event,
+            where: e.scope_id == ^scope and e.seq == ^seq,
+            select: %{event: e}
+          )
+
+        case repo.one(query, log: false) do
+          nil -> {:error, :conflict}
+          %{event: event} -> {:ok, Records.plain(event)}
+        end
+      end)
+    end
+  end
+
+  @doc """
+  The effective context as of `seq`: the newest checkpoint committed at or before
+  that event. Later events never rewrite the returned checkpoint, because
+  checkpoints are immutable. `nil` returns the current head checkpoint.
+  """
+  def checkpoint_at(repo, agent_id, seq) do
+    with {:ok, id} <- Records.uuid(agent_id),
+         {:ok, seq} <- optional_seq(seq) do
+      Transaction.read(fn -> read_checkpoint_at(repo, id, seq) end)
+    end
+  end
+
+  defp read_checkpoint_at(repo, agent_id, nil) do
+    case repo.one(head_query(agent_id), log: false) do
+      nil -> {:error, :conflict}
+      checkpoint -> {:ok, %{"as_of_seq" => nil, "checkpoint" => Records.plain(checkpoint)}}
+    end
+  end
+
+  defp read_checkpoint_at(repo, agent_id, seq) do
+    target =
+      from(e in Event, where: e.scope_id == ^agent_id and e.seq == ^seq, select: e.recorded_at)
+      |> repo.one(log: false)
+
+    case target do
+      nil ->
+        {:error, :conflict}
+
+      recorded_at ->
+        query =
+          from(c in Checkpoint,
+            where: c.agent_id == ^agent_id and c.recorded_at <= ^recorded_at,
+            order_by: [desc: c.recorded_at, desc: c.id],
+            limit: 1
+          )
+
+        case repo.one(query, log: false) do
+          nil ->
+            {:error, :conflict}
+
+          checkpoint ->
+            {:ok,
+             %{
+               "as_of_seq" => seq,
+               "checkpoint" => Records.plain(checkpoint),
+               "derived_by" => "commit_order"
+             }}
+        end
+    end
+  end
+
+  # A checkpoint and its event commit in one transaction, so a checkpoint stamped
+  # at or before the target event is the newest context that event could see.
+  defp head_query(agent_id) do
+    from(c in Checkpoint,
+      where: c.agent_id == ^agent_id,
+      order_by: [desc: c.recorded_at, desc: c.id],
+      limit: 1
+    )
+  end
+
+  @doc """
+  Bounded checkpoint page in commit order, optionally capped at a fixed
+  high-water timestamp so a later commit cannot enter an already fixed range.
+  """
+  def checkpoint_page(repo, agent_id, opts \\ []) do
+    with {:ok, id} <- Records.uuid(agent_id),
+         {:ok, filters} <- checkpoint_filters(opts) do
+      Transaction.read(fn -> read_checkpoints(repo, id, filters) end)
+    end
+  end
+
+  @doc "Turn summaries ordered by first recorded sequence, keyset on that sequence."
+  def turns(repo, agent_id, opts \\ []) do
+    with {:ok, id} <- Records.uuid(agent_id),
+         {:ok, after_seq, limit} <- list_bounds(opts, :after_first_seq) do
+      Transaction.read(fn -> read_turns(repo, id, after_seq, limit) end)
+    end
+  end
+
+  @doc "Owned Operation rows in recorded history order, keyset on `history_seq`."
+  def operations(repo, agent_id, opts \\ []) do
+    with {:ok, id} <- Records.uuid(agent_id),
+         {:ok, after_seq, limit} <- list_bounds(opts, :after_history_seq) do
+      Transaction.read(fn -> read_operations(repo, id, after_seq, limit) end)
+    end
+  end
+
+  @doc "One Operation with its attempt and receipt evidence rows."
+  def operation(repo, operation_id) do
+    with {:ok, id} <- Records.uuid(operation_id) do
+      Transaction.read(fn ->
+        case repo.get(Operation, id, log: false) do
+          nil ->
+            {:error, :conflict}
+
+          operation ->
+            attempt = attempt_for(repo, id)
+
+            {:ok,
+             %{
+               "operation" => Records.plain(operation),
+               "attempt" => Records.plain(attempt),
+               "evidence" => evidence_rows(repo, id)
+             }}
+        end
+      end)
+    end
+  end
+
+  @doc "Receipt evidence rows for one Operation, newest first, bounded."
+  def evidence(repo, operation_id) do
+    with {:ok, id} <- Records.uuid(operation_id) do
+      Transaction.read(fn -> {:ok, %{"evidence" => evidence_rows(repo, id)}} end)
+    end
+  end
+
+  ## Filters
+
+  defp event_filters(opts) do
+    allowed = [
+      :after_seq,
+      :through_seq,
+      :limit,
+      :max_bytes,
+      :type,
+      :types,
+      :turn_id,
+      :operation_id,
+      :origin
+    ]
+
+    with true <- is_list(opts) and Keyword.keyword?(opts),
+         true <- Enum.all?(Keyword.keys(opts), &(&1 in allowed)),
+         {:ok, after_seq} <- seq(Keyword.get(opts, :after_seq, 0)),
+         {:ok, through_seq} <- optional_seq(Keyword.get(opts, :through_seq)),
+         {:ok, limit} <- bounded(Keyword.get(opts, :limit, @page_default), 1, @page_max),
+         {:ok, max_bytes} <-
+           bounded(Keyword.get(opts, :max_bytes, @page_bytes), @min_bytes, @page_bytes),
+         {:ok, turn_id} <- optional_uuid(Keyword.get(opts, :turn_id)),
+         {:ok, operation_id} <- optional_uuid(Keyword.get(opts, :operation_id)),
+         {:ok, types} <- types(Keyword.get(opts, :types), Keyword.get(opts, :type)),
+         {:ok, origin} <- origin(Keyword.get(opts, :origin)) do
+      {:ok,
+       %{
+         after_seq: after_seq,
+         through_seq: through_seq,
+         limit: limit,
+         max_bytes: max_bytes,
+         turn_id: turn_id,
+         operation_id: operation_id,
+         types: types,
+         origin: origin
+       }}
+    else
+      false -> {:error, :invalid_data}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp checkpoint_filters(opts) do
+    allowed = [:after, :through_recorded_at, :limit, :max_bytes]
+
+    with true <- is_list(opts) and Keyword.keyword?(opts),
+         true <- Enum.all?(Keyword.keys(opts), &(&1 in allowed)),
+         {:ok, after_ckpt} <- after_checkpoint(Keyword.get(opts, :after)),
+         {:ok, through} <- optional_time(Keyword.get(opts, :through_recorded_at)),
+         {:ok, limit} <- bounded(Keyword.get(opts, :limit, @page_default), 1, @page_max),
+         {:ok, max_bytes} <-
+           bounded(Keyword.get(opts, :max_bytes, @page_bytes), @min_bytes, @page_bytes) do
+      {:ok, %{after: after_ckpt, through: through, limit: limit, max_bytes: max_bytes}}
+    else
+      false -> {:error, :invalid_data}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp after_checkpoint(nil), do: {:ok, nil}
+
+  defp after_checkpoint(%DateTime{} = at), do: {:ok, {at, nil}}
+
+  defp after_checkpoint(%{} = value) do
+    value = Map.new(value, fn {key, item} -> {cursor_key(key), item} end)
+
+    with {:ok, _} <- Records.fields(value, [:recorded_at], [:id]),
+         {:ok, at} <- optional_time(value[:recorded_at]),
+         {:ok, id} <- optional_uuid(value[:id]) do
+      case at do
+        nil -> {:ok, nil}
+        at -> {:ok, {at, id}}
+      end
+    end
+  end
+
+  defp after_checkpoint(_), do: {:error, :invalid_data}
+
+  defp cursor_key(key) when is_atom(key), do: key
+  defp cursor_key("recorded_at"), do: :recorded_at
+  defp cursor_key("id"), do: :id
+  defp cursor_key(_key), do: :invalid
+
+  defp origin(nil), do: {:ok, nil}
+  defp origin(value) when value in [:performed, "performed"], do: {:ok, "performed"}
+  defp origin(value) when value in [:inherited, "inherited"], do: {:ok, "inherited"}
+  defp origin(_), do: {:error, :invalid_data}
+
+  defp list_bounds(opts, key) do
+    with true <- is_list(opts) and Keyword.keyword?(opts),
+         true <- Enum.all?(Keyword.keys(opts), &(&1 in [key, :limit])),
+         {:ok, after_seq} <- seq(Keyword.get(opts, key, 0)),
+         {:ok, limit} <- bounded(Keyword.get(opts, :limit, @view_max), 1, @view_max) do
+      {:ok, after_seq, limit}
+    else
+      false -> {:error, :invalid_data}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  ## Reads
+
+  defp read_events(repo, scope, filters) do
+    query =
+      from(e in Event,
+        where: e.scope_id == ^scope and e.seq > ^filters.after_seq,
+        order_by: [asc: e.seq],
+        limit: ^filters.limit,
+        select: %{event: e, raw: fragment("CAST(? AS TEXT)", e.payload)}
+      )
+
+    query =
+      if filters.through_seq,
+        do: from(e in query, where: e.seq <= ^filters.through_seq),
+        else: query
+
+    query = if filters.types, do: from(e in query, where: e.type in ^filters.types), else: query
+
+    query =
+      if filters.turn_id, do: from(e in query, where: e.turn_id == ^filters.turn_id), else: query
+
+    query =
+      if filters.operation_id,
+        do: from(e in query, where: e.operation_id == ^filters.operation_id),
+        else: query
+
+    query =
+      case filters.origin do
+        "performed" ->
+          from(e in query, where: is_nil(e.source_agent_id) or e.source_agent_id == ^scope)
+
+        "inherited" ->
+          from(e in query,
+            where: not is_nil(e.source_agent_id) and e.source_agent_id != ^scope
+          )
+
+        nil ->
+          query
+      end
+
+    rows = repo.all(query, log: false)
+    {events, more?} = take_rows(rows, filters.limit, filters.max_bytes, [], 0, & &1.event)
+
+    {:ok,
+     %{
+       "scope_id" => scope,
+       "events" => Enum.map(events, &plain_event(&1, scope)),
+       "next_cursor" => if(more? and events != [], do: List.last(events).seq, else: nil),
+       "over_budget" => oversized?(rows, filters.max_bytes),
+       "through_seq" => filters.through_seq
+     }}
+  end
+
+  # An entry derived from another Agent is marked as inherited, so a reader never
+  # counts it as work this scope performed.
+  defp plain_event(event, scope) do
+    origin =
+      if is_nil(event.source_agent_id) or event.source_agent_id == scope,
+        do: "performed",
+        else: "inherited"
+
+    event |> Records.plain() |> Map.put("origin", origin)
+  end
+
+  defp oversized?([], _budget), do: false
+  defp oversized?([row | _], budget), do: byte_size(row.raw) > budget
+
+  # A page never splits a record: a single record over the byte budget is kept
+  # whole and flagged, and stays bounded by the record's own codec limit.
+  defp take_rows([], _limit, _budget, acc, _bytes, _get), do: {Enum.reverse(acc), false}
+
+  defp take_rows([row | rest], limit, budget, acc, bytes, get) do
+    size = byte_size(row.raw)
+
+    cond do
+      acc != [] and bytes + size > budget ->
+        {Enum.reverse(acc), true}
+
+      true ->
+        acc = [get.(row) | acc]
+        bytes = bytes + size
+
+        # A full page always reports a cursor: only the next (possibly empty)
+        # page can prove the range ended.
+        if length(acc) >= limit,
+          do: {Enum.reverse(acc), true},
+          else: take_rows(rest, limit, budget, acc, bytes, get)
+    end
+  end
+
+  defp read_checkpoints(repo, agent_id, filters) do
+    query =
+      from(c in Checkpoint,
+        where: c.agent_id == ^agent_id,
+        order_by: [asc: c.recorded_at, asc: c.id],
+        limit: ^filters.limit,
+        select: %{checkpoint: c, raw: fragment("CAST(? AS TEXT)", c.data)}
+      )
+
+    query = after_clause(query, filters.after)
+
+    query =
+      if filters.through,
+        do: from(c in query, where: c.recorded_at <= ^filters.through),
+        else: query
+
+    rows = repo.all(query, log: false)
+
+    {checkpoints, more?} =
+      take_rows(rows, filters.limit, filters.max_bytes, [], 0, & &1.checkpoint)
+
+    next =
+      case List.last(checkpoints) do
+        nil ->
+          nil
+
+        checkpoint when more? ->
+          %{"recorded_at" => DateTime.to_iso8601(checkpoint.recorded_at), "id" => checkpoint.id}
+
+        _ ->
+          nil
+      end
+
+    {:ok,
+     %{
+       "checkpoints" => Enum.map(checkpoints, &Records.plain/1),
+       "next_cursor" => next,
+       "over_budget" => oversized?(rows, filters.max_bytes)
+     }}
+  end
+
+  defp after_clause(query, nil), do: query
+
+  defp after_clause(query, {at, nil}), do: from(c in query, where: c.recorded_at > ^at)
+
+  defp after_clause(query, {at, id}) do
+    from(c in query, where: c.recorded_at > ^at or (c.recorded_at == ^at and c.id > ^id))
+  end
+
+  defp read_turns(repo, agent_id, after_seq, limit) do
+    query =
+      from(e in Event,
+        where: e.scope_id == ^agent_id and not is_nil(e.turn_id) and e.seq > ^after_seq,
+        group_by: e.turn_id,
+        order_by: [asc: min(e.seq)],
+        limit: ^limit,
+        select: %{
+          turn_id: e.turn_id,
+          first_seq: min(e.seq),
+          last_seq: max(e.seq),
+          events: count(e.id)
+        }
+      )
+
+    turns =
+      Enum.map(repo.all(query, log: false), fn turn ->
+        checkpoint =
+          from(c in Checkpoint,
+            where: c.agent_id == ^agent_id and c.turn_id == ^turn.turn_id,
+            order_by: [desc: c.recorded_at, desc: c.id],
+            limit: 1
+          )
+          |> repo.one(log: false)
+
+        %{
+          "turn_id" => turn.turn_id,
+          "first_seq" => turn.first_seq,
+          "last_seq" => turn.last_seq,
+          "events" => turn.events,
+          "checkpoint_id" => checkpoint && checkpoint.id,
+          "continuation" => checkpoint && checkpoint.continuation,
+          "step" => checkpoint && get_in(checkpoint.data, ["step"])
+        }
+      end)
+
+    next = if length(turns) == limit, do: List.last(turns)["last_seq"], else: nil
+    {:ok, %{"turns" => turns, "next_cursor" => next}}
+  end
+
+  # Ordered by (history_seq, id); owned Operations get a distinct position today, so
+  # the seq cursor cannot skip a row. Revisit if a writer ever shares a position.
+  defp read_operations(repo, agent_id, after_seq, limit) do
+    query =
+      from(o in Operation,
+        where: o.owner_agent_id == ^agent_id and o.history_seq > ^after_seq,
+        order_by: [asc: o.history_seq, asc: o.id],
+        limit: ^limit
+      )
+
+    operations =
+      Enum.map(repo.all(query, log: false), fn operation ->
+        %{
+          "operation_id" => operation.id,
+          "history_seq" => operation.history_seq,
+          "turn_id" => operation.turn_id,
+          "tool_call_id" => operation.tool_call_id,
+          "ordinal" => operation.ordinal,
+          "description" => operation.description,
+          "description_digest" => operation.description_digest,
+          "accepted_result" => operation.accepted_result,
+          "accepted_evidence_id" => operation.accepted_evidence_id,
+          "attempt" => Records.plain(attempt_for(repo, operation.id)),
+          "evidence_digests" => Enum.map(evidence_rows(repo, operation.id), & &1["digest"])
+        }
+      end)
+
+    next = if length(operations) == limit, do: List.last(operations)["history_seq"], else: nil
+    {:ok, %{"operations" => operations, "next_cursor" => next}}
+  end
+
+  defp attempt_for(repo, operation_id) do
+    from(e in Execution, where: e.operation_id == ^operation_id)
+    |> repo.one(log: false)
+  end
+
+  defp evidence_rows(repo, operation_id) do
+    from(e in ExecutionEvidence,
+      where: e.operation_id == ^operation_id,
+      order_by: [desc: e.recorded_at, asc: e.id],
+      limit: 32
+    )
+    |> repo.all(log: false)
+    |> Enum.map(&Records.plain/1)
+  end
+
+  ## Bounds
+
+  defp seq(value) when is_integer(value) and value >= 0, do: {:ok, value}
+  defp seq(_), do: {:error, :invalid_data}
+
+  defp optional_seq(nil), do: {:ok, nil}
+  defp optional_seq(value), do: seq(value)
+
+  defp bounded(value, min, max) when is_integer(value) and value >= min and value <= max,
+    do: {:ok, value}
+
+  defp bounded(value, _min, max) when is_integer(value) and value > max, do: {:error, :limit}
+
+  defp bounded(_, _, _), do: {:error, :invalid_data}
+
+  defp optional_uuid(nil), do: {:ok, nil}
+  defp optional_uuid(value), do: Records.uuid(value)
+
+  defp types(nil, nil), do: {:ok, nil}
+
+  defp types(nil, type) do
+    case Records.text(type, 255) do
+      {:ok, type} -> {:ok, [type]}
+      error -> error
+    end
+  end
+
+  defp types(types, _type) when is_list(types) and length(types) in 1..8 do
+    Enum.reduce_while(types, {:ok, []}, fn type, {:ok, acc} ->
+      case Records.text(type, 255) do
+        {:ok, type} -> {:cont, {:ok, [type | acc]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      error -> error
+    end
+  end
+
+  defp types(_, _), do: {:error, :invalid_data}
+
+  defp optional_time(nil), do: {:ok, nil}
+
+  defp optional_time(%DateTime{} = value), do: {:ok, value}
+
+  defp optional_time(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, at, _offset} -> {:ok, at}
+      _ -> {:error, :invalid_data}
+    end
+  end
+
+  defp optional_time(_), do: {:error, :invalid_data}
+end

@@ -1,0 +1,33 @@
+{
+  "id": "agent-operation-persistence",
+  "name": "agent-operation-persistence",
+  "title": "Agent / Operation 持久化与恢复",
+  "description": "落实已确认的两原语持久化设计：Ecto 双适配器权威库、执行日志、暂停恢复、历史导出及 fork 新 Agent；当前仅建立规划，不授权实施",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "hobr",
+  "assignee": "hobr",
+  "createdAt": "2026-10-18",
+  "completedAt": "2026-10-18",
+  "branch": null,
+  "base_branch": "feat/durable",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-18-durable-storage",
+    "10-18-durable-runtime",
+    "10-18-durable-agent",
+    "10-18-durable-history-export",
+    "10-18-durable-fork-resolution",
+    "10-18-durable-release-operations"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
