@@ -401,3 +401,43 @@ Renamed host apps to beamlet_app_server/beamlet_app_web and Server modules to Be
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: Storage and Agent durable event-reference rebuild
+<!-- trellis-session: v=2 fp=faad34496ec4f8d3 -->
+
+**Date**: 2026-10-18
+**Task**: Storage and Agent durable event-reference rebuild
+**Branch**: `refactor/durable-rebuild`
+
+### Summary
+
+Completed and independently reviewed all four durable rebuild children; archived parent, children and predecessor design. Removed old authority format and transcript checkpoint ownership, integrated immutable owned Operations, pure reduction, paused recovery, direct-reference fork and offline traces.
+
+### Main Changes
+
+- Authority format 2 and journal format 1; no old-format migration or compatibility path. Continuous committed Agent events, atomic preparation and accepted-reference consumption.
+- Unified model/Tool ownership, fixed request/provenance and credential separation, no uncertain replay, sender generation retirement, reference fork and complete receipt/artifact export closure.
+- Updated executable specs and implementation status; repaired archived Markdown and context-manifest links. No push or deployment; unrelated toolchain commit retained.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4555021` | docs(durable): define event and operation content ownership |
+| `cd5ee50` | refactor(durable): rebuild storage and agent around immutable references |
+
+### Testing
+
+- [OK] Full umbrella 503 passed twice: Agent SQLite and Agent PostgreSQL, Storage74 always real SQLite/PostgreSQL; Agent104, focused reference39 per adapter.
+- [OK] 35 actual named distributed tests; remote start_intent/peer-loss/no-resubmission probe; two independent-process durable-e2e phases.
+- [OK] Format, warning-fatal compile, strict Credo, Sobelow, catalogue drift, existing-PLT Dialyzer and backend compile passed; rebuilt copied/named Server/CLI/Web release controls and interaction/HTTP/assets passed.
+- [OK] Parent AC1–AC7 accepted; all six archived task records completed and context manifests valid. Evidence covers same-host peers/processes, not physical power loss or paid providers.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Implementation complete on refactor/durable-rebuild. Review or integrate work commits when desired; no in-scope blocker remains.
