@@ -1,0 +1,169 @@
+defmodule Beamlet.Actions.Storage.DispatchScopes do
+  @moduledoc "Opaque dispatch epochs. Lock order is scope then Operation; acceptance never locks a scope."
+  import Ecto.Query
+  alias Beamlet.Actions.Storage.Read
+  alias Beamlet.Actions.Storage.Records
+  alias Beamlet.Actions.Storage.Schema.DispatchScope
+  alias Beamlet.Actions.Storage.Schema.Execution
+  alias Beamlet.Actions.Storage.Schema.Operation
+  alias Beamlet.Storage.Transaction
+
+  def create(repo, attrs),
+    do: Records.transact(repo, fn -> create_in_transaction(repo, attrs) end)
+
+  def rotate(repo, attrs),
+    do: Records.transact(repo, fn -> rotate_in_transaction(repo, attrs) end)
+
+  def create_in_transaction(repo, attrs) do
+    Transaction.participate(repo, fn ->
+      with {:ok, _} <- Records.fields(attrs, [:id], []),
+           {:ok, _} <- Records.uuid(attrs.id),
+           {:ok, record} <-
+             Records.insert(
+               repo,
+               DispatchScope.changeset(%DispatchScope{}, %{id: attrs.id, epoch: 0})
+             ) do
+        {:ok, Records.plain(record)}
+      end
+    end)
+  end
+
+  def current(repo, id) do
+    with {:ok, _} <- Records.uuid(id) do
+      Read.read(fn -> read_current(repo, id) end)
+    end
+  end
+
+  defp read_current(repo, id) do
+    with {:ok, record} <- Records.get(repo, DispatchScope, id), do: {:ok, Records.plain(record)}
+  end
+
+  def rotate_in_transaction(repo, attrs) do
+    Transaction.participate(repo, fn ->
+      with {:ok, _} <- Records.fields(attrs, [:id, :expected_epoch], []),
+           {:ok, _} <- Records.uuid(attrs.id),
+           {:ok, _} <- Records.count(attrs.expected_epoch),
+           {:ok, record} <- locked(repo, attrs.id, :exclusive),
+           true <- record.epoch == attrs.expected_epoch do
+        {1, _} =
+          repo.update_all(
+            from(s in DispatchScope, where: s.id == ^attrs.id),
+            [set: [epoch: record.epoch + 1]],
+            log: false
+          )
+
+        {:ok, %{"id" => attrs.id, "epoch" => record.epoch + 1}}
+      else
+        false -> {:error, :stale_epoch}
+        error -> error
+      end
+    end)
+  end
+
+  def validate_binding(nil, nil), do: :ok
+
+  def validate_binding(id, epoch) when not is_nil(id) and not is_nil(epoch) do
+    with {:ok, _} <- Records.uuid(id), {:ok, _} <- Records.count(epoch), do: :ok
+  end
+
+  def validate_binding(_, _), do: {:error, :invalid_data}
+
+  def check(_repo, nil, nil), do: :ok
+
+  def check(repo, id, epoch) do
+    with :ok <- validate_binding(id, epoch),
+         {:ok, record} <- locked(repo, id, :shared) do
+      if record.epoch == epoch, do: :ok, else: {:error, :stale_epoch}
+    end
+  end
+
+  @doc "Explicit continuation only: rebind a pending prepared identity after a rotation, in the caller transaction."
+  def reauthorize_in_transaction(repo, attrs) do
+    Transaction.participate(repo, fn ->
+      with {:ok, _} <-
+             Records.fields(
+               attrs,
+               [
+                 :scope_id,
+                 :from_epoch,
+                 :to_epoch,
+                 :operation_id,
+                 :attempt_id,
+                 :description_digest,
+                 :expected_version,
+                 :attempt_version
+               ],
+               []
+             ),
+           :ok <- validate_binding(attrs.scope_id, attrs.from_epoch),
+           {:ok, _} <- Records.count(attrs.to_epoch),
+           true <- attrs.to_epoch > attrs.from_epoch,
+           {:ok, _} <- Records.uuid(attrs.operation_id),
+           {:ok, _} <- Records.uuid(attrs.attempt_id),
+           {:ok, _} <- Records.digest(attrs.description_digest),
+           {:ok, _} <- Records.count(attrs.expected_version),
+           {:ok, _} <- Records.count(attrs.attempt_version),
+           :ok <- check(repo, attrs.scope_id, attrs.to_epoch) do
+        reauthorize(repo, attrs)
+      else
+        false -> {:error, :invalid_data}
+        error -> error
+      end
+    end)
+  end
+
+  defp reauthorize(repo, attrs) do
+    query = from(o in Operation, where: o.id == ^attrs.operation_id)
+
+    query =
+      if repo.__adapter__() == Ecto.Adapters.Postgres, do: lock(query, "FOR UPDATE"), else: query
+
+    operation = repo.one(query, log: false)
+    attempt = repo.get(Execution, attrs.attempt_id, log: false)
+
+    if eligible?(operation, attempt, attrs) do
+      repo.update_all(
+        from(o in Operation, where: o.id == ^attrs.operation_id),
+        [set: [dispatch_epoch: attrs.to_epoch, lock_version: attrs.expected_version + 1]],
+        log: false
+      )
+
+      {:ok,
+       %{
+         "operation_id" => attrs.operation_id,
+         "lock_version" => attrs.expected_version + 1,
+         "dispatch_scope_id" => attrs.scope_id,
+         "dispatch_epoch" => attrs.to_epoch
+       }}
+    else
+      {:error, :conflict}
+    end
+  end
+
+  defp eligible?(nil, _, _), do: false
+  defp eligible?(_, nil, _), do: false
+
+  defp eligible?(operation, attempt, attrs) do
+    operation.dispatch_scope_id == attrs.scope_id and operation.dispatch_epoch == attrs.from_epoch and
+      operation.lock_version == attrs.expected_version and is_nil(operation.accepted_result) and
+      operation.description_digest == attrs.description_digest and
+      attempt.operation_id == operation.id and
+      attempt.dispatch_state == "prepared" and attempt.lock_version == attrs.attempt_version
+  end
+
+  defp locked(repo, id, mode) do
+    query = from(s in DispatchScope, where: s.id == ^id)
+
+    query =
+      case {repo.__adapter__(), mode} do
+        {Ecto.Adapters.Postgres, :shared} -> lock(query, "FOR SHARE")
+        {Ecto.Adapters.Postgres, :exclusive} -> lock(query, "FOR UPDATE")
+        _ -> query
+      end
+
+    case repo.one(query, log: false) do
+      nil -> {:error, :conflict}
+      record -> {:ok, record}
+    end
+  end
+end

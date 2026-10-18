@@ -1,27 +1,27 @@
-defmodule Beamlet.Storage.Schema.JournalAttempt do
+defmodule Beamlet.Actions.Storage.Schema.JournalAttempt do
   @moduledoc false
   use Ecto.Schema
-  alias Beamlet.Storage.RecordChangeset
+  alias Beamlet.Actions.Storage.RecordChangeset
   @primary_key {:id, :string, autogenerate: false}
   schema "journal_attempts" do
-    field :authority_id, :string
-    field :operation_id, :string
-    field :attempt_id, :string
-    field :description_digest, :string
-    field :executor_id, :string
-    field :executor_boot_id, :string
-    field :state, :string
-    field :stop_reason, :string
-    field :termination, Beamlet.Storage.JSON
-    field :terminal_artifacts, Beamlet.Storage.JSON, kind: :journal_artifacts
-    field :terminal_result, Beamlet.Storage.JSON, kind: :result
-    field :receipt_id, :string
-    field :receipt_digest, :string
-    field :receipt, Beamlet.Storage.JSON
-    field :acknowledged, :boolean
-    field :schema_version, :integer
-    field :lock_version, :integer
-    field :recorded_at, :utc_datetime_usec
+    field(:authority_id, :string)
+    field(:operation_id, :string)
+    field(:attempt_id, :string)
+    field(:description_digest, :string)
+    field(:executor_id, :string)
+    field(:executor_boot_id, :string)
+    field(:state, :string)
+    field(:stop_reason, :string)
+    field(:termination, Beamlet.Actions.Storage.JSON)
+    field(:terminal_artifacts, Beamlet.Actions.Storage.JSON, kind: :journal_artifacts)
+    field(:terminal_result, Beamlet.Actions.Storage.JSON, kind: :result)
+    field(:receipt_id, :string)
+    field(:receipt_digest, :string)
+    field(:receipt, Beamlet.Actions.Storage.JSON)
+    field(:acknowledged, :boolean)
+    field(:schema_version, :integer)
+    field(:lock_version, :integer)
+    field(:recorded_at, :utc_datetime_usec)
   end
 
   def changeset(record, attrs) do

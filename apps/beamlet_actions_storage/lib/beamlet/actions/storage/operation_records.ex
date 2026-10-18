@@ -1,29 +1,33 @@
-defmodule Beamlet.Storage.OperationRecords do
+defmodule Beamlet.Actions.Storage.OperationRecords do
   @moduledoc "Immutable requests, single dispatch claims, evidence and Operation-scoped acceptance."
   import Ecto.Query
-  alias Beamlet.Storage.{Artifacts, Codec, Records, References, Transaction}
-  alias Beamlet.Storage.Schema.{Agent, Execution, ExecutionEvidence, Operation}
+  alias Beamlet.Actions.Storage.Codec
+  alias Beamlet.Actions.Storage.DispatchScopes
+  alias Beamlet.Actions.Storage.Read
+  alias Beamlet.Actions.Storage.Records
+  alias Beamlet.Actions.Storage.Schema.Execution
+  alias Beamlet.Actions.Storage.Schema.ExecutionEvidence
+  alias Beamlet.Actions.Storage.Schema.Operation
+  alias Beamlet.Actions.Storage.Schema.OperationEvent
+  alias Beamlet.Storage.Artifacts
+  alias Beamlet.Storage.References
+  alias Beamlet.Storage.Transaction
 
   @description_keys ~w(kind protocol_version payload refs budget claims safety)
 
-  # Owned work is created only by AgentRecords.prepare_operations/2.
-  def prepare(repo, attrs) do
-    with {:ok, _} <- Records.fields(attrs, [:operation, :attempt], []),
-         {:ok, operation} <- validate_operation(attrs.operation),
-         true <- independent?(operation),
-         {:ok, attempt} <- validate_attempt(attrs.attempt) do
-      Records.transact(repo, fn -> prepare_independent(repo, operation, attempt) end)
-    else
-      false -> {:error, :invalid_data}
-      error -> error
-    end
-  end
+  def prepare(repo, attrs),
+    do: Records.transact(repo, fn -> prepare_in_transaction(repo, attrs) end)
 
-  defp independent?(operation) do
-    Enum.all?(
-      ~w(owner_agent_id turn_id step_id role ordinal tool_call_id)a,
-      &is_nil(Map.fetch!(operation, &1))
-    ) and operation.sources == []
+  def prepare_in_transaction(repo, attrs) do
+    Transaction.participate(repo, fn ->
+      with {:ok, _} <- Records.fields(attrs, [:operation, :attempt], []),
+           {:ok, operation} <- validate_operation(attrs.operation),
+           {:ok, attempt} <- validate_attempt(attrs.attempt),
+           :ok <-
+             DispatchScopes.check(repo, operation.dispatch_scope_id, operation.dispatch_epoch) do
+        prepare_independent(repo, operation, attempt)
+      end
+    end)
   end
 
   defp prepare_independent(repo, operation, attempt) do
@@ -47,51 +51,21 @@ defmodule Beamlet.Storage.OperationRecords do
   @doc false
   def validate_operation(attrs) do
     with {:ok, _} <-
-           Records.fields(attrs, [:id, :description, :sources], [
-             :owner_agent_id,
-             :turn_id,
-             :step_id,
-             :role,
-             :ordinal,
-             :tool_call_id
-           ]),
+           Records.fields(attrs, [:id, :description], [:dispatch_scope_id, :dispatch_epoch]),
          {:ok, id} <- Records.uuid(attrs.id),
          {:ok, description} <- description(attrs.description),
-         {:ok, sources} <- Records.json(attrs.sources, :operation),
-         true <- is_list(sources) and length(sources) <= 128,
-         {:ok, owner} <- Records.optional_uuid(attrs[:owner_agent_id]),
-         {:ok, turn} <- Records.optional_uuid(attrs[:turn_id]),
-         {:ok, step} <- Records.optional_text(attrs[:step_id], 255),
-         {:ok, role} <- role(attrs[:role], owner),
-         {:ok, ordinal} <- optional_count(attrs[:ordinal]),
-         {:ok, call} <- Records.optional_text(attrs[:tool_call_id], 255),
-         true <-
-           (is_nil(owner) and is_nil(turn)) or
-             (not is_nil(owner) and not is_nil(turn) and not is_nil(step)),
+         :ok <- DispatchScopes.validate_binding(attrs[:dispatch_scope_id], attrs[:dispatch_epoch]),
          {:ok, digest} <- Codec.digest(description, :operation) do
       {:ok,
        %{
          id: id,
          description: description,
          description_digest: digest,
-         sources: sources,
-         owner_agent_id: owner,
-         turn_id: turn,
-         step_id: step,
-         role: role,
-         ordinal: ordinal,
-         tool_call_id: call
+         dispatch_scope_id: attrs[:dispatch_scope_id],
+         dispatch_epoch: attrs[:dispatch_epoch]
        }}
-    else
-      false -> {:error, :invalid_data}
-      error -> error
     end
   end
-
-  defp role(nil, nil), do: {:ok, nil}
-  defp role(value, _), do: Records.enum(value, ~w(model tool summary))
-  defp optional_count(nil), do: {:ok, nil}
-  defp optional_count(value), do: Records.count(value)
 
   defp description(value) when is_map(value) and not is_struct(value) do
     valid =
@@ -121,8 +95,7 @@ defmodule Beamlet.Storage.OperationRecords do
          do: {:ok, attrs}
   end
 
-  @doc "Internal transaction participant; caller must validate ownership and sources."
-  def insert_prepared(repo, operation, attempt) do
+  defp insert_prepared(repo, operation, attempt) do
     attrs =
       Map.merge(operation, %{
         lock_version: 0,
@@ -158,12 +131,17 @@ defmodule Beamlet.Storage.OperationRecords do
       "attempt_id" => attempt.attempt_id,
       "attempt_version" => 0,
       "lock_version" => 0,
-      "dispatch_state" => "prepared"
+      "dispatch_state" => "prepared",
+      "dispatch_scope_id" => operation.dispatch_scope_id,
+      "dispatch_epoch" => operation.dispatch_epoch
     }
   end
 
   def claim_dispatch(repo, attrs) do
-    with {:ok, _} <- Records.fields(attrs, [:operation_id, :attempt_id, :expected_version], []),
+    with {:ok, _} <-
+           Records.fields(attrs, [:operation_id, :attempt_id, :expected_version], [
+             :expected_operation
+           ]),
          {:ok, _} <- Records.uuid(attrs.operation_id),
          {:ok, _} <- Records.uuid(attrs.attempt_id),
          {:ok, _} <- Records.count(attrs.expected_version) do
@@ -174,7 +152,7 @@ defmodule Beamlet.Storage.OperationRecords do
   defp claim(repo, attrs) do
     with {:ok, execution} <- Records.get(repo, Execution, attrs.attempt_id),
          true <- execution.operation_id == attrs.operation_id,
-         :ok <- claim_generation(repo, execution.operation_id) do
+         :ok <- claim_scope(repo, execution.operation_id, attrs[:expected_operation]) do
       eligible = from(o in Operation, where: is_nil(o.accepted_result), select: o.id)
 
       query =
@@ -206,17 +184,28 @@ defmodule Beamlet.Storage.OperationRecords do
     end
   end
 
-  defp claim_generation(repo, id) do
-    with {:ok, op} <- claim_record(repo, Operation, id, "FOR UPDATE") do
-      owner_generation(repo, op)
+  defp claim_scope(repo, id, expected) do
+    with {:ok, op} <- Records.get(repo, Operation, id),
+         :ok <- DispatchScopes.check(repo, op.dispatch_scope_id, op.dispatch_epoch),
+         {:ok, locked} <- claim_record(repo, Operation, id, "FOR UPDATE") do
+      expected_operation(locked, expected)
     end
   end
 
-  defp owner_generation(_repo, %Operation{owner_agent_id: nil}), do: :ok
+  defp expected_operation(_operation, nil), do: :ok
 
-  defp owner_generation(repo, op) do
-    with {:ok, agent} <- claim_record(repo, Agent, op.owner_agent_id, "FOR SHARE") do
-      if agent.generation == op.owner_generation, do: :ok, else: {:error, :stale_generation}
+  defp expected_operation(operation, expected) do
+    with {:ok, _} <-
+           Records.fields(
+             expected,
+             [:description_digest, :lock_version, :dispatch_scope_id, :dispatch_epoch],
+             []
+           ),
+         {:ok, _} <- Records.digest(expected.description_digest),
+         {:ok, _} <- Records.count(expected.lock_version),
+         :ok <-
+           DispatchScopes.validate_binding(expected.dispatch_scope_id, expected.dispatch_epoch) do
+      if Map.take(operation, Map.keys(expected)) == expected, do: :ok, else: {:error, :conflict}
     end
   end
 
@@ -389,7 +378,7 @@ defmodule Beamlet.Storage.OperationRecords do
 
   def fetch(repo, id) do
     with {:ok, id} <- Records.uuid(id) do
-      Transaction.read(fn -> read_operation(repo, id) end)
+      Read.read(fn -> read_operation(repo, id) end)
     end
   end
 
@@ -407,9 +396,8 @@ defmodule Beamlet.Storage.OperationRecords do
   defp insert_event(repo, id, seq, type, payload) do
     Records.insert(
       repo,
-      Records.event_changeset(%{
+      OperationEvent.changeset(%OperationEvent{}, %{
         id: Ecto.UUID.generate(),
-        scope_id: id,
         operation_id: id,
         seq: seq,
         type: type,

@@ -1,4 +1,4 @@
-defmodule Beamlet.Storage.TerminalArtifacts do
+defmodule Beamlet.Actions.Storage.TerminalArtifacts do
   @moduledoc """
   Executor-journal terminal attachment container (version 1). The container is
   data, never live references: `%{"version" => 1, "items" => %{artifact_id =>
@@ -8,7 +8,7 @@ defmodule Beamlet.Storage.TerminalArtifacts do
   authority artifact rows, so it verifies identity shape and content integrity,
   not authority existence (that stays in the authority transaction).
   """
-  alias Beamlet.Storage.Codec
+  alias Beamlet.Actions.Storage.Codec
 
   @version 1
   @max_items 64

@@ -1,4 +1,4 @@
-defmodule Beamlet.Storage.ExecutorJournal do
+defmodule Beamlet.Actions.Storage.ExecutorJournal do
   @moduledoc """
   Executor-local SQLite evidence journal. `claim_start/2` is insert-once on
   `(authority_id, attempt_id)` and only reports the stored state, so a duplicate
@@ -9,8 +9,11 @@ defmodule Beamlet.Storage.ExecutorJournal do
   produce a terminal fact.
   """
   import Ecto.Query
-  alias Beamlet.Storage.{Codec, Records, TerminalArtifacts, Transaction}
-  alias Beamlet.Storage.Schema.JournalAttempt
+  alias Beamlet.Actions.Storage.Codec
+  alias Beamlet.Actions.Storage.Read
+  alias Beamlet.Actions.Storage.Records
+  alias Beamlet.Actions.Storage.Schema.JournalAttempt
+  alias Beamlet.Actions.Storage.TerminalArtifacts
 
   @stop_reasons ~w(deadline cancelled)
   @transaction_budget 33_554_432
@@ -52,7 +55,7 @@ defmodule Beamlet.Storage.ExecutorJournal do
   def fetch(repo, authority_id, attempt_id) do
     with {:ok, authority_id} <- Records.uuid(authority_id),
          {:ok, attempt_id} <- Records.uuid(attempt_id) do
-      Transaction.read(fn -> read_attempt(repo, authority_id, attempt_id) end)
+      Read.read(fn -> read_attempt(repo, authority_id, attempt_id) end)
     end
   end
 
