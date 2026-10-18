@@ -93,8 +93,9 @@ raw errors or config. Failure leaves local service available. Task/controller/he
 ownership is cleaned on host loss/deadline; an initiated OTP handshake may complete
 later. No background reconnect or business replay exists.
 
-BEAMLET_BACKEND_BUILD=1 compiles five core libraries plus both hosts under isolated
-_build/backend, excluding Web. Each release excludes the other host. beamlet_daemon uses daemon_runtime.exs,
+BEAMLET_BACKEND_BUILD=1 compiles the seven backend libraries (five core, `beamlet_i18n`
+and the daemon/CLI closure needs) plus both hosts under isolated _build/backend,
+excluding Web. Each release excludes the other host. beamlet_daemon uses daemon_runtime.exs,
 which reads trusted operator-owned absolute BEAMLET_CONFIG, accepts only the daemon
 namespace/settings, normalizes/validates, then explicitly enables the host. Reader
 and validation failure raises one static message outside the rescue context; raw
@@ -105,7 +106,9 @@ SECRET_KEY_BASE failure and CSP remain unchanged.
 rel/env.sh.eex retains long-name service fixed BEAMLET_DIST_PORT (default9100)
 and ephemeral port0 for rpc/remote/restart/stop/pid helpers. Eval alone does not
 prove this regression. check-release.sh verifies copied .rel/.app/lib closures
-without Web/Phoenix/Plug/Bandit/WebSock or the opposite host. check-named-release.py uses the same
+without Web/Phoenix/Plug/Bandit/WebSock, the opposite host, or the presentation-only
+`beamlet_i18n`/`gettext`/`expo` set (the daemon must never ship them; the CLI release
+legitimately does). check-named-release.py uses the same
 artifact for default/authority-only/executor-only named start/RPC/pid/stop, then
 authority→executor bootstrap and a deterministic remote Gateway turn. It checks
 failed-peer local continuation and static malformed-config rejection. Copied-file

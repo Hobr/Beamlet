@@ -4,7 +4,7 @@
 
 Root `mix.exs` sets `apps_path: "apps"`. There is no root `lib/`, `test/`, or
 `priv/`; application code and tests live under each child app (for example,
-`apps/beamlet_web/`). All eight child manifests share root build, dependency,
+`apps/beamlet_web/`). All nine child manifests share root build, dependency,
 lockfile, and configuration paths.
 
 | Application | Implemented source today |
@@ -16,7 +16,8 @@ lockfile, and configuration paths.
 | `beamlet_node` | Explicitly supervised role composition, Routes/Provider/Runtime; shared trusted-name/connect/filter API in `Beamlet.Node.Cluster`, bounded discovery in `Beamlet.Node.Agents`; no Application callback |
 | `beamlet_cli` | Opt-in interaction host, terminal Client and bounded Command/Session/Renderer/Runner; foreground release |
 | `beamlet_daemon` | Opt-in Application, startup configuration policy and owned one-shot peer bootstrap; authority/executor daemon release |
-| `beamlet_web` | Phoenix endpoint, router, page/error renderers, components, telemetry; opt-in Host/Bootstrap, immutable Presets, Agents adapter and ephemeral Handles |
+| `beamlet_i18n` | Shared Gettext backend `Beamlet.I18n`, `Beamlet.I18n.Locale` canonicalisation/default, `Beamlet.I18n.Vocabulary` and the `Beamlet.I18n.Catalogue` declaration of shared msgids; `priv/gettext` shared catalogue |
+| `beamlet_web` | Phoenix endpoint, router, page/error renderers, components, telemetry; opt-in Host/Bootstrap, immutable Presets, Agents adapter and ephemeral Handles; `Beamlet.Web.Locale` request/LiveView locale resolution |
 
 Runtime declares `{:beamlet_actions, in_umbrella: true}` and OTP `:crypto`.
 Harness declares exact Req 0.7.5 and direct Jason; it has no sibling dependencies.
@@ -30,6 +31,12 @@ callbacks in their own `mix.exs`. CLI directly declares Node/Agent, and test-onl
 Runtime/Harness/Jason dependencies for its migrated HTTP integration fixture.
 Daemon directly declares Node; it calls business APIs only through Node composition.
 Node has no dependency on either host. Web directly declares Node/Agent/Actions/Harness and test-only Runtime, plus OTP crypto; its adapters have no CLI/daemon dependency. See [Web Host and Presets](./web-host.md).
+Web and CLI additionally declare `{:beamlet_i18n, in_umbrella: true}` and CLI
+declares `{:gettext, "~> 1.0"}` (Web already had it); both are shared presentational
+libraries. Gettext 1.0.2 and Expo were already resolved in the root `mix.lock`, so
+these declarations add no new resolution. `beamlet_i18n` is a leaf: it depends only
+on Gettext, no core app depends on it, and the daemon's closure must stay free of
+`beamlet_i18n`/`gettext`/`expo` (the CLI closure legitimately gains them).
 Root dependencies are development/analysis tools, not child runtime dependencies;
 root `mix.exs` explicitly documents this distinction. Put app dependencies in the
 owning child manifest, not only at the umbrella root.
@@ -71,6 +78,11 @@ coupled authority Registry/Resources/Delegations/Agents tree only for authority.
 
 - `apps/beamlet_web/lib/beamlet_web/endpoint.ex`: static serving, `/live` socket,
   development plugs, request IDs/telemetry, parsers, session, then router.
+- `apps/beamlet_web/lib/beamlet_web/locale.ex`: `Beamlet.Web.Locale` plug in the
+  `:browser` pipeline resolves `?locale=` -> session -> `config :beamlet_web,
+  :default_locale`, installs the locale for the request and assigns
+  `:locale`/`:locale_options`; WorkbenchLive/ManagementLive use its `on_mount/4`
+  and `on_params/3` for the same rule inside the LiveView process.
 - `apps/beamlet_web/lib/beamlet_web/router.ex`: browser and API pipelines; LiveView workbench routes `/`, `/agents/new` and `/agents/:handle` use WorkbenchLive; read-only `/admin/nodes`, `/admin/presets` and `/admin/diagnostics` use ManagementLive. The API pipeline has no routes. `/dev/dashboard` is gated by compile-time `:dev_routes`, enabled
   in `config/dev.exs`.
 - WorkbenchLive/WorkbenchCommands/OwnedCall under `lib/beamlet_web/live/` own task entry, exact attachment and disposable callers/sinks; ObservationComponents renders escaped current context/activity. See [Web Workbench](./web-workbench.md). ManagementReads/ManagementLive under the same directory expose bounded read-only node/preset/diagnostics views; see [Web Management](./web-management.md).
@@ -105,9 +117,19 @@ adds that directory to `elixirc_paths(:test)`.
 - Web source assets are in `apps/beamlet_web/assets/`; esbuild/Tailwind output
   targets `apps/beamlet_web/priv/static/assets/` (`config/config.exs`). Static
   source resources also include `priv/static/images/logo.svg` and `robots.txt`.
-- Gettext backend: `apps/beamlet_web/lib/beamlet_web/gettext.ex`; catalogues:
-  `apps/beamlet_web/priv/gettext/errors.pot` and
-  `apps/beamlet_web/priv/gettext/en/LC_MESSAGES/errors.po`.
+- Gettext backends and catalogue ownership (one msgid, one owner):
+  `apps/beamlet_i18n/lib/beamlet/i18n.ex` owns the shared status/reason
+  vocabulary and locale canonicalisation, with catalogues
+  `apps/beamlet_i18n/priv/gettext/{default,errors}.{pot,po}`;
+  `apps/beamlet_web/lib/beamlet_web/gettext.ex` owns Web-only copy in
+  `apps/beamlet_web/priv/gettext/{default,errors}.{pot,po}`;
+  `apps/beamlet_cli/lib/beamlet/cli/gettext.ex` owns CLI-only copy in
+  `apps/beamlet_cli/priv/gettext/default.{pot,po}`. Each locale lives under
+  `<domain>`'s sibling `en/LC_MESSAGES` and `zh_CN/LC_MESSAGES` directories.
+  Shared msgids are declared once in `Beamlet.I18n.Catalogue` and looked up at
+  runtime through `Beamlet.I18n.gettext/2` / `Beamlet.I18n.dgettext/3`, so no
+  surface imports a second backend macro set. The three msgid sets are mutually
+  exclusive and a test in `apps/beamlet_i18n/test` enforces it.
 
 Pitfalls: extending a nonexistent root service layer, treating generated stubs as
 domain implementations, adding a root-only runtime dependency, or editing built

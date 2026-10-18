@@ -36,6 +36,8 @@ Run these from the repository root unless noted:
 | Static checks | `mix dialyzer`, `mix credo`, `mix sobelow` (`.pre-commit-config.yaml`, root tool deps); root alias runs `sobelow --root apps/beamlet_web --private` |
 | Repository hooks | `pre-commit run --all-files` (`README.md`, `.pre-commit-config.yaml`); this includes general file hygiene, Elixir test/format hooks, Dialyzer, Credo, Sobelow, the example benchmark and CycloneDX SBoM generation |
 | Asset changes | `mix tailwind beamlet_web`, `mix esbuild beamlet_web`; add `--minify` for deploy output and `mix phx.digest` for digests. Run from the umbrella root: `cd apps/beamlet_web && mix assets.build` currently fails on an umbrella dependency-consistency check |
+| Catalogue regeneration after any copy change | `mix gettext.extract --merge` from the umbrella root (it recurses over all apps, so the shared, Web and CLI catalogues are refreshed in one run); do not run extraction inside a child directory |
+| Catalogue drift gate | `mix gettext.extract --check-up-to-date` from the umbrella root; a clean exit is required before claiming the catalogues match the source |
 | Benchmark setup smoke check | `mix bench` (root alias runs `bench/enum.exs` without starting apps); this compares Enum/comprehension, not Beamlet performance |
 
 Umbrella child-directory commands are unreliable: `apps/beamlet_web` and `apps/beamlet_cli` declare `beamlet_runtime` (and CLI also `beamlet_harness`) with `only: :test`, while `apps/beamlet_node` declares `beamlet_runtime` without it, so Mix aborts any task started inside those child directories ("does not match the :only option calculated"). Root-level equivalents are authoritative until that pre-existing manifest inconsistency is resolved; do not silently drop the restriction just to make a child command run.
@@ -65,8 +67,20 @@ behavior; Agent/Node tests cover orchestration, roles, lifecycle ownership and a
 
 Web tests use `apps/beamlet_web/test/support/conn_case.ex`, which imports
 `Plug.Conn`, `Phoenix.ConnTest`, and verified routes and builds a connection in
-setup. It does **not** start a database sandbox, despite its generated prose.
-`config/test.exs` sets `server: false`; connection tests need no listening server.
+setup with an explicit **English** session locale (`@test_locale "en"`), because
+the product ships Chinese copy by default and behaviour assertions must not depend
+on the shipped language. A test that needs another language sets
+`@tag locale: "zh_CN"`; a test that must prove the shipped default builds a
+session-less `Phoenix.ConnTest.build_conn()`. The case does **not** start a
+database sandbox, despite its generated prose. `config/test.exs` sets
+`server: false`; connection tests need no listening server.
+
+CLI tests that assert terminal copy set `config :beamlet_cli, :locale, "en"` and
+`Beamlet.CLI.Locale.put("en")` in setup and restore both in `on_exit`, so
+`Runner`-driven locale installation cannot leak into later assertions. Locale
+behaviour itself is covered by `apps/beamlet_cli/test/beamlet/i18n_test.exs`,
+`apps/beamlet_web/test/beamlet_web/i18n_test.exs` and the catalogue ownership
+tests in `apps/beamlet_i18n/test`.
 
 From `apps/beamlet_web/test/beamlet_web/controllers/page_controller_test.exs`:
 
@@ -87,6 +101,16 @@ Do not relax CSP to bypass a rendering failure. Error HTML/JSON tests in that
 controller test directory use `ConnCase, async: true` and check 404/500 renderers;
 the page tests do not opt into async. Follow a test's actual state needs rather
 than treating async as universal policy.
+
+Translation ownership is a checked invariant, not a convention: one msgid has
+exactly one owning catalogue (shared `beamlet_i18n`, Web-only, CLI-only), the
+`zh_CN` `.po` of every catalogue must translate every extracted msgid, English
+`msgstr`s may stay empty, and every `Beamlet.I18n.gettext/1,2` /
+`Beamlet.I18n.dgettext/2,3` literal in Web/CLI source must exist in the shared
+catalogue. `mix gettext.extract` under Elixir >= 1.19.3 compiles sources twice
+(`compile --force-elixir` plus `compile.elixir --force`), so POT/PO files contain
+duplicated `#:` reference lines; that is an upstream Gettext 1.0.2 artifact, it is
+stable across runs, and it must not be "fixed" by hand-editing generated files.
 
 Runtime distributed tests are excluded by default. Run them explicitly on a named
 VM with an isolated cookie and low peer scheduler counts; inspect actual executed

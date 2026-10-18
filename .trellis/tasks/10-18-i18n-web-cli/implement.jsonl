@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/web-workbench.md","reason":"工作台文案与 LiveView locale 设置"}
+{"file":".trellis/spec/backend/web-management.md","reason":"管理页文案与只读语义不变"}
+{"file":".trellis/spec/backend/web-host.md","reason":"Host/Preset 公共描述文案"}
+{"file":".trellis/spec/backend/backend-release.md","reason":"CLI 输出边界、release 闭包与环境变量"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Gettext backend/priv 目录归属与 child-dir 命令限制"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"提取/合并命令、测试 locale 复原与静态检查"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"错误与表单文案本地化、状态渲染边界"}
