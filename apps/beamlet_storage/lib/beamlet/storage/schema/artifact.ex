@@ -1,7 +1,8 @@
 defmodule Beamlet.Storage.Schema.Artifact do
   @moduledoc false
   use Ecto.Schema
-  alias Beamlet.Storage.{Codec, RecordChangeset}
+  alias Beamlet.Storage.ArtifactChangeset
+  alias Beamlet.Storage.Codec
   @primary_key {:id, :string, autogenerate: false}
   schema "artifacts" do
     field :digest, :string
@@ -12,14 +13,16 @@ defmodule Beamlet.Storage.Schema.Artifact do
   end
 
   def changeset(record, attrs) do
-    cs = RecordChangeset.build(record, attrs, ~w(id digest media_type size content recorded_at)a)
+    cs =
+      ArtifactChangeset.build(record, attrs, ~w(id digest media_type size content recorded_at)a)
+
     content = Ecto.Changeset.get_field(cs, :content)
 
     cond do
       not is_binary(content) ->
         Ecto.Changeset.add_error(cs, :content, "invalid_data")
 
-      byte_size(content) > Codec.limit(:artifact) ->
+      byte_size(content) > 16_777_216 ->
         Ecto.Changeset.add_error(cs, :content, "limit")
 
       Codec.hash(content) != Ecto.Changeset.get_field(cs, :digest) or

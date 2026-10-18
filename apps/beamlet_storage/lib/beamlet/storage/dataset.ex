@@ -4,18 +4,12 @@ defmodule Beamlet.Storage.Dataset do
   `open/2` never migrates or creates a missing SQLite file. Both leave a linked
   Repo running on success and return its pid. Stop it with `repo.stop/0`.
 
-  Options require `dataset_id` (canonical UUID), `database`, and, for SQLite,
-  `peer_database` (the other role's absolute file path). Paths must be local,
+  Options require `descriptor` (see `Installation`), `dataset_id` (canonical UUID), `database`, and, for SQLite,
+  `peer_database` (an explicitly isolated peer path). Paths must be local,
   absolute and symlink-free. PostgreSQL provisioning is the host's responsibility.
   `restored_backup` is an explicit operational marker, not rollback detection.
   """
-  alias Beamlet.Storage.{
-    Codec,
-    ExecutorJournalRepo,
-    Migrations,
-    PostgresAuthorityRepo,
-    SQLiteAuthorityRepo
-  }
+  alias Beamlet.Storage.{Codec, Installation, Migrations}
 
   alias Ecto.Adapters.SQL
   alias Exqlite.Sqlite3
@@ -25,7 +19,7 @@ defmodule Beamlet.Storage.Dataset do
 
   defp start(repo, opts, mode) do
     with :ok <- validate(repo, opts),
-         :ok <- authority_available(repo),
+         :ok <- available(repo),
          :ok <- prepare_file(repo, opts, mode),
          :ok <- preflight(repo, opts, mode),
          {:ok, pid} <- repo.start_link(Keyword.put(opts, :log, false)) do
@@ -68,22 +62,25 @@ defmodule Beamlet.Storage.Dataset do
     with :ok <- maybe_initialize(repo, opts, mode), do: verify_metadata(repo, opts)
   end
 
-  defp authority_available(ExecutorJournalRepo), do: :ok
-
-  defp authority_available(repo) do
-    other = if repo == SQLiteAuthorityRepo, do: PostgresAuthorityRepo, else: SQLiteAuthorityRepo
-    if Process.whereis(other), do: {:error, :conflict}, else: :ok
+  defp available(repo) do
+    if Process.whereis(repo), do: {:error, :conflict}, else: :ok
   end
 
   defp validate(repo, opts) do
-    if repo in [SQLiteAuthorityRepo, PostgresAuthorityRepo, ExecutorJournalRepo] and
-         Keyword.keyword?(opts) and not Keyword.has_key?(opts, :name) and
-         Codec.uuid?(opts[:dataset_id]) do
-      if repo == PostgresAuthorityRepo, do: :ok, else: validate_paths(opts)
+    with true <- Keyword.keyword?(opts),
+         true <- not Keyword.has_key?(opts, :name) and not Keyword.has_key?(opts, :url),
+         true <- Codec.uuid?(opts[:dataset_id]),
+         :ok <- Installation.validate(opts[:descriptor]),
+         true <- repo.__adapter__() in [Ecto.Adapters.SQLite3, Ecto.Adapters.Postgres] do
+      if postgres?(repo), do: :ok, else: validate_paths(opts)
     else
-      {:error, :invalid_data}
+      _ -> {:error, :invalid_data}
     end
+  rescue
+    _ -> {:error, :invalid_data}
   end
+
+  defp postgres?(repo), do: repo.__adapter__() == Ecto.Adapters.Postgres
 
   defp validate_paths(opts) do
     a = opts[:database]
@@ -124,13 +121,15 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
-  defp prepare_file(PostgresAuthorityRepo, _, _), do: :ok
+  defp prepare_file(repo, opts, mode) do
+    if postgres?(repo), do: :ok, else: prepare_sqlite_file(opts, mode)
+  end
 
-  defp prepare_file(_, opts, :open) do
+  defp prepare_sqlite_file(opts, :open) do
     if File.regular?(opts[:database]), do: :ok, else: {:error, :dataset_missing}
   end
 
-  defp prepare_file(_, opts, :initialize) do
+  defp prepare_sqlite_file(opts, :initialize) do
     case File.open(opts[:database], [:write, :exclusive, :binary]) do
       {:ok, io} -> File.close(io)
       {:error, :eexist} -> {:error, :dataset_exists}
@@ -138,41 +137,19 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
-  defp preflight(PostgresAuthorityRepo, _, _), do: :ok
   defp preflight(_, _, :initialize), do: :ok
 
   defp preflight(repo, opts, :open) do
-    with {:ok, conn} <- Sqlite3.open(opts[:database], mode: :readonly) do
-      try do
-        with {:ok, [[id, stored_role, version, backup]]} <-
-               read_raw(
-                 conn,
-                 "SELECT dataset_id, role, format_version, restored_backup FROM storage_metadata WHERE id = 1"
-               ),
-             :ok <- metadata_values(repo, opts, id, stored_role, version, backup),
-             :ok <- preflight_migrations(repo, conn) do
-          :ok
-        else
-          {:error, reason}
-          when reason in [:dataset_mismatch, :schema_unsupported, :restored_backup] ->
-            {:error, reason}
-
-          _ ->
-            {:error, :dataset_missing}
+    if postgres?(repo) do
+      :ok
+    else
+      with {:ok, conn} <- Sqlite3.open(opts[:database], mode: :readonly) do
+        try do
+          verify_rows(opts, fn sql -> read_raw(conn, sql) end)
+        after
+          Sqlite3.close(conn)
         end
-      after
-        Sqlite3.close(conn)
       end
-    end
-  end
-
-  defp preflight_migrations(repo, conn) do
-    case read_raw(conn, "SELECT version FROM schema_migrations ORDER BY version") do
-      {:ok, [[migration]]} ->
-        if migration == format_version(repo), do: :ok, else: {:error, :schema_unsupported}
-
-      _ ->
-        {:error, :schema_unsupported}
     end
   end
 
@@ -186,108 +163,99 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
-  defp metadata_values(repo, opts, id, stored_role, version, backup) do
-    cond do
-      id != opts[:dataset_id] or stored_role != role(repo) -> {:error, :dataset_mismatch}
-      version != format_version(repo) -> {:error, :schema_unsupported}
-      backup not in [false, 0] -> {:error, :restored_backup}
-      true -> :ok
-    end
-  end
-
   defp maybe_initialize(_, _, :open), do: :ok
 
   defp maybe_initialize(repo, opts, :initialize) do
-    # Refuse an already-installed PostgreSQL dataset, even with a matching ID.
-    exists_sql =
-      if repo == PostgresAuthorityRepo,
+    sql =
+      if postgres?(repo),
         do:
-          "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'storage_metadata'",
+          "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'",
         else:
-          "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'storage_metadata'"
+          "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
 
-    case SQL.query!(repo, exists_sql, [], log: false).rows do
+    case SQL.query!(repo, sql, [], log: false).rows do
       [[0]] ->
-        {:ok, :ok} =
-          Migrations.install_metadata(repo, opts[:dataset_id], role(repo))
-
-        path = Application.app_dir(:beamlet_storage, "priv/#{role(repo)}_migrations")
-
-        Code.require_file(
-          Path.join(path, "#{format_version(repo)}_#{role(repo)}_v#{format_version(repo)}.exs")
-        )
-
-        migration =
-          if role(repo) == "journal",
-            do: Beamlet.Storage.Migrations.JournalV1,
-            else: Beamlet.Storage.Migrations.AuthorityV2
-
-        Ecto.Migrator.run(repo, [{format_version(repo), migration}], :up,
-          all: true,
-          log: false,
-          log_migrations_sql: false
-        )
-
-        :ok
+        with {:ok, :ok} <- Migrations.install_metadata(repo, opts[:dataset_id], opts[:descriptor]),
+             do: Migrations.install(repo, opts[:descriptor])
 
       _ ->
         {:error, :dataset_exists}
     end
   end
 
-  @doc """
-  Format/identity/migration check of an already-running dataset: reads
-  `storage_metadata` and `schema_migrations` only. It never migrates, creates or
-  writes, and returns `:ok` or a safe refusal (`:dataset_missing`,
-  `:dataset_mismatch`, `:schema_unsupported`, `:restored_backup`,
-  `:storage_unavailable`).
-  """
-  def verify(repo, opts) when is_list(opts) do
-    if Keyword.keyword?(opts) and Codec.uuid?(opts[:dataset_id]) and
-         repo in [SQLiteAuthorityRepo, PostgresAuthorityRepo, ExecutorJournalRepo] do
-      safely(fn -> verify_metadata(repo, opts) end)
-    else
-      {:error, :invalid_data}
-    end
+  @doc "Read-only identity/format/profile/complete manifest/migration verification."
+  def verify(repo, opts) do
+    with :ok <- validate(repo, opts), do: safely(fn -> verify_metadata(repo, opts) end)
   end
-
-  def verify(_, _), do: {:error, :invalid_data}
 
   defp verify_metadata(repo, opts) do
-    case SQL.query(
-           repo,
-           "SELECT dataset_id, role, format_version, restored_backup FROM storage_metadata WHERE id = 1",
-           [],
-           log: false
-         ) do
-      {:ok, %{rows: [[id, stored_role, version, backup]]}} ->
-        cond do
-          id != opts[:dataset_id] or stored_role != role(repo) -> {:error, :dataset_mismatch}
-          version != format_version(repo) -> {:error, :schema_unsupported}
-          backup not in [false, 0] -> {:error, :restored_backup}
-          true -> verify_migrations(repo)
-        end
+    verify_rows(opts, fn sql ->
+      case SQL.query(repo, sql, [], log: false) do
+        {:ok, %{rows: rows}} -> {:ok, rows}
+        {:error, reason} -> {:error, read_error(reason)}
+      end
+    end)
+  end
 
-      _ ->
-        {:error, :dataset_missing}
+  defp read_error(%Postgrex.Error{postgres: %{code: :undefined_table}}), do: :dataset_missing
+  defp read_error(%Postgrex.Error{postgres: %{code: :undefined_column}}), do: :schema_unsupported
+  defp read_error(%Exqlite.Error{message: message}), do: read_error(message)
+
+  defp read_error(message) when is_binary(message) do
+    cond do
+      String.contains?(message, "no such table") -> :dataset_missing
+      String.contains?(message, "no such column") -> :schema_unsupported
+      true -> :storage_unavailable
     end
   end
 
-  defp verify_migrations(repo) do
-    case SQL.query(repo, "SELECT version FROM schema_migrations ORDER BY version", [], log: false) do
-      {:ok, %{rows: [[version]]}} when version == 1 or version == 2 ->
-        if version == format_version(repo), do: :ok, else: {:error, :schema_unsupported}
+  defp read_error(_), do: :storage_unavailable
 
-      _ ->
+  defp verify_rows(opts, read) do
+    # Read format first: old metadata has different columns, and must be refused
+    # before opening a writable SQLite connection or inspecting business tables.
+    with {:ok, [[3]]} <- read.("SELECT format_version FROM storage_metadata WHERE id = 1"),
+         {:ok, [[id, profile, backup, manifest, installed]]} <-
+           read.(
+             "SELECT dataset_id, profile, restored_backup, manifest, installed FROM storage_metadata WHERE id = 1"
+           ) do
+      cond do
+        id != opts[:dataset_id] or profile != opts[:descriptor].profile ->
+          {:error, :dataset_mismatch}
+
+        backup not in [false, 0] ->
+          {:error, :restored_backup}
+
+        installed not in [true, 1] ->
+          {:error, :schema_unsupported}
+
+        manifest != Installation.manifest(opts[:descriptor]) ->
+          {:error, :schema_unsupported}
+
+        true ->
+          verify_migrations(opts[:descriptor], read)
+      end
+    else
+      {:ok, _} ->
         {:error, :schema_unsupported}
+
+      {:error, reason}
+      when reason in [:dataset_missing, :schema_unsupported, :storage_unavailable] ->
+        {:error, reason}
+
+      {:error, reason} ->
+        {:error, read_error(reason)}
     end
   end
 
-  defp format_version(ExecutorJournalRepo), do: 1
-  defp format_version(_), do: 2
+  defp verify_migrations(descriptor, read) do
+    expected = Enum.map(descriptor.migrations, &[&1.id])
 
-  defp role(ExecutorJournalRepo), do: "journal"
-  defp role(_), do: "authority"
+    case read.("SELECT version FROM schema_migrations ORDER BY version") do
+      {:ok, ^expected} -> :ok
+      _ -> {:error, :schema_unsupported}
+    end
+  end
 
   defp safely(fun) do
     fun.()

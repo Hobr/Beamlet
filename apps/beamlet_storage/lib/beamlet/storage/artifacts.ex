@@ -1,7 +1,7 @@
 defmodule Beamlet.Storage.Artifacts do
   @moduledoc """
-  Authority-local artifact content. `put/2` and `verify_references/2` must run
-  inside the caller's authority transaction (e.g. Ecto.Multi.run), so references
+  Dataset-local artifact content. `put/2` and `verify_references/2` must run
+  inside the caller's dataset transaction (e.g. Ecto.Multi.run), so references
   and content roll back together. No filesystem/object-store effects or GC.
   """
   alias Beamlet.Storage.{Codec, Transaction}

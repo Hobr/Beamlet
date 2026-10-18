@@ -1,5 +1,3 @@
-Code.require_file("support/contract_fixture.ex", __DIR__)
-
 # The dual-adapter contract needs an isolated PostgreSQL cluster. It is excluded by
 # default so the ordinary suite has no external service requirement, and it is never
 # silently reported as passing: the exclusion is printed and the explicit run is

@@ -40,12 +40,12 @@ defmodule Beamlet.Storage.CodecTest do
   end
 
   test "exact persisted byte limit and one byte over, not ETF size" do
-    n = Codec.limit(:operation)
-    assert {:ok, bytes} = Codec.encode(String.duplicate("a", n - 2), :operation)
+    n = 1_048_576
+    assert {:ok, bytes} = Codec.encode(String.duplicate("a", n - 2), n)
     assert byte_size(bytes) == n
-    assert {:error, :limit} = Codec.encode(String.duplicate("a", n - 1), :operation)
-    assert {:error, :limit} = Codec.encode(String.duplicate("\n", div(n, 2)), :operation)
-    assert {:error, :limit} = Codec.decode(String.duplicate(" ", n + 1), :operation)
+    assert {:error, :limit} = Codec.encode(String.duplicate("a", n - 1), n)
+    assert {:error, :limit} = Codec.encode(String.duplicate("\n", div(n, 2)), n)
+    assert {:error, :limit} = Codec.decode(String.duplicate(" ", n + 1), n)
   end
 
   test "depth, parser recursion and total nodes are bounded" do

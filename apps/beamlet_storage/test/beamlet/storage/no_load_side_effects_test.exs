@@ -7,11 +7,11 @@ defmodule Beamlet.Storage.NoLoadSideEffectsTest do
 
     code = """
     path = System.fetch_env!("BEAMLET_TEST_UNUSED_DB")
-    for repo <- [Beamlet.Storage.SQLiteAuthorityRepo, Beamlet.Storage.ExecutorJournalRepo, Beamlet.Storage.PostgresAuthorityRepo] do
+    for repo <- [Beamlet.Storage.SQLiteRepo, Beamlet.Storage.PostgresRepo] do
       Application.put_env(:beamlet_storage, repo, database: path)
     end
     {:ok, _} = Application.ensure_all_started(:beamlet_storage)
-    for repo <- [Beamlet.Storage.SQLiteAuthorityRepo, Beamlet.Storage.ExecutorJournalRepo, Beamlet.Storage.PostgresAuthorityRepo] do
+    for repo <- [Beamlet.Storage.SQLiteRepo, Beamlet.Storage.PostgresRepo] do
       nil = Process.whereis(repo)
     end
     false = File.exists?(path)

@@ -16,6 +16,15 @@ defmodule Beamlet.Storage.Connections do
     )
   end
 
+  def postgres(config) do
+    Keyword.merge(config,
+      pool_size: 4,
+      timeout: 5000,
+      queue_target: 1000,
+      after_connect: &__MODULE__.verify_postgres/1
+    )
+  end
+
   # DBConnection invokes this for every physical connection, including reconnects.
   def verify_sqlite(connection) do
     for {pragma, expected} <- [

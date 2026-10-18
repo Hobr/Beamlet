@@ -3,14 +3,14 @@ defmodule Beamlet.Storage.JSON do
   use Ecto.ParameterizedType
   alias Beamlet.Storage.Codec
 
-  def init(opts), do: %{kind: Keyword.get(opts, :kind, :event)}
+  def init(opts), do: %{max_bytes: Keyword.fetch!(opts, :max_bytes)}
   def type(_), do: :string
 
-  def kind({:parameterized, {__MODULE__, %{kind: kind}}}), do: kind
-  def kind(_), do: nil
+  def max_bytes({:parameterized, {__MODULE__, %{max_bytes: max_bytes}}}), do: max_bytes
+  def max_bytes(_), do: nil
 
-  def cast(value, %{kind: kind}) do
-    case Codec.encode(value, kind) do
+  def cast(value, %{max_bytes: max_bytes}) do
+    case Codec.encode(value, max_bytes) do
       {:ok, _} -> {:ok, value}
       _ -> :error
     end
@@ -18,8 +18,8 @@ defmodule Beamlet.Storage.JSON do
 
   def dump(nil, _, _), do: {:ok, nil}
 
-  def dump(value, _, %{kind: kind}) do
-    case Codec.encode(value, kind) do
+  def dump(value, _, %{max_bytes: max_bytes}) do
+    case Codec.encode(value, max_bytes) do
       {:ok, bytes} -> {:ok, bytes}
       _ -> :error
     end
@@ -27,8 +27,8 @@ defmodule Beamlet.Storage.JSON do
 
   def load(nil, _, _), do: {:ok, nil}
 
-  def load(bytes, _, %{kind: kind}) do
-    case Codec.decode(bytes, kind) do
+  def load(bytes, _, %{max_bytes: max_bytes}) do
+    case Codec.decode(bytes, max_bytes) do
       {:ok, value} -> {:ok, value}
       _ -> :error
     end

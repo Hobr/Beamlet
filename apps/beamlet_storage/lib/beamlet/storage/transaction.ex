@@ -17,6 +17,16 @@ defmodule Beamlet.Storage.Transaction do
     :numeric_value_out_of_range
   ]
 
+  @doc """
+  Run a participant only within an existing caller-owned transaction.
+  The participant validates its domain inputs and must not commit or perform
+  external effects. Return values are passed through; callers must rollback on
+  participant failure (or compose via Ecto.Multi). No nested transaction is made.
+  """
+  def participate(repo, fun) when is_function(fun, 0) do
+    if repo.in_transaction?(), do: fun.(), else: {:error, :transaction_required}
+  end
+
   def write(repo, multi_or_fun) do
     opts = [timeout: 5000, log: false]
 

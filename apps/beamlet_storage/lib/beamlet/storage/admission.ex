@@ -1,6 +1,6 @@
 defmodule Beamlet.Storage.Admission do
   @moduledoc """
-  Host-level durable admission for one authority dataset, distinct from Node/Repo
+  Host-level durable admission for one explicitly described dataset, distinct from process/Repo
   readiness.
 
   Readiness keeps its current meaning (the required local registrations exist).
@@ -16,7 +16,7 @@ defmodule Beamlet.Storage.Admission do
   the dataset really accepts a write again.
   """
   use GenServer
-  alias Beamlet.Storage.{Codec, Dataset, Transaction}
+  alias Beamlet.Storage.{Codec, Dataset, Installation, Transaction}
   alias Ecto.Adapters.SQL
 
   # A real write to the durable file, rolled back inside the same transaction:
@@ -84,8 +84,8 @@ defmodule Beamlet.Storage.Admission do
   `Beamlet.Storage.Dataset.verify/2` plus a real rolled-back write.
   Returns `:admitted` or `{:error, reason}`.
   """
-  def probe(repo, dataset_id) do
-    with :ok <- Dataset.verify(repo, dataset_id: dataset_id),
+  def probe(repo, dataset_opts) do
+    with :ok <- Dataset.verify(repo, dataset_opts),
          :ok <- write_probe(repo),
          do: :admitted
   end
@@ -96,12 +96,14 @@ defmodule Beamlet.Storage.Admission do
          repo when is_atom(repo) and repo != nil <- Keyword.get(opts, :repo),
          dataset_id when is_binary(dataset_id) <- Keyword.get(opts, :dataset_id),
          true <- Codec.uuid?(dataset_id),
+         :ok <- Installation.validate(Keyword.get(opts, :descriptor)),
          true <- is_nil(Keyword.get(opts, :reason)) or is_atom(Keyword.get(opts, :reason)) do
       {:ok,
        %{
          repo: repo,
-         dataset_id: dataset_id,
+         dataset_opts: Keyword.drop(opts, [:repo, :name, :reason, :resources]),
          reason: Keyword.get(opts, :reason),
+         resources: Keyword.get(opts, :resources, []),
          # nil means "not evaluated yet": the first consult/status probes. Only a
          # recorded write failure short-circuits the probe.
          status: nil
@@ -148,11 +150,20 @@ defmodule Beamlet.Storage.Admission do
     if state.reason != nil do
       {:refused, state.reason}
     else
-      case probe(state.repo, state.dataset_id) do
+      case probe_resources([{state.repo, state.dataset_opts} | state.resources]) do
         :admitted -> :admitted
         {:error, reason} -> {:refused, reason}
       end
     end
+  end
+
+  defp probe_resources(resources) do
+    Enum.reduce_while(resources, :admitted, fn {repo, opts}, :admitted ->
+      case probe(repo, opts) do
+        :admitted -> {:cont, :admitted}
+        error -> {:halt, error}
+      end
+    end)
   end
 
   defp write_probe(repo) do

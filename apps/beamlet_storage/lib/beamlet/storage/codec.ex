@@ -6,15 +6,6 @@ defmodule Beamlet.Storage.Codec do
   """
   @depth 32
   @nodes 100_000
-  @limits %{
-    operation: 1_048_576,
-    command: 1_048_576,
-    event: 4_194_304,
-    checkpoint: 4_194_304,
-    result: 4_194_304,
-    artifact: 16_777_216,
-    journal_artifacts: 25_165_824
-  }
   @secret_keys ~w(credentials credential api_key apikey token access_token refresh_token password secret authorization private_key)
   # A heuristic, not a secret scanner: exact credential names plus underscore- or
   # dash-separated credential segments (client_secret, bearer_token, api-key).
@@ -24,10 +15,10 @@ defmodule Beamlet.Storage.Codec do
   @secret_segments ~w(credential credentials password passwd secret secrets token)
   @reference_suffixes ~w(ref refs id ids name names path)
 
-  def limit(kind), do: Map.fetch!(@limits, kind)
+  def limit(bytes) when is_integer(bytes) and bytes > 0, do: bytes
 
   @doc "Validates and emits sorted-key UTF-8 JSON, never ETF or inspected terms."
-  def encode(value, kind \\ :event) do
+  def encode(value, kind \\ 4_194_304) do
     with {:ok, _} <- walk(value, 0, {@nodes, limit(kind)}),
          encoded <- value |> canonical() |> IO.iodata_to_binary(),
          true <- byte_size(encoded) <= limit(kind) do
@@ -38,7 +29,7 @@ defmodule Beamlet.Storage.Codec do
     end
   end
 
-  def decode(bytes, kind \\ :event)
+  def decode(bytes, kind \\ 4_194_304)
 
   def decode(bytes, kind) when is_binary(bytes) do
     if byte_size(bytes) <= limit(kind) do
@@ -58,7 +49,7 @@ defmodule Beamlet.Storage.Codec do
 
   def decode(_, _), do: {:error, :invalid_data}
 
-  def digest(value, kind \\ :event) do
+  def digest(value, kind \\ 4_194_304) do
     with {:ok, bytes} <- encode(value, kind), do: {:ok, hash(bytes)}
   end
 

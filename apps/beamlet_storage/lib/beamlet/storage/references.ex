@@ -1,5 +1,5 @@
 defmodule Beamlet.Storage.References do
-  @moduledoc "Authority-local artifact reference verification for persisted JSON envelopes."
+  @moduledoc "Dataset-local artifact reference verification for persisted JSON envelopes."
   alias Beamlet.Storage.Artifacts
 
   @doc "Collect artifact identities from a bounded JSON envelope."
@@ -9,7 +9,7 @@ defmodule Beamlet.Storage.References do
     with {:ok, ids} <- collect(value), do: Artifacts.verify_references(repo, Enum.uniq(ids))
   end
 
-  @doc "Verify immutable authority content during read-only reconstruction, without a write transaction."
+  @doc "Verify immutable dataset content during read-only reconstruction, without a write transaction."
   def verify_read(repo, value) do
     with {:ok, ids} <- collect(value) do
       verify_read_ids(repo, Enum.uniq(ids))
