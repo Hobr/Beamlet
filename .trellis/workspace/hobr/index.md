@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
-- **Last Active**: 2026-10-18
+- **Total Sessions**: 14
+- **Last Active**: 2026-10-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~479 | Active |
+| `journal-1.md` | ~519 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-10-19 | Storage / Actions / Agent persistence decoupling | `ae0668a65c3ab9a1bdba89b6023c6fa36426be8c`, `4fb6efb1cbd501d64a77445e35286f26159f8692`, `9ed8227e0b232abac7cc5e94f4f2517df918d796`, `bb14c6b8f3e8324b9583cfc0c644fbdbce82d9df`, `182c656835621fe62148279c98bc34275e655822`, `306cb6aecec81c3507d02258666bbab2abab363e`, `e9da8c18be5ccae9260bc7558151953ab0e90ed0` | `refactor/storage-action-decoupling` |
 | 13 | 2026-10-18 | 提取 Agent 纯业务内核并完成独立复查 | `00b8871` | `refactor/agent-core-extraction` |
 | 12 | 2026-10-18 | Storage and Agent durable event-reference rebuild | `4555021`, `cd5ee50` | `refactor/durable-rebuild` |
 | 11 | 2026-10-18 | Server/Web host naming and native Release migration | `7e81f23` | `refactor/app-host-naming` |

@@ -477,3 +477,43 @@ Completed and independently reviewed all four durable rebuild children; archived
 ### Next Steps
 
 - Implementation complete and archived; branch remains local, ready for integration review.
+
+
+## Session 14: Storage / Actions / Agent persistence decoupling
+<!-- trellis-session: v=2 fp=8a090b1d44878c1a -->
+
+**Date**: 2026-10-19
+**Task**: Storage / Actions / Agent persistence decoupling
+**Branch**: `refactor/storage-action-decoupling`
+
+### Summary
+
+Completed format3 generic Storage plus independent Actions and Agent persistence, integrated Runtime/Node/Server, passed independent AC1–AC8 review, synchronized specifications, committed the user-approved seven-part batch and archived the task.
+
+### Main Changes
+
+- Foundation now owns explicit trusted installations, generic datasets/transactions/codecs/artifacts/Host/Admission; separate callback-free domain libraries own Actions and Agent data.
+- Preserved same-Repo atomic preparation, neutral scope/epoch fencing, command replay, immutable accepted Results, source integrity and restore/fork/history/export; old datasets refuse safely without automatic conversion.
+- Executed seven user-approved work commits, then archived 10-18-storage-action-decoupling and rebased evidence links/context references. All 138 reviewed product file states remained unchanged during commit/finish.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ae0668a65c3ab9a1bdba89b6023c6fa36426be8c` | refactor(storage): isolate generic dataset infrastructure |
+| `4fb6efb1cbd501d64a77445e35286f26159f8692` | refactor(actions): extract neutral persistence library |
+| `9ed8227e0b232abac7cc5e94f4f2517df918d796` | refactor(agent): extract domain persistence library |
+| `bb14c6b8f3e8324b9583cfc0c644fbdbce82d9df` | refactor(runtime): use neutral actions persistence |
+| `182c656835621fe62148279c98bc34275e655822` | refactor(agent): adopt domain storage adapters |
+| `306cb6aecec81c3507d02258666bbab2abab363e` | refactor(node): compose domain storage profiles |
+| `e9da8c18be5ccae9260bc7558151953ab0e90ed0` | docs(storage): record persistence contracts and verification |
+
+### Testing
+
+- [OK] Final independent evidence: ordinary 552 passed/37 excluded; named VMs 587 passed/2 excluded E2E phase tags executed separately; actual Agent PostgreSQL 109 passed.
+- [OK] Compile, expanded formatting, strict Credo, Sobelow, catalogue drift, existing-PLT Dialyzer, fresh copied Server/CLI/Web release checks and two-process durable E2E passed. No runtime rerun solely for final documentation changes.
+- [OK] Final archive checks: 85 local Markdown links, both nine-entry context manifests, completion metadata and committed product hashes passed; staged whitespace checks passed. LSP inconclusive; same-host/process-restart evidence only.
+
+### Status
+
+[OK] **Completed**
