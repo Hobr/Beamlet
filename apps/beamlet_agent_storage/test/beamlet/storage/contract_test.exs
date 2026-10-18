@@ -1,16 +1,21 @@
-defmodule Beamlet.Storage.Format2Contract do
+Code.require_file("../../support/contract_fixture.ex", __DIR__)
+
+defmodule Beamlet.Agent.Storage.Contract do
   @moduledoc false
   defmacro __using__(backend: backend) do
     [
       support(backend),
       preparation_tests(),
+      extra_tests(),
+      profile_tests(),
+      invalid_data_tests(),
+      lifecycle_tests(),
       rollback_tests(),
       control_tests(),
       execution_tests(),
       request_tests(),
       concurrency_tests(),
       review_tests(),
-      lifecycle_tests(),
       continuation_tests()
     ]
   end
@@ -19,18 +24,79 @@ defmodule Beamlet.Storage.Format2Contract do
     quote do
       use ExUnit.Case, async: false
 
-      alias Beamlet.Storage.{
-        AgentRecords,
-        Codec,
-        ContractFixture,
-        Dataset,
-        ExecutorJournalRepo,
-        History,
-        OperationRecords
-      }
+      alias Beamlet.Actions.Storage.OperationRecords, as: ActionsOperations
+      alias Beamlet.Actions.Storage.Schema.OperationEvent
+      alias Beamlet.Agent.Storage.AgentRecords
+      alias Beamlet.Agent.Storage.Codec
+      alias Beamlet.Agent.Storage.ContractFixture
+      alias Beamlet.Agent.Storage.History
+      alias Beamlet.Agent.Storage.OperationRecords
+      alias Beamlet.Agent.Storage.Read
+      alias Beamlet.Agent.Storage.Schema.Agent
+      alias Beamlet.Agent.Storage.Schema.Command
+      alias Beamlet.Agent.Storage.Schema.Event
+      alias Beamlet.Agent.Storage.Schema.Operation
 
-      alias Beamlet.Storage.Schema.{Agent, Command, Event, Operation}
       @backend unquote(backend)
+      alias Beamlet.Storage.Dataset
+
+      test "installed facts and exact format3 manifest survive reopen", %{fixture: f, repo: repo} do
+        tables =
+          ~w(agents agent_events agent_operations checkpoints operations executions execution_evidence operation_events dispatch_scopes commands artifacts storage_metadata schema_migrations)
+
+        tables =
+          if @backend == :postgres, do: ["agent_operation_projections" | tables], else: tables
+
+        assert ContractFixture.tables(f) == Enum.sort(tables)
+
+        assert ContractFixture.sql(
+                 f,
+                 "SELECT dataset_id, profile, format_version FROM storage_metadata"
+               ).rows == [[f.authority_id, "agent-authority", 3]]
+
+        assert Enum.sort(ContractFixture.sql(f, "SELECT version FROM schema_migrations").rows) ==
+                 [[1], [100], [300]]
+
+        {pos, _, _} = create(f)
+        repo.stop()
+        assert {:ok, _} = Dataset.open(repo, f.opts)
+        assert {:ok, %{"agent" => agent}} = AgentRecords.fetch(repo, pos.agent_id)
+        assert agent["id"] == pos.agent_id
+      end
+
+      test "durable connections and safe driver failure", %{fixture: f} do
+        settings = ContractFixture.settings(f)
+        assert settings.connections == f.pool_size
+        assert Enum.all?(settings.per_connection, &(&1 == settings.required))
+        assert {:error, :storage_outcome_unknown} = ContractFixture.driver_failure(f)
+      end
+
+      test "wrong identity, newer format and restored backup refuse reopen", %{
+        fixture: f,
+        repo: repo
+      } do
+        repo.stop()
+
+        assert {:error, :dataset_mismatch} =
+                 Dataset.open(repo, Keyword.put(f.opts, :dataset_id, Ecto.UUID.generate()))
+
+        assert {:ok, _} = Dataset.open(repo, f.opts)
+        ContractFixture.sql(f, "UPDATE storage_metadata SET format_version = 4")
+        repo.stop()
+        assert {:error, :schema_unsupported} = Dataset.open(repo, f.opts)
+
+        {:ok, raw} =
+          ContractFixture.raw_connection(%{backend: @backend, database: f.opts[:database]})
+
+        ContractFixture.run_raw(
+          raw,
+          "UPDATE storage_metadata SET format_version = 3, restored_backup = TRUE"
+        )
+
+        ContractFixture.close_raw(raw)
+        assert {:error, :restored_backup} = Dataset.open(repo, f.opts)
+      end
+
       setup do
         fixture = ContractFixture.open(@backend)
         on_exit(fn -> ContractFixture.close(fixture) end)
@@ -105,114 +171,8 @@ defmodule Beamlet.Storage.Format2Contract do
     end
   end
 
-  defp continuation_tests do
-    quote do
-      test "explicit continuation adopts prepared and accepted identities but refuses claimed unresolved work",
-           %{fixture: f, repo: repo} do
-        {pos, turn, _} = create(f)
-
-        assert {:ok, prepared} =
-                 AgentRecords.prepare_operations(
-                   repo,
-                   batch(pos, turn, [
-                     member(pos, turn, 0),
-                     member(pos, turn, 1),
-                     member(pos, turn, 2)
-                   ])
-                 )
-
-        [fresh, accepted, claimed] = prepared["operations"]
-
-        assert {:ok, result} =
-                 OperationRecords.accept_result(repo, %{
-                   operation_id: accepted["operation_id"],
-                   expected_version: 0,
-                   result: %{"status" => "ok"}
-                 })
-
-        assert {:ok, _} =
-                 OperationRecords.claim_dispatch(repo, %{
-                   operation_id: claimed["operation_id"],
-                   attempt_id: claimed["attempt_id"],
-                   expected_version: 0
-                 })
-
-        assert {:ok, activated} =
-                 AgentRecords.restore(repo, %{
-                   command_id: Ecto.UUID.generate(),
-                   position: %{pos | lock_version: prepared["lock_version"]}
-                 })
-
-        position = %{pos | lock_version: activated["lock_version"], generation: 1}
-
-        assert {:error, :stale_generation} =
-                 OperationRecords.claim_dispatch(repo, %{
-                   operation_id: fresh["operation_id"],
-                   attempt_id: fresh["attempt_id"],
-                   expected_version: 0
-                 })
-
-        command = %{
-          command_id: Ecto.UUID.generate(),
-          position: position,
-          turn_id: turn,
-          type: "agent.continue_decided",
-          payload: %{"resume_operations" => [claimed["operation_id"]]}
-        }
-
-        assert {:error, :unresolved_execution} = AgentRecords.advance(repo, command)
-
-        command = %{
-          command
-          | command_id: Ecto.UUID.generate(),
-            payload: %{
-              "resume_operations" => [fresh["operation_id"], accepted["operation_id"]]
-            }
-        }
-
-        assert {:ok, continued} = AgentRecords.advance(repo, command)
-        assert {:ok, ^continued} = AgentRecords.advance(repo, command)
-
-        assert {:ok, _} =
-                 OperationRecords.claim_dispatch(repo, %{
-                   operation_id: fresh["operation_id"],
-                   attempt_id: fresh["attempt_id"],
-                   expected_version: 0
-                 })
-
-        assert {:ok, _} =
-                 AgentRecords.consume_results(repo, %{
-                   command_id: Ecto.UUID.generate(),
-                   position: %{position | lock_version: continued["lock_version"]},
-                   turn_id: turn,
-                   accepted_refs: [
-                     %{
-                       "operation_id" => accepted["operation_id"],
-                       "accepted_digest" => result["accepted_digest"],
-                       "consumption_kind" => "tool_result"
-                     }
-                   ],
-                   join: %{}
-                 })
-
-        assert {:ok, %{"operation" => stored}} =
-                 OperationRecords.fetch(repo, accepted["operation_id"])
-
-        assert stored["accepted_result"] == %{"status" => "ok"}
-      end
-    end
-  end
-
   defp preparation_tests do
     quote do
-      test "role format, durable connections, and safe driver failure", %{fixture: f} do
-        assert ContractFixture.sql(f, "SELECT format_version FROM storage_metadata").rows == [[2]]
-        settings = ContractFixture.settings(f)
-        assert settings.connections == f.pool_size
-        assert Enum.all?(settings.per_connection, &(&1 == settings.required))
-        assert {:error, :storage_outcome_unknown} = ContractFixture.driver_failure(f)
-      end
-
       test "atomic prepare, independent concurrent accept and reference consume", %{
         fixture: f,
         repo: repo
@@ -242,11 +202,11 @@ defmodule Beamlet.Storage.Format2Contract do
                 result: %{"status" => "success", "output" => "reply body"}
               }
 
-              assert {:ok, result} = OperationRecords.accept_result(repo, args)
-              assert {:ok, ^result} = OperationRecords.accept_result(repo, args)
+              assert {:ok, result} = ActionsOperations.accept_result(repo, args)
+              assert {:ok, ^result} = ActionsOperations.accept_result(repo, args)
 
               assert {:error, :conflict} =
-                       OperationRecords.accept_result(repo, %{
+                       ActionsOperations.accept_result(repo, %{
                          args
                          | result: %{"status" => "other"}
                        })
@@ -288,7 +248,9 @@ defmodule Beamlet.Storage.Format2Contract do
         refute inspect(page["events"]) =~ "reply body"
 
         for op <- prepared["operations"] do
-          assert {:ok, own} = History.event_page(repo, op["operation_id"])
+          assert {:ok, first} = History.operation_event(repo, op["operation_id"], 1)
+          assert {:ok, second} = History.operation_event(repo, op["operation_id"], 2)
+          own = %{"events" => [first, second]}
           assert Enum.map(own["events"], & &1["seq"]) == [1, 2]
           assert {:ok, body} = OperationRecords.fetch(repo, op["operation_id"])
           assert body["operation"]["accepted_result"]["output"] == "reply body"
@@ -327,7 +289,7 @@ defmodule Beamlet.Storage.Format2Contract do
         [op] = prepared["operations"]
 
         assert {:ok, result} =
-                 OperationRecords.accept_result(repo, %{
+                 ActionsOperations.accept_result(repo, %{
                    operation_id: op["operation_id"],
                    expected_version: 0,
                    result: %{"status" => "success"}
@@ -378,7 +340,8 @@ defmodule Beamlet.Storage.Format2Contract do
         assert {:error, :conflict} =
                  AgentRecords.consume_results(repo, %{attrs | position: current})
 
-        assert repo.aggregate(Event, :count) == 8
+        assert repo.aggregate(Event, :count) == 6
+        assert repo.aggregate(OperationEvent, :count) == 2
       end
     end
   end
@@ -457,7 +420,7 @@ defmodule Beamlet.Storage.Format2Contract do
         }
 
         results =
-          for _ <- 1..4, do: Task.async(fn -> OperationRecords.claim_dispatch(repo, claim) end)
+          for _ <- 1..4, do: Task.async(fn -> ActionsOperations.claim_dispatch(repo, claim) end)
 
         assert Enum.count(Enum.map(results, &Task.await/1), &match?({:ok, _}, &1)) == 1
 
@@ -470,11 +433,11 @@ defmodule Beamlet.Storage.Format2Contract do
           content: %{"receipt" => "done"}
         }
 
-        assert {:ok, receipt} = OperationRecords.record_evidence(repo, evidence)
-        assert {:ok, ^receipt} = OperationRecords.record_evidence(repo, evidence)
+        assert {:ok, receipt} = ActionsOperations.record_evidence(repo, evidence)
+        assert {:ok, ^receipt} = ActionsOperations.record_evidence(repo, evidence)
 
         assert {:error, :conflict} =
-                 OperationRecords.record_evidence(repo, %{
+                 ActionsOperations.record_evidence(repo, %{
                    evidence
                    | content: %{"receipt" => "different"}
                  })
@@ -487,7 +450,7 @@ defmodule Beamlet.Storage.Format2Contract do
         }
 
         assert {:error, :artifact_missing} =
-                 OperationRecords.accept_result(
+                 ActionsOperations.accept_result(
                    repo,
                    Map.put(accept, :artifact_ids, [Ecto.UUID.generate()])
                  )
@@ -495,7 +458,7 @@ defmodule Beamlet.Storage.Format2Contract do
         assert {:ok, %{"operation" => %{"accepted_result" => nil}}} =
                  OperationRecords.fetch(repo, m.operation.id)
 
-        assert {:ok, _} = OperationRecords.accept_result(repo, accept)
+        assert {:ok, _} = ActionsOperations.accept_result(repo, accept)
         other = member(%{pos | lock_version: 2}, turn, 1)
 
         assert {:ok, _} =
@@ -510,8 +473,8 @@ defmodule Beamlet.Storage.Format2Contract do
                    position: %{pos | lock_version: 3}
                  })
 
-        assert {:error, :stale_generation} =
-                 OperationRecords.claim_dispatch(repo, %{
+        assert {:error, :stale_epoch} =
+                 ActionsOperations.claim_dispatch(repo, %{
                    claim
                    | operation_id: other.operation.id,
                      attempt_id: other.attempt.attempt_id
@@ -533,7 +496,7 @@ defmodule Beamlet.Storage.Format2Contract do
         refs =
           Enum.map(prepared["operations"], fn op ->
             assert {:ok, accepted} =
-                     OperationRecords.accept_result(repo, %{
+                     ActionsOperations.accept_result(repo, %{
                        operation_id: op["operation_id"],
                        expected_version: 0,
                        result: %{"status" => "success"}
@@ -603,7 +566,7 @@ defmodule Beamlet.Storage.Format2Contract do
         assert {:ok, _} = AgentRecords.prepare_operations(repo, batch(pos, turn, [m]))
 
         {:ok, result} =
-          OperationRecords.accept_result(repo, %{
+          ActionsOperations.accept_result(repo, %{
             operation_id: m.operation.id,
             expected_version: 0,
             result: %{"status" => "success"}
@@ -634,50 +597,6 @@ defmodule Beamlet.Storage.Format2Contract do
                    join: %{}
                  })
       end
-
-      test "independent preparation replays exact identities and changed sources or attempts conflict",
-           %{repo: repo} do
-        pos = %{agent_id: Ecto.UUID.generate()}
-        m = member(pos, Ecto.UUID.generate(), 0)
-
-        op =
-          Map.drop(m.operation, [
-            :owner_agent_id,
-            :turn_id,
-            :step_id,
-            :role,
-            :ordinal,
-            :tool_call_id
-          ])
-
-        attrs = %{operation: op, attempt: m.attempt}
-
-        for invalid <- [
-              Map.put(op, :role, "model"),
-              Map.put(op, :step_id, "unowned-step"),
-              %{op | sources: [%{"type" => "accepted_result", "reference" => %{}}]}
-            ] do
-          assert {:error, :invalid_data} =
-                   OperationRecords.prepare(repo, %{attrs | operation: invalid})
-        end
-
-        assert {:error, :conflict} = OperationRecords.fetch(repo, op.id)
-        assert {:ok, prepared} = OperationRecords.prepare(repo, attrs)
-        assert {:ok, ^prepared} = OperationRecords.prepare(repo, attrs)
-
-        assert {:error, :conflict} =
-                 OperationRecords.prepare(
-                   repo,
-                   put_in(attrs, [:attempt, :executor_boot_id], Ecto.UUID.generate())
-                 )
-
-        assert {:error, :artifact_missing} =
-                 OperationRecords.accept_result(repo, %{
-                   operation_id: op.id,
-                   expected_version: 0,
-                   result: %{"artifact_id" => Ecto.UUID.generate()}
-                 })
-      end
     end
   end
 
@@ -700,7 +619,7 @@ defmodule Beamlet.Storage.Format2Contract do
 
           claimant =
             Task.async(fn ->
-              OperationRecords.claim_dispatch(repo, %{
+              ActionsOperations.claim_dispatch(repo, %{
                 operation_id: m.operation.id,
                 attempt_id: m.attempt.attempt_id,
                 expected_version: 0
@@ -714,7 +633,7 @@ defmodule Beamlet.Storage.Format2Contract do
           end
 
           assert {:ok, :ok} = Task.await(writer)
-          expected = if change == :restore, do: :stale_generation, else: :conflict
+          expected = if change == :restore, do: :stale_epoch, else: :conflict
           assert {:error, ^expected} = Task.await(claimant)
         end
       end
@@ -735,7 +654,7 @@ defmodule Beamlet.Storage.Format2Contract do
       end
 
       defp change_before_claim(repo, :accept, _pos, m) do
-        OperationRecords.accept_result(repo, %{
+        ActionsOperations.accept_result(repo, %{
           operation_id: m.operation.id,
           expected_version: 0,
           result: %{"status" => "uncertain"}
@@ -753,7 +672,7 @@ defmodule Beamlet.Storage.Format2Contract do
         assert {:ok, prepared} = AgentRecords.prepare_operations(repo, attrs)
 
         assert {:ok, _} =
-                 OperationRecords.accept_result(repo, %{
+                 ActionsOperations.accept_result(repo, %{
                    operation_id: m.operation.id,
                    expected_version: 0,
                    result: %{"status" => "uncertain"}
@@ -762,7 +681,7 @@ defmodule Beamlet.Storage.Format2Contract do
         assert {:ok, ^prepared} = AgentRecords.prepare_operations(repo, attrs)
 
         assert {:error, :conflict} =
-                 OperationRecords.claim_dispatch(repo, %{
+                 ActionsOperations.claim_dispatch(repo, %{
                    operation_id: m.operation.id,
                    attempt_id: m.attempt.attempt_id,
                    expected_version: 0
@@ -851,55 +770,6 @@ defmodule Beamlet.Storage.Format2Contract do
 
   defp lifecycle_tests do
     quote do
-      test "installation tables and committed facts reopen with their original identity", %{
-        fixture: f,
-        repo: repo
-      } do
-        assert ContractFixture.tables(f) ==
-                 Enum.sort(
-                   ~w(agents checkpoints events operations executions execution_evidence commands artifacts storage_metadata schema_migrations)
-                 )
-
-        assert ContractFixture.sql(
-                 f,
-                 "SELECT dataset_id, role, format_version FROM storage_metadata"
-               ).rows == [[f.authority_id, "authority", 2]]
-
-        assert ContractFixture.sql(f, "SELECT version FROM schema_migrations").rows == [[2]]
-        refute Process.whereis(ExecutorJournalRepo)
-        {pos, _, _} = create(f)
-        repo.stop()
-        assert {:ok, _} = Dataset.open(repo, f.opts)
-        assert {:ok, %{"agent" => agent}} = AgentRecords.fetch(repo, pos.agent_id)
-        assert agent["id"] == pos.agent_id
-      end
-
-      test "wrong format, restored backup and identity refuse reopen", %{fixture: f, repo: repo} do
-        repo.stop()
-
-        assert {:error, :dataset_mismatch} =
-                 Dataset.open(
-                   repo,
-                   Keyword.put(f.opts, :dataset_id, Ecto.UUID.generate())
-                 )
-
-        assert {:ok, _} = Dataset.open(repo, f.opts)
-        ContractFixture.sql(f, "UPDATE storage_metadata SET format_version = 3")
-        repo.stop()
-        assert {:error, :schema_unsupported} = Dataset.open(repo, f.opts)
-
-        {:ok, raw} =
-          ContractFixture.raw_connection(%{backend: @backend, database: f.opts[:database]})
-
-        ContractFixture.run_raw(
-          raw,
-          "UPDATE storage_metadata SET format_version = 2, restored_backup = TRUE"
-        )
-
-        ContractFixture.close_raw(raw)
-        assert {:error, :restored_backup} = Dataset.open(repo, f.opts)
-      end
-
       test "concurrent identical commands create exactly one Agent and replay the same response",
            %{fixture: f, repo: repo} do
         attrs = %{
@@ -961,7 +831,10 @@ defmodule Beamlet.Storage.Format2Contract do
           })
 
         assert {:error, :limit} =
-                 OperationRecords.prepare(repo, %{operation: huge, attempt: m.attempt})
+                 ActionsOperations.prepare(repo, %{
+                   operation: Map.delete(huge, :sources),
+                   attempt: m.attempt
+                 })
 
         assert repo.aggregate(Operation, :count) == 0
 
@@ -973,15 +846,323 @@ defmodule Beamlet.Storage.Format2Contract do
       end
     end
   end
+
+  defp profile_tests do
+    quote do
+      test "Agent profile freezes component identities and owns the association projection", %{
+        fixture: f,
+        repo: repo
+      } do
+        profile = Beamlet.Agent.Storage.Profiles.authority()
+        assert profile.profile == "agent-authority"
+        assert profile.format_version == 3
+
+        assert profile.components == [
+                 %{name: "foundation", version: 1},
+                 %{name: "actions-authority", version: 1},
+                 %{name: "agent", version: 1}
+               ]
+
+        assert Enum.map(profile.migrations, & &1.id) == [1, 100, 300]
+
+        assert Enum.at(profile.migrations, 1) ==
+                 Beamlet.Actions.Storage.Profiles.authority_migration()
+
+        assert ContractFixture.sql(f, "SELECT version FROM schema_migrations ORDER BY version").rows ==
+                 [[1], [100], [300]]
+
+        tables = ContractFixture.tables(f)
+
+        assert Enum.all?(
+                 ~w(agents agent_events agent_operations checkpoints commands operations operation_events dispatch_scopes),
+                 &(&1 in tables)
+               )
+
+        refute "events" in tables
+        refute :owner_agent_id in Beamlet.Actions.Storage.Schema.Operation.__schema__(:fields)
+        {pos, _, _} = create(f)
+        assert {:ok, %{"agent" => agent}} = AgentRecords.fetch(repo, pos.agent_id)
+        assert agent["dispatch_scope_id"] != agent["id"]
+      end
+    end
+  end
+
+  defp invalid_data_tests do
+    quote do
+      test "malformed Agent JSON is a safe domain error", %{fixture: f, repo: repo} do
+        {pos, _, _} = create(f)
+
+        ContractFixture.sql(f, "UPDATE agents SET definition = 'malformed' WHERE id = $1", [
+          pos.agent_id
+        ])
+
+        assert {:error, :invalid_data} = AgentRecords.fetch(repo, pos.agent_id)
+      end
+
+      test "malformed attempt JSON and unrelated programmer errors stay distinct", %{
+        fixture: f,
+        repo: repo
+      } do
+        {pos, turn, _} = create(f)
+        m = member(pos, turn, 0)
+        assert {:ok, _} = AgentRecords.prepare_operations(repo, batch(pos, turn, [m]))
+
+        ContractFixture.sql(
+          f,
+          "UPDATE executions SET budget = 'malformed' WHERE attempt_id = $1",
+          [m.attempt.attempt_id]
+        )
+
+        assert {:error, :invalid_data} = OperationRecords.fetch(repo, m.operation.id)
+
+        assert_raise ArgumentError, "unrelated programmer error", fn ->
+          Read.read(fn ->
+            raise ArgumentError, "unrelated programmer error"
+          end)
+        end
+      end
+    end
+  end
+
+  defp extra_tests do
+    quote do
+      test "continuation rollback preserves binding and successful adoption refreshes identity",
+           %{fixture: f, repo: repo} do
+        {pos, turn, _} = create(f)
+        attrs = batch(pos, turn, [member(pos, turn, 0), member(pos, turn, 1)])
+        assert {:ok, prepared} = AgentRecords.prepare_operations(repo, attrs)
+        [pending, claimed] = prepared["operations"]
+
+        assert {:ok, _} =
+                 ActionsOperations.claim_dispatch(repo, %{
+                   operation_id: claimed["operation_id"],
+                   attempt_id: claimed["attempt_id"],
+                   expected_version: 0
+                 })
+
+        assert {:ok, activated} =
+                 AgentRecords.restore(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{pos | lock_version: prepared["lock_version"]}
+                 })
+
+        command = %{
+          command_id: Ecto.UUID.generate(),
+          position: %{pos | generation: 1, lock_version: activated["lock_version"]},
+          turn_id: turn,
+          type: "agent.continue_decided",
+          payload: %{"resume_operations" => [pending["operation_id"], claimed["operation_id"]]}
+        }
+
+        assert {:error, :unresolved_execution} = AgentRecords.advance(repo, command)
+
+        assert {:ok, %{"operation" => unchanged}} =
+                 OperationRecords.fetch(repo, pending["operation_id"])
+
+        assert unchanged["dispatch_epoch"] == 0
+        assert unchanged["owner_generation"] == 0
+        assert unchanged["lock_version"] == 0
+        command = %{command | payload: %{"resume_operations" => [pending["operation_id"]]}}
+        assert {:ok, _} = AgentRecords.advance(repo, command)
+        assert {:ok, ^prepared} = AgentRecords.prepare_operations(repo, attrs)
+
+        assert {:ok, %{"operation" => refreshed}} =
+                 OperationRecords.fetch(repo, pending["operation_id"])
+
+        assert refreshed["dispatch_epoch"] == 1
+        assert refreshed["owner_generation"] == 1
+        assert refreshed["lock_version"] == 1
+
+        assert refreshed["sources"] ==
+                 attrs.operations |> hd() |> Map.fetch!(:operation) |> Map.fetch!(:sources)
+
+        expected =
+          Map.take(
+            refreshed,
+            ~w(description_digest lock_version dispatch_scope_id dispatch_epoch)
+          )
+
+        stale = %{
+          operation_id: pending["operation_id"],
+          attempt_id: pending["attempt_id"],
+          expected_version: 0,
+          expected_operation: Map.put(expected, "lock_version", 0)
+        }
+
+        # Neutral participant uses atom-key expected binding.
+        expected = %{
+          description_digest: expected["description_digest"],
+          lock_version: 1,
+          dispatch_scope_id: expected["dispatch_scope_id"],
+          dispatch_epoch: 1
+        }
+
+        assert {:error, :conflict} =
+                 ActionsOperations.claim_dispatch(
+                   repo,
+                   %{stale | expected_operation: %{expected | lock_version: 0}}
+                 )
+
+        assert {:ok, _} =
+                 ActionsOperations.claim_dispatch(
+                   repo,
+                   %{stale | expected_operation: expected}
+                 )
+      end
+
+      test "claim commits before restore without querying or locking Agent", %{
+        fixture: f,
+        repo: repo
+      } do
+        {pos, turn, _} = create(f)
+        m = member(pos, turn, 0)
+        assert {:ok, response} = AgentRecords.prepare_operations(repo, batch(pos, turn, [m]))
+        parent = self()
+
+        claimant =
+          Task.async(fn ->
+            repo.transaction(fn ->
+              assert {:ok, _} =
+                       ActionsOperations.claim_dispatch(repo, %{
+                         operation_id: m.operation.id,
+                         attempt_id: m.attempt.attempt_id,
+                         expected_version: 0
+                       })
+
+              send(parent, {:claimed, self()})
+              receive do: (:commit -> :ok)
+            end)
+          end)
+
+        assert_receive {:claimed, pid}, 2000
+
+        restore =
+          Task.async(fn ->
+            AgentRecords.restore(repo, %{
+              command_id: Ecto.UUID.generate(),
+              position: %{pos | lock_version: response["lock_version"]}
+            })
+          end)
+
+        try do
+          assert Task.yield(restore, 100) == nil
+        after
+          send(pid, :commit)
+        end
+
+        assert {:ok, :ok} = Task.await(claimant)
+        assert {:ok, _} = Task.await(restore)
+        assert {:ok, %{"attempt" => attempt}} = OperationRecords.fetch(repo, m.operation.id)
+        assert attempt["dispatch_state"] == "send_claimed"
+      end
+    end
+  end
+
+  defp continuation_tests do
+    quote do
+      test "explicit continuation adopts prepared and accepted identities but refuses claimed unresolved work",
+           %{fixture: f, repo: repo} do
+        {pos, turn, _} = create(f)
+
+        assert {:ok, prepared} =
+                 AgentRecords.prepare_operations(
+                   repo,
+                   batch(pos, turn, [
+                     member(pos, turn, 0),
+                     member(pos, turn, 1),
+                     member(pos, turn, 2)
+                   ])
+                 )
+
+        [fresh, accepted, claimed] = prepared["operations"]
+
+        assert {:ok, result} =
+                 ActionsOperations.accept_result(repo, %{
+                   operation_id: accepted["operation_id"],
+                   expected_version: 0,
+                   result: %{"status" => "ok"}
+                 })
+
+        assert {:ok, _} =
+                 ActionsOperations.claim_dispatch(repo, %{
+                   operation_id: claimed["operation_id"],
+                   attempt_id: claimed["attempt_id"],
+                   expected_version: 0
+                 })
+
+        assert {:ok, activated} =
+                 AgentRecords.restore(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{pos | lock_version: prepared["lock_version"]}
+                 })
+
+        position = %{pos | lock_version: activated["lock_version"], generation: 1}
+
+        assert {:error, :stale_epoch} =
+                 ActionsOperations.claim_dispatch(repo, %{
+                   operation_id: fresh["operation_id"],
+                   attempt_id: fresh["attempt_id"],
+                   expected_version: 0
+                 })
+
+        command = %{
+          command_id: Ecto.UUID.generate(),
+          position: position,
+          turn_id: turn,
+          type: "agent.continue_decided",
+          payload: %{"resume_operations" => [claimed["operation_id"]]}
+        }
+
+        assert {:error, :unresolved_execution} = AgentRecords.advance(repo, command)
+
+        command = %{
+          command
+          | command_id: Ecto.UUID.generate(),
+            payload: %{
+              "resume_operations" => [fresh["operation_id"], accepted["operation_id"]]
+            }
+        }
+
+        assert {:ok, continued} = AgentRecords.advance(repo, command)
+        assert {:ok, ^continued} = AgentRecords.advance(repo, command)
+
+        assert {:ok, _} =
+                 ActionsOperations.claim_dispatch(repo, %{
+                   operation_id: fresh["operation_id"],
+                   attempt_id: fresh["attempt_id"],
+                   expected_version: 0
+                 })
+
+        assert {:ok, _} =
+                 AgentRecords.consume_results(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{position | lock_version: continued["lock_version"]},
+                   turn_id: turn,
+                   accepted_refs: [
+                     %{
+                       "operation_id" => accepted["operation_id"],
+                       "accepted_digest" => result["accepted_digest"],
+                       "consumption_kind" => "tool_result"
+                     }
+                   ],
+                   join: %{}
+                 })
+
+        assert {:ok, %{"operation" => stored}} =
+                 OperationRecords.fetch(repo, accepted["operation_id"])
+
+        assert stored["accepted_result"] == %{"status" => "ok"}
+      end
+    end
+  end
 end
 
-defmodule Beamlet.Storage.SQLiteFormat2Test do
-  use Beamlet.Storage.Format2Contract, backend: :sqlite
+defmodule Beamlet.Agent.Storage.SQLiteContractTest do
+  use Beamlet.Agent.Storage.Contract, backend: :sqlite
 end
 
-defmodule Beamlet.Storage.PostgresFormat2Test do
-  use Beamlet.Storage.Format2Contract, backend: :postgres
-  alias Beamlet.Storage.ContractFixture
+defmodule Beamlet.Agent.Storage.PostgresContractTest do
+  use Beamlet.Agent.Storage.Contract, backend: :postgres
 
   test "a downgraded synchronous_commit connection is rejected", %{fixture: f} do
     assert {:raised, message} = ContractFixture.reject_downgraded(f)

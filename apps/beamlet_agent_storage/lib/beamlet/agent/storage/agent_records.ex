@@ -1,19 +1,23 @@
-defmodule Beamlet.Storage.AgentRecords do
+defmodule Beamlet.Agent.Storage.AgentRecords do
   @moduledoc "Agent inputs and reference-only orchestration, atomically committed with prepared work."
+  alias Beamlet.Agent.Storage.Read
+  alias Beamlet.Agent.Storage.Schema.AgentOperation
+  alias Beamlet.Storage.References
   import Ecto.Query
 
-  alias Beamlet.Storage.{
-    Codec,
-    Events,
-    History,
-    Inheritance,
-    OperationRecords,
-    Records,
-    References,
-    Transaction
-  }
-
-  alias Beamlet.Storage.Schema.{Agent, Checkpoint, Command, Event, Operation}
+  alias Beamlet.Actions.Storage.DispatchScopes
+  alias Beamlet.Actions.Storage.OperationRecords, as: Actions
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.Events
+  alias Beamlet.Agent.Storage.History
+  alias Beamlet.Agent.Storage.Inheritance
+  alias Beamlet.Agent.Storage.OperationRecords
+  alias Beamlet.Agent.Storage.Records
+  alias Beamlet.Agent.Storage.Schema.Agent
+  alias Beamlet.Agent.Storage.Schema.Checkpoint
+  alias Beamlet.Agent.Storage.Schema.Command
+  alias Beamlet.Agent.Storage.Schema.Event
+  alias Beamlet.Agent.Storage.Schema.Operation
   alias Ecto.Adapters.SQL
 
   def create_agent(repo, attrs) do
@@ -31,12 +35,14 @@ defmodule Beamlet.Storage.AgentRecords do
   defp create(repo, attrs) do
     with :ok <- authority(repo, attrs.authority_id),
          :ok <- References.verify(repo, attrs.definition),
+         {:ok, scope} <- DispatchScopes.create_in_transaction(repo, %{id: Ecto.UUID.generate()}),
          {:ok, agent} <-
            Records.insert(
              repo,
              Agent.changeset(%Agent{}, %{
                id: attrs.id,
                authority_id: attrs.authority_id,
+               dispatch_scope_id: scope["id"],
                alias: attrs[:alias],
                definition: attrs.definition,
                generation: 0,
@@ -153,13 +159,36 @@ defmodule Beamlet.Storage.AgentRecords do
                owner_generation: agent.generation,
                prepared_seq: agent.history_seq + index + 1
              }),
-           {:ok, prepared} <- OperationRecords.insert_prepared(repo, op, attempt) do
+           {:ok, prepared} <-
+             Actions.prepare_in_transaction(repo, %{
+               operation: %{
+                 id: op.id,
+                 description: op.description,
+                 dispatch_scope_id: agent.dispatch_scope_id,
+                 dispatch_epoch: agent.generation
+               },
+               attempt: attempt
+             }),
+           {:ok, _} <- insert_association(repo, op) do
         {:cont, {:ok, acc ++ [prepared]}}
       else
         false -> {:halt, {:error, :conflict}}
         error -> {:halt, error}
       end
     end)
+  end
+
+  defp insert_association(repo, op) do
+    fields =
+      ~w(id owner_agent_id turn_id step_id role ordinal tool_call_id owner_generation prepared_seq sources)a
+
+    Records.insert(
+      repo,
+      AgentOperation.changeset(
+        %AgentOperation{},
+        Map.take(op, fields)
+      )
+    )
   end
 
   def consume_results(repo, attrs) do
@@ -487,9 +516,9 @@ defmodule Beamlet.Storage.AgentRecords do
     with {:ok, op} <- Records.get(repo, Operation, id),
          true <- op.owner_agent_id == agent.id and op.turn_id == turn,
          {:ok, %{"attempt" => attempt}} <- OperationRecords.fetch(repo, id),
-         true <- not is_nil(op.accepted_result) or attempt["dispatch_state"] == "prepared" do
+         :ok <- reauthorize(repo, agent, op, attempt) do
       repo.update_all(
-        from(o in Operation, where: o.id == ^id),
+        from(o in AgentOperation, where: o.id == ^id),
         [set: [owner_generation: agent.generation]],
         log: false
       )
@@ -497,6 +526,27 @@ defmodule Beamlet.Storage.AgentRecords do
       :ok
     else
       _ -> {:error, :unresolved_execution}
+    end
+  end
+
+  defp reauthorize(_repo, _agent, %{accepted_result: result}, _) when not is_nil(result), do: :ok
+
+  defp reauthorize(_repo, agent, %{dispatch_epoch: epoch}, %{"dispatch_state" => "prepared"})
+       when epoch == agent.generation, do: :ok
+
+  defp reauthorize(repo, agent, op, attempt) do
+    case DispatchScopes.reauthorize_in_transaction(repo, %{
+           scope_id: agent.dispatch_scope_id,
+           from_epoch: op.dispatch_epoch,
+           to_epoch: agent.generation,
+           operation_id: op.id,
+           attempt_id: attempt["attempt_id"],
+           description_digest: op.description_digest,
+           expected_version: op.lock_version,
+           attempt_version: attempt["lock_version"]
+         }) do
+      {:ok, _} -> :ok
+      error -> error
     end
   end
 
@@ -541,6 +591,7 @@ defmodule Beamlet.Storage.AgentRecords do
          true <- attrs.through_seq <= agent.history_seq,
          :ok <- Inheritance.source_position(repo, agent.id, attrs),
          :ok <- References.verify(repo, agent.definition),
+         {:ok, scope} <- DispatchScopes.create_in_transaction(repo, %{id: Ecto.UUID.generate()}),
          {:ok, manifest} <-
            Inheritance.build(repo, agent.id, attrs.timeline, attrs.inheritance, attrs.resolutions),
          {:ok, child} <-
@@ -549,6 +600,7 @@ defmodule Beamlet.Storage.AgentRecords do
              Agent.changeset(%Agent{}, %{
                id: attrs.id,
                authority_id: agent.authority_id,
+               dispatch_scope_id: scope["id"],
                definition: agent.definition,
                generation: 0,
                lock_version: 0,
@@ -625,7 +677,12 @@ defmodule Beamlet.Storage.AgentRecords do
   defp activate(repo, agent, attrs) do
     seq = agent.history_seq + 1
 
-    with {:ok, version} <-
+    with {:ok, _} <-
+           DispatchScopes.rotate_in_transaction(repo, %{
+             id: agent.dispatch_scope_id,
+             expected_epoch: agent.generation
+           }),
+         {:ok, version} <-
            Records.cas_agent(
              repo,
              agent,
@@ -657,9 +714,23 @@ defmodule Beamlet.Storage.AgentRecords do
   end
 
   defp load_transition(repo, pos, fun) do
-    with {:ok, agent} <- Records.get(repo, Agent, pos.agent_id),
+    with {:ok, agent} <- locked_agent(repo, pos.agent_id),
          :ok <- position(agent, pos),
          do: fun.(agent)
+  end
+
+  defp locked_agent(repo, id) do
+    query = from(a in Agent, where: a.id == ^id)
+
+    query =
+      if repo.__adapter__() == Ecto.Adapters.Postgres,
+        do: from(a in query, lock: "FOR UPDATE"),
+        else: query
+
+    case repo.one(query, log: false) do
+      nil -> {:error, :conflict}
+      agent -> {:ok, agent}
+    end
   end
 
   defp validate_position(pos) do
@@ -791,7 +862,7 @@ defmodule Beamlet.Storage.AgentRecords do
 
   def fetch(repo, id) do
     with {:ok, id} <- Records.uuid(id) do
-      Transaction.read(fn -> read_agent(repo, id) end)
+      Read.read(fn -> read_agent(repo, id) end)
     end
   end
 
@@ -805,7 +876,7 @@ defmodule Beamlet.Storage.AgentRecords do
   def command_response(repo, agent_id, command_id) do
     with {:ok, _} <- Records.uuid(agent_id),
          {:ok, _} <- Records.uuid(command_id) do
-      Transaction.read(fn -> read_command(repo, agent_id, command_id) end)
+      Read.read(fn -> read_command(repo, agent_id, command_id) end)
     end
   end
 

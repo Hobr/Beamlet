@@ -1,4 +1,4 @@
-defmodule Beamlet.Storage.ContractFixture do
+defmodule Beamlet.Agent.Storage.ContractFixture do
   @moduledoc false
   # Adapter-specific setup for the shared storage contract suite. Everything that
   # differs between SQLite and PostgreSQL (files vs. throwaway database, PRAGMA
@@ -9,15 +9,13 @@ defmodule Beamlet.Storage.ContractFixture do
   # PostgreSQL: a throwaway database in the isolated cluster named by
   # BEAMLET_PG_SOCKET_DIR (loopback/Unix socket only, never an existing database).
 
-  alias Beamlet.Storage.{
-    Connections,
-    Dataset,
-    PostgresAuthorityRepo,
-    Records,
-    SQLiteAuthorityRepo,
-    Transaction
-  }
-
+  alias Beamlet.Agent.Storage.PostgresAuthorityRepo
+  alias Beamlet.Agent.Storage.Profiles
+  alias Beamlet.Agent.Storage.Records
+  alias Beamlet.Agent.Storage.SQLiteAuthorityRepo
+  alias Beamlet.Storage.Connections
+  alias Beamlet.Storage.Dataset
+  alias Beamlet.Storage.Transaction
   alias Ecto.Adapters.SQL
 
   def open(:sqlite) do
@@ -32,6 +30,7 @@ defmodule Beamlet.Storage.ContractFixture do
     File.mkdir_p!(dir)
 
     opts = [
+      descriptor: Profiles.authority(),
       database: Path.join(dir, "authority.db"),
       peer_database: Path.join(dir, "journal.db"),
       dataset_id: Ecto.UUID.generate()
@@ -51,6 +50,7 @@ defmodule Beamlet.Storage.ContractFixture do
       GenServer.stop(conn)
 
       opts = [
+        descriptor: Profiles.authority(),
         database: database,
         socket_dir: socket,
         port: pg_port(),
@@ -280,14 +280,14 @@ defmodule Beamlet.Storage.ContractFixture do
   def reject_consumption(%{backend: :sqlite} = fixture, seq) do
     sql(
       fixture,
-      "CREATE TRIGGER reject_consumption BEFORE INSERT ON events WHEN NEW.type = 'operation.result_consumed' AND NEW.seq = #{seq} BEGIN SELECT RAISE(ABORT, 'injected'); END"
+      "CREATE TRIGGER reject_consumption BEFORE INSERT ON agent_events WHEN NEW.type = 'operation.result_consumed' AND NEW.seq = #{seq} BEGIN SELECT RAISE(ABORT, 'injected'); END"
     )
   end
 
   def reject_consumption(%{backend: :postgres} = fixture, seq) do
     sql(
       fixture,
-      "ALTER TABLE events ADD CONSTRAINT reject_consumption CHECK (type <> 'operation.result_consumed' OR seq <> #{seq})"
+      "ALTER TABLE agent_events ADD CONSTRAINT reject_consumption CHECK (type <> 'operation.result_consumed' OR seq <> #{seq})"
     )
   end
 

@@ -1,4 +1,4 @@
-defmodule Beamlet.Storage.Records do
+defmodule Beamlet.Agent.Storage.Records do
   @moduledoc """
   Shared boundary for the record transaction facades. Validation and comparison
   helpers are pure; transaction helpers run inside the caller's already-open
@@ -6,9 +6,14 @@ defmodule Beamlet.Storage.Records do
   instead of trusting an upstream caller. Errors stay plain atoms from the
   stage-A taxonomy; SQL, connection and configuration detail never escape.
   """
+  alias Beamlet.Agent.Storage.Read
+  alias Beamlet.Storage.Transaction
   import Ecto.Query
-  alias Beamlet.Storage.{Codec, Events, Transaction}
-  alias Beamlet.Storage.Schema.{Agent, Command, Event}
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.Events
+  alias Beamlet.Agent.Storage.Schema.Agent
+  alias Beamlet.Agent.Storage.Schema.Command
+  alias Beamlet.Agent.Storage.Schema.Event
 
   @errors ~w(invalid_data limit conflict stale_generation schema_unsupported artifact_missing storage_unavailable storage_outcome_unknown unresolved_execution unsafe_checkpoint source_not_frozen)a
   @digest ~r/\A[0-9a-f]{64}\z/
@@ -21,9 +26,17 @@ defmodule Beamlet.Storage.Records do
       {:error, _} -> {:error, :storage_outcome_unknown}
     end
   rescue
-    Ecto.ConstraintError -> {:error, :conflict}
-    Ecto.Query.CastError -> {:error, :invalid_data}
-    Ecto.ChangeError -> {:error, :invalid_data}
+    Ecto.ConstraintError ->
+      {:error, :conflict}
+
+    Ecto.Query.CastError ->
+      {:error, :invalid_data}
+
+    Ecto.ChangeError ->
+      {:error, :invalid_data}
+
+    error in ArgumentError ->
+      Read.read(fn -> reraise(error, __STACKTRACE__) end)
   end
 
   defp settle(repo, fun) do
@@ -151,7 +164,7 @@ defmodule Beamlet.Storage.Records do
 
     changeset
     |> Ecto.Changeset.unique_constraint([:scope_id, :dedupe_key],
-      name: :events_scope_id_dedupe_key_index
+      name: :agent_events_scope_id_dedupe_key_index
     )
   end
 

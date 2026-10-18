@@ -1,4 +1,4 @@
-defmodule Beamlet.Storage.History do
+defmodule Beamlet.Agent.Storage.History do
   @moduledoc """
   Read-only queries over committed authority facts. Nothing here starts an Agent,
   consults a coordinator or depends on Runtime retention; the current runtime
@@ -10,10 +10,17 @@ defmodule Beamlet.Storage.History do
   bounded by its own codec limit. Checkpoints bind an explicit `through_seq`;
   `checkpoint_at/3` verifies the optional cache and returns nil for corrupt data.
   """
-  import Ecto.Query
-  alias Beamlet.Storage.{Codec, Events, Records, Transaction}
-  alias Beamlet.Storage.Schema.{Checkpoint, Event, Execution, ExecutionEvidence, Operation}
 
+  import Ecto.Query
+  alias Beamlet.Actions.Storage.Schema.Execution
+  alias Beamlet.Actions.Storage.Schema.ExecutionEvidence
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.Events
+  alias Beamlet.Agent.Storage.Read
+  alias Beamlet.Agent.Storage.Records
+  alias Beamlet.Agent.Storage.Schema.Checkpoint
+  alias Beamlet.Agent.Storage.Schema.Event
+  alias Beamlet.Agent.Storage.Schema.Operation
   @page_default 100
   @page_max 500
   @page_bytes 4_194_304
@@ -28,7 +35,7 @@ defmodule Beamlet.Storage.History do
   def event_page(repo, scope_id, opts \\ []) do
     with {:ok, scope} <- Records.uuid(scope_id),
          {:ok, filters} <- event_filters(opts) do
-      Transaction.read(fn -> read_events(repo, scope, filters) end)
+      Read.read(fn -> read_events(repo, scope, filters) end)
     end
   end
 
@@ -36,7 +43,7 @@ defmodule Beamlet.Storage.History do
   def event(repo, scope_id, seq) do
     with {:ok, scope} <- Records.uuid(scope_id),
          {:ok, seq} <- Records.count(seq) do
-      Transaction.read(fn -> read_event(repo, scope, seq) end)
+      Read.read(fn -> read_event(repo, scope, seq) end)
     end
   end
 
@@ -53,6 +60,24 @@ defmodule Beamlet.Storage.History do
     end
   end
 
+  def operation_event(repo, id, seq) do
+    Read.read(fn ->
+      query =
+        from(e in Beamlet.Actions.Storage.Schema.OperationEvent,
+          where: e.operation_id == ^id and e.seq == ^seq,
+          select: %{event: e}
+        )
+
+      case repo.one(query, log: false) do
+        nil ->
+          {:error, :conflict}
+
+        %{event: event} ->
+          {:ok, event |> Records.plain() |> Map.delete("operation_id") |> Map.put("scope_id", id)}
+      end
+    end)
+  end
+
   @doc """
   The optional control cache as of `seq`, selected by explicit `through_seq`.
   Missing or corrupt caches return nil so a loader can reduce raw history.
@@ -61,7 +86,7 @@ defmodule Beamlet.Storage.History do
   def checkpoint_at(repo, agent_id, seq) do
     with {:ok, id} <- Records.uuid(agent_id),
          {:ok, seq} <- optional_seq(seq) do
-      Transaction.read(fn -> read_checkpoint_at(repo, id, seq) end)
+      Read.read(fn -> read_checkpoint_at(repo, id, seq) end)
     end
   end
 
@@ -111,7 +136,7 @@ defmodule Beamlet.Storage.History do
   def checkpoint_page(repo, agent_id, opts \\ []) do
     with {:ok, id} <- Records.uuid(agent_id),
          {:ok, filters} <- checkpoint_filters(opts) do
-      Transaction.read(fn -> read_checkpoints(repo, id, filters) end)
+      Read.read(fn -> read_checkpoints(repo, id, filters) end)
     end
   end
 
@@ -121,7 +146,7 @@ defmodule Beamlet.Storage.History do
          {:ok, through} <- optional_seq(Keyword.get(opts, :through_seq)),
          {:ok, after_seq, limit} <-
            list_bounds(Keyword.delete(opts, :through_seq), :after_first_seq) do
-      Transaction.read(fn -> read_turns(repo, id, after_seq, limit, through) end)
+      Read.read(fn -> read_turns(repo, id, after_seq, limit, through) end)
     end
   end
 
@@ -129,14 +154,14 @@ defmodule Beamlet.Storage.History do
   def operations(repo, agent_id, opts \\ []) do
     with {:ok, id} <- Records.uuid(agent_id),
          {:ok, after_seq, limit} <- list_bounds(opts, :after_history_seq) do
-      Transaction.read(fn -> read_operations(repo, id, after_seq, limit) end)
+      Read.read(fn -> read_operations(repo, id, after_seq, limit) end)
     end
   end
 
   @doc "One Operation with its attempt and receipt evidence rows."
   def operation(repo, operation_id) do
     with {:ok, id} <- Records.uuid(operation_id) do
-      Transaction.read(fn -> read_operation(repo, id) end)
+      Read.read(fn -> read_operation(repo, id) end)
     end
   end
 
@@ -160,7 +185,7 @@ defmodule Beamlet.Storage.History do
   @doc "Receipt evidence rows for one Operation, newest first, bounded."
   def evidence(repo, operation_id) do
     with {:ok, id} <- Records.uuid(operation_id) do
-      Transaction.read(fn -> bounded_evidence(repo, id) end)
+      Read.read(fn -> bounded_evidence(repo, id) end)
     end
   end
 

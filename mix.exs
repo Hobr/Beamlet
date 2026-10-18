@@ -55,6 +55,8 @@ defmodule Beamlet.Umbrella.MixProject do
       do: [
         :beamlet_actions,
         :beamlet_storage,
+        :beamlet_actions_storage,
+        :beamlet_agent_storage,
         :beamlet_runtime,
         :beamlet_harness,
         :beamlet_agent_core,

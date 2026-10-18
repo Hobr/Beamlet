@@ -1,15 +1,13 @@
-defmodule Beamlet.Storage.Events do
+defmodule Beamlet.Agent.Storage.Events do
   @moduledoc "Version-one event vocabulary and reference-only control payload contract."
-  alias Beamlet.Storage.Codec
+  alias Beamlet.Agent.Storage.Codec
 
   @agent ~w(agent.created input.accepted model.request_prepared tool.batch_prepared operation.result_consumed turn.interrupted agent.continue_decided agent.config_changed context.selected agent.forked context.inherited agent.activated)
-  @operation ~w(operation.prepared operation.result_accepted)
   @body_keys ~w(messages assistant request reply result output payload content text arguments prompt tools schema)
 
   def version, do: 1
   def agent_types, do: @agent
-  def operation_types, do: @operation
-  def supported?(type, version), do: version == 1 and type in (@agent ++ @operation)
+  def supported?(type, version), do: version == 1 and type in @agent
 
   def control(value) when is_map(value) and not is_struct(value) do
     with {:ok, _} <- Codec.encode(value, :checkpoint) do

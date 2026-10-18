@@ -1,28 +1,24 @@
-defmodule Beamlet.Storage.DatasetTest do
+defmodule Beamlet.Agent.Storage.DatasetTest do
   use ExUnit.Case, async: false
 
-  alias Beamlet.Storage.{
-    Artifacts,
-    Codec,
-    Dataset,
-    ExecutorJournalRepo,
-    JSON,
-    Migrations,
-    SQLiteAuthorityRepo,
-    Transaction
-  }
-
-  alias Beamlet.Storage.Schema.{
-    Agent,
-    Artifact,
-    Checkpoint,
-    Command,
-    Event,
-    Execution,
-    ExecutionEvidence,
-    JournalAttempt,
-    Operation
-  }
+  alias Beamlet.Actions.Storage.DispatchScopes
+  alias Beamlet.Actions.Storage.ExecutorJournalRepo
+  alias Beamlet.Actions.Storage.Schema.Execution
+  alias Beamlet.Actions.Storage.Schema.ExecutionEvidence
+  alias Beamlet.Actions.Storage.Schema.JournalAttempt
+  alias Beamlet.Actions.Storage.Schema.Operation
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.JSON
+  alias Beamlet.Agent.Storage.Schema.Agent
+  alias Beamlet.Agent.Storage.Schema.Checkpoint
+  alias Beamlet.Agent.Storage.Schema.Command
+  alias Beamlet.Agent.Storage.Schema.Event
+  alias Beamlet.Agent.Storage.SQLiteAuthorityRepo
+  alias Beamlet.Storage.Artifacts
+  alias Beamlet.Storage.Dataset
+  alias Beamlet.Storage.Migrations
+  alias Beamlet.Storage.Schema.Artifact
+  alias Beamlet.Storage.Transaction
 
   alias Ecto.Adapters.SQL
   @repo SQLiteAuthorityRepo
@@ -32,6 +28,7 @@ defmodule Beamlet.Storage.DatasetTest do
     File.mkdir_p!(dir)
 
     opts = [
+      descriptor: Beamlet.Agent.Storage.Profiles.authority(),
       database: Path.join(dir, "authority.db"),
       peer_database: Path.join(dir, "journal.db"),
       dataset_id: Ecto.UUID.generate()
@@ -53,10 +50,12 @@ defmodule Beamlet.Storage.DatasetTest do
     refute File.exists?(opts[:database])
     assert {:ok, pid} = Dataset.initialize(@repo, opts)
     assert Process.alive?(pid)
-    assert {:error, :dataset_exists} = Dataset.initialize(@repo, opts)
+    assert {:error, :conflict} = Dataset.initialize(@repo, opts)
 
-    assert [[opts[:dataset_id], "authority", 2, 0]] ==
-             sql("SELECT dataset_id, role, format_version, restored_backup FROM storage_metadata").rows
+    assert [[opts[:dataset_id], "agent-authority", 3, 0]] ==
+             sql(
+               "SELECT dataset_id, profile, format_version, restored_backup FROM storage_metadata"
+             ).rows
 
     @repo.stop()
     assert {:ok, _} = Dataset.open(@repo, opts)
@@ -65,7 +64,7 @@ defmodule Beamlet.Storage.DatasetTest do
   test "old authority format is refused without rewriting file contents", %{opts: opts} do
     {:ok, _} = Dataset.initialize(@repo, opts)
     sql("UPDATE storage_metadata SET format_version = 1")
-    sql("UPDATE schema_migrations SET version = 1")
+    sql("DELETE FROM schema_migrations WHERE version != 1")
     # Establish a consistent closed-file baseline; previous WAL cleanup is not
     # part of the subsequent open under test.
     sql("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -99,8 +98,8 @@ defmodule Beamlet.Storage.DatasetTest do
              Dataset.open(@repo, Keyword.put(opts, :dataset_id, Ecto.UUID.generate()))
 
     for {update, error} <- [
-          {"role = 'journal'", :dataset_mismatch},
-          {"format_version = 3", :schema_unsupported},
+          {"profile = 'actions-journal'", :dataset_mismatch},
+          {"format_version = 4", :schema_unsupported},
           {"restored_backup = 1", :restored_backup}
         ] do
       assert {:ok, _} = Dataset.open(@repo, opts)
@@ -112,7 +111,7 @@ defmodule Beamlet.Storage.DatasetTest do
       {:ok, _} = @repo.start_link(opts)
 
       sql(
-        "UPDATE storage_metadata SET role = 'authority', format_version = 2, restored_backup = 0"
+        "UPDATE storage_metadata SET profile = 'agent-authority', format_version = 3, restored_backup = 0"
       )
 
       @repo.stop()
@@ -131,7 +130,7 @@ defmodule Beamlet.Storage.DatasetTest do
     assert [[0]] == sql("SELECT COUNT(*) FROM sqlite_master WHERE name = 'storage_metadata'").rows
   end
 
-  test "a second authority adapter is refused before touching its file", %{opts: opts} do
+  test "an already registered Repo is refused before touching its file", %{opts: opts} do
     peer =
       spawn_link(fn ->
         receive do
@@ -139,7 +138,7 @@ defmodule Beamlet.Storage.DatasetTest do
         end
       end)
 
-    Process.register(peer, Beamlet.Storage.PostgresAuthorityRepo)
+    Process.register(peer, @repo)
     assert {:error, :conflict} = Dataset.initialize(@repo, opts)
     refute File.exists?(opts[:database])
     send(peer, :stop)
@@ -199,7 +198,8 @@ defmodule Beamlet.Storage.DatasetTest do
 
     # A NOT NULL violation aborts and rolls back deterministically; it is not an
     # unknown outcome the caller must reconcile.
-    assert {:error, :invalid_data} = Migrations.install_metadata(@repo, nil, "authority")
+    assert {:error, :invalid_data} =
+             Migrations.install_metadata(@repo, nil, Beamlet.Agent.Storage.Profiles.authority())
 
     assert [[0]] ==
              sql(
@@ -220,10 +220,11 @@ defmodule Beamlet.Storage.DatasetTest do
 
     assert names ==
              Enum.sort(
-               ~w(agents checkpoints events operations executions execution_evidence commands artifacts storage_metadata schema_migrations)
+               ~w(agents agent_events agent_operations checkpoints operations executions execution_evidence operation_events dispatch_scopes commands artifacts storage_metadata schema_migrations)
              )
 
     journal = [
+      descriptor: Beamlet.Actions.Storage.Profiles.journal(),
       database: opts[:peer_database],
       peer_database: opts[:database],
       dataset_id: Ecto.UUID.generate()
@@ -238,7 +239,7 @@ defmodule Beamlet.Storage.DatasetTest do
              log: false
            ).rows
            |> List.flatten()
-           |> Enum.sort() == ~w(journal_attempts schema_migrations storage_metadata)
+           |> Enum.sort() == ~w(artifacts journal_attempts schema_migrations storage_metadata)
 
     row = %{
       id: Ecto.UUID.generate(),
@@ -360,10 +361,14 @@ defmodule Beamlet.Storage.DatasetTest do
     assert {:ok, _} = Dataset.initialize(@repo, opts)
     id = Ecto.UUID.generate()
 
+    scope_id = Ecto.UUID.generate()
+    assert {:ok, _} = DispatchScopes.create(@repo, %{id: scope_id})
+
     agent =
       Agent.changeset(%Agent{}, %{
         id: id,
         authority_id: opts[:dataset_id],
+        dispatch_scope_id: scope_id,
         definition: %{},
         generation: 0,
         lock_version: 0,
@@ -405,13 +410,13 @@ defmodule Beamlet.Storage.DatasetTest do
       )
     end
 
-    assert_raise Exqlite.Error, fn -> sql("UPDATE events SET schema_version = 2") end
+    assert_raise Exqlite.Error, fn -> sql("UPDATE agent_events SET schema_version = 2") end
 
     assert_raise Exqlite.Error, fn ->
       sql("UPDATE agents SET head_checkpoint_id = $1", [Ecto.UUID.generate()])
     end
 
-    assert_raise Exqlite.Error, fn -> sql("UPDATE events SET seq = 0") end
+    assert_raise Exqlite.Error, fn -> sql("UPDATE agent_events SET seq = 0") end
 
     assert_raise Exqlite.Error, fn ->
       sql("DELETE FROM agents WHERE id = $1", [id])
@@ -461,7 +466,7 @@ defmodule Beamlet.Storage.DatasetTest do
                Artifacts.verify_references(@repo, [Ecto.UUID.generate()])
              end)
 
-    exact = :binary.copy(<<0>>, Codec.limit(:artifact))
+    exact = :binary.copy(<<0>>, 16_777_216)
 
     assert Artifacts.changeset(%{
              attrs
@@ -474,7 +479,7 @@ defmodule Beamlet.Storage.DatasetTest do
 
     refute Artifacts.changeset(%{
              attrs
-             | content: :binary.copy(<<0>>, Codec.limit(:artifact) + 1)
+             | content: :binary.copy(<<0>>, 16_777_216 + 1)
            }).valid?
 
     sql("UPDATE artifacts SET content = $1 WHERE id = $2", [<<1>>, attrs.id])

@@ -1,9 +1,13 @@
-defmodule Beamlet.Storage.Inheritance do
+defmodule Beamlet.Agent.Storage.Inheritance do
   @moduledoc "Direct immutable content manifests. No parent history is read when verifying a manifest."
+  alias Beamlet.Storage.Artifacts
+  alias Beamlet.Storage.References
   import Ecto.Query
-  alias Beamlet.Storage.{Artifacts, Codec, History, OperationRecords, References}
-  alias Beamlet.Storage.Schema.{Artifact, Event}
-
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.History
+  alias Beamlet.Agent.Storage.OperationRecords
+  alias Beamlet.Agent.Storage.Schema.Event
+  alias Beamlet.Storage.Schema.Artifact
   @max_refs 1024
 
   def source_position(repo, agent, attrs) do
@@ -271,10 +275,10 @@ defmodule Beamlet.Storage.Inheritance do
   def operation(repo, op, ref) do
     with {:ok, digest} <- Codec.digest(op["description"], :operation),
          true <- digest == op["description_digest"],
-         {:ok, prepared} <- History.event(repo, op["id"], 1),
+         {:ok, prepared} <- History.operation_event(repo, op["id"], 1),
          true <- prepared["type"] == "operation.prepared" and prepared["schema_version"] == 1,
          true <- prepared["payload"]["description_digest"] == digest,
-         {:ok, accepted} <- History.event(repo, op["id"], 2),
+         {:ok, accepted} <- History.operation_event(repo, op["id"], 2),
          true <-
            accepted["type"] == "operation.result_accepted" and accepted["schema_version"] == 1,
          {:ok, digest} <- Codec.digest(op["accepted_result"], :result),

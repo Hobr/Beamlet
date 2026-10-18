@@ -1,9 +1,10 @@
-defmodule Beamlet.Storage.RecordChangeset do
+defmodule Beamlet.Agent.Storage.RecordChangeset do
   @moduledoc false
   import Ecto.Changeset
-  alias Beamlet.Storage.{Codec, JSON}
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.JSON
 
-  @uuid_fields ~w(id authority_id agent_id head_checkpoint_id forked_from_agent_id forked_from_checkpoint_id turn_id scope_id operation_id causation_id source_agent_id source_event_id owner_agent_id accepted_evidence_id attempt_id executor_id executor_boot_id evidence_id command_id receipt_id)a
+  @uuid_fields ~w(id authority_id agent_id head_checkpoint_id forked_from_agent_id forked_from_checkpoint_id turn_id scope_id dispatch_scope_id operation_id causation_id source_agent_id source_event_id owner_agent_id accepted_evidence_id attempt_id executor_id executor_boot_id evidence_id command_id receipt_id)a
   @continuations ~w(await_input model_prepared tool_batch_prepared await_model_result await_tool_results reply_recorded results_to_consume ready_for_next_step await_delegation await_peer interrupted blocked completed)
 
   def build(record, attrs, required) when is_map(attrs) and not is_struct(attrs) do
