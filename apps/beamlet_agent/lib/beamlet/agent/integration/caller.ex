@@ -1,7 +1,8 @@
 defmodule Beamlet.Agent.Integration.Caller do
   @moduledoc "Construct bounded model invocations and opaque Tool Operations."
   alias Beamlet.Actions.Operation
-  alias Beamlet.Runtime.Directory
+  alias Beamlet.Runtime.{Directory, Persistence}
+  alias Beamlet.Storage.Codec
 
   def profile?(p) when is_map(p) do
     Map.keys(p) -- [:id, :capability, :environment, :claims, :allowed_nodes] == [] and
@@ -34,13 +35,7 @@ defmodule Beamlet.Agent.Integration.Caller do
         capabilities: ["model.provider:" <> provider]
       })
 
-    case Operation.new(attrs) do
-      {:ok, op} = result ->
-        if :erlang.external_size(op) <= limit, do: result, else: {:error, :executable_input_limit}
-
-      error ->
-        error
-    end
+    bounded(Operation.new(attrs), limit)
   end
 
   def operation(%{id: id, capability: capability} = profile, request, limit) do
@@ -54,16 +49,35 @@ defmodule Beamlet.Agent.Integration.Caller do
         allowed_nodes: Map.get(profile, :allowed_nodes)
       )
 
-    case result do
-      {:ok, operation} ->
-        if :erlang.external_size(operation) <= limit,
-          do: result,
-          else: {:error, :executable_input_limit}
-
-      error ->
-        error
-    end
+    bounded(result, limit)
   end
 
   def operation(_, _, _), do: {:error, :invalid_profile}
+
+  # Version the complete effective nonsecret execution configuration, not the
+  # conversation/arguments or transient credentials. Never resolve an adapter here.
+  defp bounded({:ok, operation}, limit) do
+    description = Persistence.description(operation)
+    request = operation.payload["request"]
+
+    catalogue =
+      if operation.payload["type"] == "model" and is_map(request),
+        do: Map.take(request, ["catalogue"]),
+        else: %{}
+
+    payload = Map.put(description["payload"], "request", catalogue)
+
+    with {:ok, version} <- Codec.digest(%{description | "payload" => payload}, :operation) do
+      operation = %{
+        operation
+        | metadata: Map.put(operation.metadata, "configuration_version", version)
+      }
+
+      if :erlang.external_size(operation) <= limit,
+        do: {:ok, operation},
+        else: {:error, :executable_input_limit}
+    end
+  end
+
+  defp bounded(error, _), do: error
 end

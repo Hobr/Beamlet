@@ -1,1046 +1,1278 @@
-defmodule Beamlet.Agent.CountingModel do
+Code.require_file("../../../beamlet_storage/test/support/contract_fixture.ex", __DIR__)
+
+defmodule Beamlet.Agent.DurableTestModel do
   @moduledoc false
   @behaviour Beamlet.Harness.Model
-  alias Beamlet.Harness.Models.Deterministic
+  def validate_invocation(_), do: :ok
 
-  @impl true
-  defdelegate validate_invocation(invocation), to: Deterministic
+  def complete(request, invocation, _) do
+    send(:beamlet_durable_test_sink, {:model_call, request})
 
-  @impl true
-  def complete(request, invocation, context \\ %Beamlet.Harness.Context{}) do
-    send(:beamlet_model_sink, {:model_call, self()})
-    Deterministic.complete(request, invocation, context)
-  end
-end
+    if invocation.config["wait"] do
+      send(:beamlet_durable_test_sink, {:model_waiting, self()})
 
-defmodule Beamlet.Agent.ScriptedModel do
-  @moduledoc false
-  @behaviour Beamlet.Harness.Model
+      receive do
+        :release -> :ok
+      end
+    end
 
-  @impl true
-  def validate_invocation(_invocation), do: :ok
-
-  @impl true
-  def complete(request, invocation, _context) do
-    send(:beamlet_model_sink, {:model_call, self()})
-
-    if Enum.any?(request.messages, &(&1["role"] == "tool")) do
-      {:ok, %{kind: :text, content: "finished", calls: []}}
+    if invocation.config["tools"] and not Enum.any?(request.messages, &(&1["role"] == "tool")) do
+      {:ok,
+       %{
+         kind: :tool_calls,
+         content: nil,
+         calls: [
+           %{id: "one", name: "echo", arguments: %{"text" => "first"}},
+           %{id: "two", name: "echo", arguments: %{"text" => "second"}}
+         ]
+       }}
     else
-      calls =
-        for id <- invocation.config["calls"] || ["call-1", "call-2"] do
-          %{id: id, name: "echo", arguments: %{"text" => id}}
-        end
-
-      {:ok, %{kind: :tool_calls, content: nil, calls: calls}}
+      {:ok, %{kind: :text, content: "finished", calls: []}}
     end
   end
 end
 
-defmodule Beamlet.Agent.MalformedModel do
+defmodule Beamlet.Agent.DurableWaitingTool do
   @moduledoc false
-  @behaviour Beamlet.Harness.Model
-
-  @impl true
-  def validate_invocation(_invocation), do: :ok
-
-  @impl true
-  def complete(_request, _invocation, _context), do: {:ok, %{kind: "text", content: "x"}}
-end
-
-defmodule Beamlet.Agent.HeldTool do
-  @moduledoc false
-  @behaviour Beamlet.Harness.Tool
   alias Beamlet.Harness.Tools.Deterministic
-
-  @impl true
   def descriptor, do: Deterministic.descriptor()
 
-  @impl true
-  def invoke(arguments, settings, _context) do
-    send(settings.observer, {:tool_started, self()})
+  def invoke(arguments, _, _) do
+    send(:beamlet_durable_test_sink, {:tool_waiting, self(), arguments})
 
     receive do
-      :release -> {:ok, %{text: arguments["text"]}}
+      :release -> {:ok, arguments}
     end
   end
 end
 
 defmodule Beamlet.Agent.DurableAgentTest do
   use ExUnit.Case, async: false
-
+  import Kernel, except: [binding: 0, binding: 1]
   alias Beamlet.Actions.Result
   alias Beamlet.Agent
-  alias Beamlet.Agent.Durable
+  alias Beamlet.Agent.{ContextBuilder, Durable, Loader, Reducer}
   alias Beamlet.Agent.Integration.Caller
-  alias Beamlet.Harness.{Catalogue, Context}
-  alias Beamlet.Harness.Model
+  alias Beamlet.Harness.{Catalogue, Model}
   alias Beamlet.Harness.Tools.Deterministic
   alias Beamlet.Runtime.{Directory, Persistence}
 
   alias Beamlet.Storage.{
     AgentRecords,
+    Codec,
+    ContractFixture,
     Dataset,
+    Events,
     ExecutorJournalRepo,
     OperationRecords,
-    SQLiteAuthorityRepo
+    Transaction
   }
 
+  alias Ecto.Adapters.SQL
+
   setup do
-    dir =
-      Path.join(System.tmp_dir!(), "beamlet-agent-durable-#{System.unique_integer([:positive])}")
-
+    dir = Path.join(System.tmp_dir!(), "beamlet-c-#{Ecto.UUID.generate()}")
     File.mkdir_p!(dir)
-    authority = Path.join(dir, "authority.db")
-    journal = Path.join(dir, "journal.db")
 
-    authority_opts = [
-      database: authority,
-      peer_database: journal,
-      dataset_id: Ecto.UUID.generate()
-    ]
+    backend =
+      if System.get_env("BEAMLET_AGENT_TEST_ADAPTER") == "postgres", do: :postgres, else: :sqlite
 
-    journal_opts = [
-      database: journal,
-      peer_database: authority,
-      dataset_id: Ecto.UUID.generate()
-    ]
+    fixture = ContractFixture.open(backend)
+    repo = fixture.repo
+    authority = fixture.authority_id
 
-    {:ok, _} = Dataset.initialize(SQLiteAuthorityRepo, authority_opts)
-    {:ok, _} = Dataset.initialize(ExecutorJournalRepo, journal_opts)
-    Process.register(self(), :beamlet_model_sink)
-    start_supervised!({Beamlet.Agent.AuthoritySupervisor, model_providers: providers()})
+    {:ok, _} =
+      Dataset.initialize(ExecutorJournalRepo,
+        database: Path.join(dir, "j.db"),
+        peer_database: Path.join(dir, "a.db"),
+        dataset_id: Ecto.UUID.generate()
+      )
+
+    Process.register(self(), :beamlet_durable_test_sink)
+    providers = Map.put(Model.default_providers(), "scripted", Beamlet.Agent.DurableTestModel)
+    start_supervised!({Agent.AuthoritySupervisor, model_providers: providers})
+
+    runtime = %{
+      authority_repo: repo,
+      journal_repo: ExecutorJournalRepo,
+      executor_id: Ecto.UUID.generate(),
+      executor_boot_id: Ecto.UUID.generate()
+    }
+
+    {:ok, durable} =
+      Durable.open(repo, %{
+        agent_id: Ecto.UUID.generate(),
+        authority_id: authority,
+        definition: %{"version" => 1},
+        command_id: Ecto.UUID.generate()
+      })
+
+    {:ok, durable} = Durable.with_runtime(durable, runtime)
 
     on_exit(fn ->
-      stop_repo(SQLiteAuthorityRepo)
       stop_repo(ExecutorJournalRepo)
+      ContractFixture.close(fixture)
       File.rm_rf!(dir)
     end)
 
-    %{
-      authority_id: Ecto.UUID.generate(),
-      executor_id: Ecto.UUID.generate(),
-      executor_boot_id: Ecto.UUID.generate(),
-      name: "durable#{System.unique_integer([:positive])}"
-    }
-  end
-
-  defp providers do
-    Map.merge(Model.default_providers(), %{
-      "counting" => Beamlet.Agent.CountingModel,
-      "scripted" => Beamlet.Agent.ScriptedModel,
-      "malformed" => Beamlet.Agent.MalformedModel
-    })
+    %{durable: durable, providers: providers}
   end
 
   defp stop_repo(repo) do
-    if pid = Process.whereis(repo), do: Supervisor.stop(pid)
-    :ok
-  catch
-    _, _ -> :ok
-  end
+    if pid = Process.whereis(repo) do
+      monitor = Process.monitor(pid)
 
-  defp uuid, do: Ecto.UUID.generate()
-
-  defp model_binding(opts \\ []) do
-    %{
-      provider: Keyword.get(opts, :provider, "counting"),
-      config:
-        Keyword.get(
-          opts,
-          :config,
-          %{"reply" => %{"kind" => "text", "content" => "ok", "calls" => []}}
-        )
-    }
-  end
-
-  defp definition(overrides \\ %{}) do
-    base = %{
-      "schema_version" => 1,
-      "model" => %{"provider" => "counting", "config" => %{"model" => "m1"}},
-      "tools" => %{"echo" => %{"profile" => "echo-profile"}}
-    }
-
-    Map.merge(base, overrides)
-  end
-
-  defp tool_definition(overrides \\ %{}) do
-    definition(
-      Map.merge(
-        %{
-          "model" => %{"provider" => "scripted", "config" => %{}},
-          "tools" => %{"echo" => %{"profile" => "echo-profile"}}
-        },
-        overrides
-      )
-    )
-  end
-
-  defp catalogue do
-    {:ok, catalogue} = Catalogue.new([Deterministic.descriptor()])
-    catalogue
-  end
-
-  defp tools, do: %{"echo" => %{id: "echo-profile", capability: "echo"}}
-
-  # The durable Agent's own view of the Runtime it dispatches Tools through.
-  defp runtime_config(ctx) do
-    %{
-      authority_repo: SQLiteAuthorityRepo,
-      journal_repo: ExecutorJournalRepo,
-      executor_id: ctx.executor_id,
-      executor_boot_id: ctx.executor_boot_id
-    }
-  end
-
-  defp boot_runtime(ctx, opts \\ []) do
-    tool = Keyword.get(opts, :tool, Beamlet.Harness.Tools.Deterministic)
-
-    persistence =
-      Persistence.new(
-        authority_repo: SQLiteAuthorityRepo,
-        journal_repo: ExecutorJournalRepo,
-        authority_id: ctx.authority_id,
-        executor_id: ctx.executor_id,
-        executor_boot_id: ctx.executor_boot_id
-      )
-
-    settings = %{
-      model_providers: providers(),
-      profiles: %{
-        "echo-profile" => %{
-          type: :tool,
-          module: tool,
-          settings: Keyword.get(opts, :tool_settings, %{})
-        }
-      }
-    }
-
-    runtime_opts =
-      if Keyword.get(opts, :persistence, true) do
-        [persistence: persistence]
-      else
-        []
+      try do
+        Supervisor.stop(pid)
+      catch
+        :exit, _ -> :ok
       end
 
-    runtime_opts =
-      Keyword.merge(
-        [
-          execution: true,
-          handlers: %{"agent.native" => {Beamlet.Agent.Integration.Handler, settings}},
-          capabilities: [
-            "model.provider:counting",
-            "model.provider:scripted",
-            "model.provider:malformed",
-            "echo"
-          ],
-          limits: Keyword.merge([refresh_ms: 10, expiry_ms: 300], Keyword.get(opts, :limits, []))
-        ],
-        runtime_opts
-      )
-
-    pid = start_supervised!({Beamlet.Runtime, runtime_opts})
-
-    eventually(fn ->
-      assert Enum.any?(Directory.snapshots(), fn {_, report} ->
-               "echo" in report.capabilities
-             end)
-    end)
-
-    pid
-  end
-
-  defp open(ctx, definition, alias_name) do
-    Durable.open(SQLiteAuthorityRepo, %{
-      agent_id: uuid(),
-      authority_id: ctx.authority_id,
-      alias: alias_name || ctx.name,
-      definition: definition,
-      command_id: uuid()
-    })
-  end
-
-  defp start_durable(ctx, opts \\ []) do
-    definition = Keyword.get(opts, :definition, definition())
-    alias_name = Keyword.get(opts, :alias, ctx.name)
-    {:ok, durable} = open(ctx, definition, alias_name)
-
-    durable =
-      case Keyword.get(opts, :runtime, runtime_config(ctx)) do
-        nil -> durable
-        runtime -> elem(Durable.with_runtime(durable, runtime), 1)
+      receive do
+        {:DOWN, ^monitor, :process, ^pid, _} -> :ok
+      after
+        5000 -> flunk("Repo did not stop")
       end
-
-    if Keyword.get(opts, :start, true) do
-      {:ok, ref} =
-        Agent.start(node(),
-          id: alias_name,
-          model: Keyword.get(opts, :model, model_binding()),
-          tools: tools(),
-          catalogue: catalogue(),
-          durable: durable
-        )
-
-      {durable, ref}
-    else
-      {durable, nil}
     end
   end
 
-  defp locator(ctx, durable, extra \\ []) do
-    Map.merge(
-      %{
-        repo: SQLiteAuthorityRepo,
-        agent_id: durable.agent_id,
-        model: model_binding(),
-        tools: tools(),
-        catalogue: catalogue(),
-        runtime: runtime_config(ctx)
-      },
-      Map.new(extra)
+  defp binding(tools \\ false), do: %{provider: "scripted", config: %{"tools" => tools}}
+
+  defp input(d) do
+    Durable.accept_input(d, %{
+      text: "hello",
+      turn_id: Ecto.UUID.generate(),
+      command_id: Ecto.UUID.generate()
+    })
+  end
+
+  defp locator(d), do: %{repo: d.repo, agent_id: d.agent_id, model: binding(), runtime: d.runtime}
+
+  defp version(d) do
+    {:ok, %{"agent" => a}} = AgentRecords.fetch(d.repo, d.agent_id)
+    a["lock_version"]
+  end
+
+  defp boot(ctx, tool_module \\ Deterministic, persistent \\ true) do
+    {:ok, p} = Durable.persistence(ctx.durable, nil)
+
+    start_supervised!(
+      {Beamlet.Runtime,
+       execution: true,
+       persistence: if(persistent, do: p),
+       handlers: %{
+         "agent.native" =>
+           {Agent.Integration.Handler,
+            %{
+              model_providers: ctx.providers,
+              profiles: %{
+                "echo" => %{
+                  type: :tool,
+                  module: tool_module,
+                  settings: %{}
+                }
+              }
+            }}
+       },
+       capabilities: ["model.provider:scripted", "echo"],
+       limits: [refresh_ms: 10, expiry_ms: 300]}
     )
+
+    eventually(fn -> assert map_size(Directory.snapshots()) > 0 end)
   end
 
-  defp model_calls do
-    receive do
-      {:model_call, _} -> 1 + model_calls()
-    after
-      0 -> 0
-    end
-  end
-
-  defp drain_model_calls(acc \\ 0) do
-    receive do
-      {:model_call, _} -> drain_model_calls(acc + 1)
-    after
-      0 -> acc
-    end
-  end
-
-  defp messages(durable) do
-    {:ok, %{"head_checkpoint" => head}} =
-      AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
-
-    head["data"]["messages"]
-  end
-
-  defp head(durable) do
-    {:ok, %{"head_checkpoint" => head, "agent" => agent}} =
-      AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
-
-    {head, agent}
-  end
-
-  defp events(durable) do
-    {:ok, %{"events" => events}} =
-      AgentRecords.history_page(SQLiteAuthorityRepo, durable.agent_id, limit: 500)
-
-    events
-  end
-
-  defp accept_input(durable, text) do
-    {:ok, messages} = Context.append(messages(durable), [%{"role" => "user", "content" => text}])
-
-    Durable.accept_input(durable, %{
-      command_id: uuid(),
-      turn_id: uuid(),
-      messages: messages,
-      checkpoint_id: uuid()
-    })
-  end
-
-  defp current_version(durable) do
-    {:ok, %{"agent" => agent}} = AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
-    agent["lock_version"]
-  end
-
-  defp accept_result(durable, operation, value) do
-    {:ok, %{"operation" => stored}} =
-      OperationRecords.fetch(SQLiteAuthorityRepo, operation["operation_id"])
-
-    {:ok, %{"agent" => agent}} = AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
-
-    OperationRecords.accept_result(SQLiteAuthorityRepo, %{
-      operation_id: operation["operation_id"],
-      expected_version: stored["lock_version"],
-      agent: %{
-        expected_generation: agent["generation"],
-        accept_seq: operation["accept_seq"]
-      },
-      result: %{"status" => "ok", "value" => value, "reason" => nil},
-      event: %{
-        id: uuid(),
-        type: "operation.result_accepted",
-        payload: %{"operation_id" => operation["operation_id"]}
-      }
-    })
-  end
-
-  defp batch(durable, calls, step \\ 1) do
-    assistant = %{
-      "role" => "assistant",
-      "content" => nil,
-      "calls" =>
-        Enum.map(calls, fn call ->
-          %{"id" => call.id, "name" => call.name, "arguments" => call.arguments}
-        end)
-    }
-
-    {:ok, messages} = Context.append(messages(durable), [assistant])
-
-    operations =
-      Enum.map(calls, fn call ->
-        {:ok, operation} =
-          Caller.operation(
-            tools()[call.name],
-            call.arguments,
-            262_144
-          )
-
-        %{id: call.id, operation: operation}
-      end)
-
-    Durable.prepare_batch(durable, %{
-      calls: operations,
-      messages: messages,
-      step: step,
-      checkpoint_id: uuid()
-    })
-  end
-
-  defp calls,
-    do: [
-      %{id: "call-1", name: "echo", arguments: %{"text" => "first"}},
-      %{id: "call-2", name: "echo", arguments: %{"text" => "second"}}
-    ]
-
-  defp eventually(fun, attempts \\ 400)
-
+  defp eventually(fun, count \\ 400)
   defp eventually(fun, 0), do: fun.()
 
-  defp eventually(fun, attempts) do
+  defp eventually(fun, count) do
     fun.()
   rescue
-    _ -> retry(fun, attempts)
-  catch
-    _, _ -> retry(fun, attempts)
+    ExUnit.AssertionError ->
+      Process.sleep(10)
+      eventually(fun, count - 1)
   end
 
-  defp retry(fun, attempts) do
-    Process.sleep(10)
-    eventually(fun, attempts - 1)
+  defp prepare(d) do
+    {:ok, built} = Durable.context(d, %{})
+    {:ok, op} = Caller.operation(binding(), built.request, 262_144)
+    {:ok, next, [member]} = Durable.prepare(d, [%{operation: op}], "model", built.sources)
+    {next, op, member}
   end
 
-  defp injected_result(operation_id) do
-    %Result{
-      operation_id: operation_id,
-      execution_id: nil,
-      status: :uncertain,
-      reason: :uncertain_external_effect,
-      source: :coordinator,
-      metadata: %{}
+  defp accept(d, member) do
+    OperationRecords.accept_result(d.repo, %{
+      operation_id: member["operation_id"],
+      expected_version: 0,
+      result: %{
+        "status" => "ok",
+        "value" => %{"kind" => "text", "content" => "saved", "calls" => []},
+        "reason" => nil
+      }
+    })
+  end
+
+  test "original input survives before any preparation; replay has zero effects", %{durable: d} do
+    {:ok, d} = input(d)
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert loaded.control == d.control
+    assert {:ok, %{request: %{"messages" => [%{"content" => "hello"}]}}} = Durable.context(d, %{})
+    assert {:ok, restored} = Durable.restore(locator(d), d.version, Ecto.UUID.generate())
+    assert restored.control["paused"]
+    assert restored.control["continuation"] == "await_model_result"
+    refute_receive {:model_call, _}
+  end
+
+  test "atomic preparation owns immutable logical requests and consumption only references", %{
+    durable: d
+  } do
+    {:ok, d} = input(d)
+    {d, op, member} = prepare(d)
+
+    assert {:ok, %{"operation" => stored}} =
+             OperationRecords.fetch(d.repo, member["operation_id"])
+
+    assert stored["description"] == Persistence.description(op)
+    assert stored["owner_agent_id"] == d.agent_id
+    assert {:ok, _} = accept(d, member)
+    assert {:ok, d} = Durable.consume(d, [member["operation_id"]], "completed")
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert loaded.control == d.control
+    assert {:ok, built} = Durable.context(d, %{})
+    assert List.last(built.request["messages"])["content"] == "saved"
+    refute inspect(d.control) =~ "saved"
+    assert {:error, _} = Durable.consume(d, [member["operation_id"]], "completed")
+  end
+
+  test "unknown version and sequence gaps refuse reduction", %{durable: d} do
+    {:ok, %{"events" => [created]}} = AgentRecords.history_page(d.repo, d.agent_id)
+
+    assert {:error, :schema_unsupported} =
+             Reducer.reduce(Reducer.new(d.agent_id), %{created | "schema_version" => 2})
+
+    assert {:error, :invalid_history} =
+             Reducer.reduce(Reducer.new(d.agent_id), %{created | "seq" => 2})
+  end
+
+  test "corrupt accepted bodies block inspect before consumption", %{durable: d} do
+    {:ok, d} = input(d)
+    {d, _, member} = prepare(d)
+    assert {:ok, _} = accept(d, member)
+
+    SQL.query!(d.repo, "UPDATE events SET payload = $1 WHERE scope_id = $2 AND seq = 2", [
+      Jason.encode!(%{"accepted_digest" => String.duplicate("0", 64)}),
+      member["operation_id"]
+    ])
+
+    assert {:error, :invalid_reference} = Durable.inspect(locator(d))
+
+    assert {:error, :invalid_reference} =
+             Durable.restore(locator(d), d.version, Ecto.UUID.generate())
+
+    assert version(d) == d.version
+    refute_receive {:model_call, _}
+  end
+
+  test "unconsumed accepted output cannot enter context or a new request", %{durable: d} do
+    {:ok, d} = input(d)
+    {d, _, member} = prepare(d)
+    assert {:ok, accepted} = accept(d, member)
+    assert {:ok, built} = Durable.context(d, %{})
+    assert built.request["messages"] == [%{"role" => "user", "content" => "hello"}]
+    assert length(built.sources) == 1
+
+    source = %{
+      "type" => "accepted_result",
+      "reference" => %{
+        "operation_id" => member["operation_id"],
+        "accepted_digest" => accepted["accepted_digest"],
+        "consumption_kind" => "model_result"
+      }
     }
+
+    {:ok, op} = Caller.operation(binding(), built.request, 262_144)
+    assert {:error, _} = Durable.prepare(d, [%{operation: op}], "model", [source])
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert loaded.control == d.control
   end
 
-  test "input acceptance commits the turn and checkpoint, and a repeated command replays", ctx do
-    {durable, _ref} = start_durable(ctx)
-    command = uuid()
-    turn_id = uuid()
-    user = [%{"role" => "user", "content" => "hello"}]
-    attrs = %{command_id: command, turn_id: turn_id, messages: user, checkpoint_id: uuid()}
-
-    assert {:ok, first} = Durable.accept_input(durable, attrs)
-    refute first.replayed?
-
-    # The committed head checkpoint already carries the new turn and continuation,
-    # so a crash here can never reach the model without the stored turn.
-    {:ok, %{"head_checkpoint" => head}} =
-      AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
-
-    assert head["data"]["continuation"] == "await_model_result"
-    assert head["turn_id"] == turn_id
-    assert head["data"]["messages"] == user
-
-    assert %{"type" => "input.accepted"} =
-             Enum.find(events(durable), &(&1["type"] == "input.accepted"))
-
-    assert {:ok, replay} = Durable.accept_input(durable, %{attrs | checkpoint_id: uuid()})
-    assert replay.replayed?
-    assert replay.turn_id == turn_id
-    assert Enum.count(events(durable), &(&1["type"] == "input.accepted")) == 1
-
-    other = [%{"role" => "user", "content" => "different"}]
-
-    assert {:error, :conflict} =
-             Durable.accept_input(durable, %{attrs | messages: other, checkpoint_id: uuid()})
+  test "inspect without runtime is read only and restore without a cache stays paused", %{
+    durable: d
+  } do
+    {:ok, d} = input(d)
+    locator = Map.drop(locator(d), [:model, :runtime])
+    assert {:ok, inspected} = Durable.inspect(locator)
+    assert inspected.control == d.control
+    assert version(d) == d.version
+    assert {:ok, restored} = Durable.restore(locator, d.version, Ecto.UUID.generate())
+    assert restored.control["generation"] == d.generation + 1
+    assert restored.control["paused"]
+    assert restored.control["pending"] == []
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id, cache: false)
+    assert loaded.control == restored.control
+    refute_receive {:model_call, _}
   end
 
-  test "the complete reply is committed before validation and is re-validated without a model request",
-       ctx do
-    {durable, _ref} = start_durable(ctx)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
+  test "accepted model result resumes once without model execution", ctx do
+    {:ok, d} = input(ctx.durable)
+    {d, _, member} = prepare(d)
+    assert {:ok, _} = accept(d, member)
+    assert {:ok, ref} = Agent.restore(locator(d), d.version, Ecto.UUID.generate())
+    assert {:ok, %{status: :paused}} = Agent.snapshot(ref)
+    assert {:ok, _} = Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+    assert {:ok, %{status: :done, final: "saved"}} = Agent.snapshot(ref)
+    refute_receive {:model_call, _}
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert length(loaded.control["consumed"]) == 1
+  end
 
-    reply = %{"kind" => "text", "content" => "stored", "calls" => []}
+  test "uncertain accepted model output requires an explicit decision and is never overwritten",
+       %{
+         durable: d
+       } do
+    {:ok, d} = input(d)
+    {d, _, member} = prepare(d)
+    result = %{"status" => "uncertain", "reason" => "lost", "value" => nil}
 
-    assert {:ok, %{version: version}} =
-             Durable.record_reply(durable, %{
-               request: %{"messages" => messages(durable), "catalogue" => %{}},
-               messages: messages(durable),
-               reply: reply,
-               checkpoint_id: uuid(),
-               step: 1
+    assert {:ok, _} =
+             OperationRecords.accept_result(d.repo, %{
+               operation_id: member["operation_id"],
+               expected_version: 0,
+               result: result
              })
 
-    durable = %{durable | version: version}
-    assert Enum.any?(events(durable), &(&1["type"] == "model.reply_recorded"))
+    assert {:ok, ref} = Agent.restore(locator(d), d.version, Ecto.UUID.generate())
 
-    assert {:ok, restored} = Durable.restore(locator(ctx, durable), version, uuid())
-    assert restored.checkpoint["continuation"] == "reply_recorded"
-    assert restored.checkpoint["assistant"] == reply
-    assert model_calls() == 0
+    assert {:error, :unresolved_execution} =
+             Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+
+    assert {:ok, %{status: :paused}} = Agent.snapshot(ref)
+    decision = %{"operation_id" => member["operation_id"], "resolution" => "confirmed_failed"}
+    assert {:ok, _} = Agent.continue(ref, version(d), decision, Ecto.UUID.generate())
+    assert {:ok, %{status: :done}} = Agent.snapshot(ref)
+
+    assert {:ok, %{"operation" => stored}} =
+             OperationRecords.fetch(d.repo, member["operation_id"])
+
+    assert stored["accepted_result"] == result
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert [%{"consumption_kind" => "evidence_resolution"}] = loaded.control["consumed"]
+    refute_receive {:model_call, _}
   end
 
-  test "an illegal batch commits zero Operations", ctx do
-    {durable, _ref} = start_durable(ctx)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
+  test "input and ordinary context enforce their exact text and message boundaries", %{durable: d} do
+    attrs = %{
+      text: String.duplicate("a", 65_536),
+      turn_id: Ecto.UUID.generate(),
+      command_id: Ecto.UUID.generate()
+    }
 
-    duplicate = [
-      %{id: "call-1", name: "echo", arguments: %{"text" => "a"}},
-      %{id: "call-1", name: "echo", arguments: %{"text" => "b"}}
-    ]
+    assert {:error, _} = Durable.accept_input(d, %{attrs | text: attrs.text <> "a"})
+    assert version(d) == d.version
+    assert {:ok, d} = Durable.accept_input(d, attrs)
+    [source] = d.control["timeline"]
+    control = %{d.control | "timeline" => List.duplicate(source, 128)}
+    assert {:error, :context_limit} = ContextBuilder.build(d.repo, control, %{})
+    assert {:ok, _} = Durable.context(d, %{})
 
-    assert {:error, :invalid_data} = batch(durable, duplicate)
+    assert {:ok, small} =
+             Durable.open(d.repo, %{
+               agent_id: Ecto.UUID.generate(),
+               authority_id: d.authority_id,
+               definition: %{"version" => 1},
+               command_id: Ecto.UUID.generate()
+             })
 
-    {:ok, %{"events" => events}} =
-      AgentRecords.history_page(SQLiteAuthorityRepo, durable.agent_id, limit: 500)
-
-    refute Enum.any?(events, &(&1["type"] == "operation.prepared"))
+    assert {:ok, small} = input(small)
+    [source] = small.control["timeline"]
+    control = %{small.control | "timeline" => List.duplicate(source, 128)}
+    assert {:ok, _} = ContextBuilder.build(d.repo, control, %{})
+    control = %{control | "timeline" => List.duplicate(source, 129)}
+    assert {:error, :context_limit} = ContextBuilder.build(d.repo, control, %{})
   end
 
-  test "out-of-order results join in ordinal order and consume exactly once", ctx do
-    {durable, _ref} = start_durable(ctx)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
+  test "claimed unresolved attempt stays blocked on explicit continue", %{durable: d} do
+    {:ok, d} = input(d)
+    {d, _, member} = prepare(d)
 
-    assert {:ok, batch_response} = batch(durable, calls(), 1)
-    durable = %{durable | version: batch_response.version}
-    [first, second] = batch_response.operations
-    assert second["ordinal"] == 2
+    assert {:ok, _} =
+             OperationRecords.claim_dispatch(d.repo, %{
+               operation_id: member["operation_id"],
+               attempt_id: member["attempt_id"],
+               expected_version: 0
+             })
 
-    # The batch checkpoint carries the real model step, never nil.
-    {head, _agent} = head(durable)
-    assert head["data"]["step"] == 1
-    assert head["turn_id"] == durable.turn_id
+    assert {:ok, ref} = Agent.restore(locator(d), d.version, Ecto.UUID.generate())
 
-    assert {:ok, _} = accept_result(durable, second, %{"text" => "second"})
-    assert {:ok, _} = accept_result(durable, first, %{"text" => "first"})
+    assert {:error, :unresolved_execution} =
+             Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
 
-    observations =
-      [first, second]
-      |> Enum.sort_by(& &1["ordinal"])
-      |> Enum.map(fn operation ->
-        %{
-          "role" => "tool",
-          "call_id" => operation["tool_call_id"],
-          "content" => Jason.encode!(%{"status" => "ok", "value" => %{"text" => nil}})
-        }
+    decision = %{"operation_id" => member["operation_id"], "resolution" => "confirmed_failed"}
+    before = version(d)
+    assert {:error, _} = Agent.continue(ref, before, decision, Ecto.UUID.generate())
+    assert version(d) == before
+    refute_receive {:model_call, _}
+  end
+
+  test "cache and full replay agree across multiple pages; corrupt cache falls back", %{
+    durable: d
+  } do
+    d =
+      Enum.reduce(1..120, d, fn _, current ->
+        {:ok, response} =
+          AgentRecords.advance(current.repo, %{
+            command_id: Ecto.UUID.generate(),
+            position: Durable.position(current),
+            turn_id: nil,
+            type: "context.selected",
+            payload: %{}
+          })
+
+        {:ok, control} = Reducer.replay(current.control, response["events"])
+        %{current | version: response["lock_version"], control: control}
       end)
 
-    {:ok, tool_messages} = Context.append(messages(durable), observations)
+    checkpoint_id = Ecto.UUID.generate()
+    prefix = d.control
 
-    attrs = %{
-      operations: Enum.map([second, first], &%{operation_id: &1["operation_id"]}),
-      messages: tool_messages,
-      order: ["call-1", "call-2"],
-      checkpoint_id: uuid()
-    }
-
-    assert {:ok, consumed} = Durable.consume_results(durable, attrs)
-
-    assert Enum.map(consumed.consumed, & &1["operation_id"]) ==
-             [first["operation_id"], second["operation_id"]]
-
-    assert [%{"call_id" => "call-1"}, %{"call_id" => "call-2"}] =
-             Enum.filter(messages(durable), &(&1["role"] == "tool"))
-
-    assert {:ok, replay} = Durable.consume_results(durable, attrs)
-    assert replay.consumed == consumed.consumed
-
-    assert Enum.count(events(durable), &(&1["type"] == "result.consumed")) == 2
-  end
-
-  test "a source Agent Operation is not consumable", ctx do
-    {durable, _ref} = start_durable(ctx)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
-    {:ok, batch_response} = batch(durable, [%{id: "call-1", name: "echo", arguments: %{}}])
-    [operation] = batch_response.operations
-    assert {:ok, _} = accept_result(durable, operation, %{"text" => "x"})
-
-    {:ok, other} = open(ctx, definition(), ctx.name <> "-other")
-    {:ok, other_input} = accept_input(other, "other")
-    other = %{other | turn_id: other_input.turn_id, version: current_version(other)}
-
-    assert {:error, :conflict} =
-             Durable.consume_results(other, %{
-               operations: [%{operation_id: operation["operation_id"]}],
-               messages: [],
-               order: ["call-1"],
-               checkpoint_id: uuid()
+    assert {:ok, checkpoint} =
+             AgentRecords.checkpoint(d.repo, %{
+               command_id: Ecto.UUID.generate(),
+               position: Durable.position(d),
+               id: checkpoint_id,
+               through_seq: d.control["through_seq"],
+               reducer_version: Reducer.version(),
+               projection: d.control,
+               continuation: "await_input",
+               safe_to_fork: true
              })
+
+    d = %{d | version: checkpoint["lock_version"]}
+
+    assert {:ok, suffix} =
+             AgentRecords.advance(d.repo, %{
+               command_id: Ecto.UUID.generate(),
+               position: Durable.position(d),
+               turn_id: nil,
+               type: "context.selected",
+               payload: %{}
+             })
+
+    assert {:ok, control} = Reducer.replay(d.control, suffix["events"])
+    d = %{d | version: suffix["lock_version"], control: control}
+    assert {:ok, fixed} = Loader.load(d.repo, d.agent_id, through_seq: prefix["through_seq"])
+    assert fixed.control == prefix
+    assert {:ok, cached} = Loader.load(d.repo, d.agent_id)
+    assert {:ok, full} = Loader.load(d.repo, d.agent_id, cache: false)
+    assert cached.control == full.control
+    assert full.control == d.control
+
+    SQL.query!(d.repo, "UPDATE checkpoints SET digest = $1 WHERE id = $2", [
+      String.duplicate("0", 64),
+      checkpoint_id
+    ])
+
+    assert {:ok, fallback} = Loader.load(d.repo, d.agent_id)
+    assert fallback.control == full.control
   end
 
-  test "durable Tool dispatch binds the prepared attempt and consumes real Results", ctx do
-    boot_runtime(ctx)
+  test "unclaimed prepared model resumes its original identity once", ctx do
+    boot(ctx)
+    {:ok, d} = input(ctx.durable)
+    {d, _, member} = prepare(d)
+    assert {:ok, ref} = Agent.restore(locator(d), d.version, Ecto.UUID.generate())
+    assert {:ok, _} = Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+    eventually(fn -> assert {:ok, %{status: :done}} = Agent.snapshot(ref) end)
+    assert_receive {:model_call, _}
+    refute_receive {:model_call, _}
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert [%{"operation_id" => id}] = loaded.control["consumed"]
+    assert id == member["operation_id"]
+  end
 
-    {durable, ref} =
-      start_durable(ctx,
-        definition: tool_definition(),
-        model: model_binding(provider: "scripted", config: %{})
-      )
+  test "input command replay returns the original turn without another request", ctx do
+    boot(ctx)
+    d = ctx.durable
+    {:ok, ref} = Agent.start(node(), id: d.agent_id, durable: d, model: binding())
+    command = Ecto.UUID.generate()
+    assert {:ok, turn} = Agent.input(ref, "hello", command)
+    assert {:ok, ^turn} = Agent.input(ref, "hello", command)
+    assert {:error, :conflict} = Agent.input(ref, "changed", command)
+    eventually(fn -> assert {:ok, %{status: :done}} = Agent.snapshot(ref) end)
+    assert {:ok, ^turn} = Agent.input(ref, "hello", command)
+    assert_receive {:model_call, _}
+    refute_receive {:model_call, _}
+  end
 
-    assert {:ok, turn} = Agent.input(ref, "run the batch", uuid())
+  defp tool_reply do
+    %{
+      "kind" => "tool_calls",
+      "content" => nil,
+      "calls" => [
+        %{"id" => "one", "name" => "echo", "arguments" => %{"text" => "first"}},
+        %{"id" => "two", "name" => "echo", "arguments" => %{"text" => "second"}}
+      ]
+    }
+  end
 
-    eventually(fn ->
-      assert {:ok, %{status: :done, final: "finished"}} = Agent.snapshot(ref)
-    end)
+  defp tool_locator(d) do
+    {:ok, catalogue} = Catalogue.new([Deterministic.descriptor()])
 
-    # Two model steps: the tool batch and the final reply. No third dispatch.
-    assert drain_model_calls() == 2
+    Map.merge(locator(d), %{
+      model: binding(true),
+      catalogue: catalogue,
+      tools: %{"echo" => %{id: "echo", capability: "echo"}}
+    })
+  end
 
-    {head, _agent} = head(durable)
-    assert head["turn_id"] == turn
-    assert head["data"]["continuation"] == "reply_recorded"
-    refute Enum.any?(head["data"]["messages"], &(&1["role"] == "tool" and is_nil(&1["content"])))
+  defp consumed_tool_reply(d) do
+    {:ok, d} = input(d)
+    l = tool_locator(d)
+    {:ok, built} = Durable.context(d, l.catalogue)
+    {:ok, operation} = Caller.operation(l.model, built.request, 262_144)
+    {:ok, d, [member]} = Durable.prepare(d, [%{operation: operation}], "model", built.sources)
 
-    consumed = Enum.filter(events(durable), &(&1["type"] == "result.consumed"))
-    assert Enum.map(consumed, & &1["payload"]["ordinal"]) == [1, 2]
+    assert {:ok, _} =
+             OperationRecords.accept_result(d.repo, %{
+               operation_id: member["operation_id"],
+               expected_version: 0,
+               result: %{"status" => "ok", "value" => tool_reply(), "reason" => nil}
+             })
 
-    prepared = Enum.filter(events(durable), &(&1["type"] == "operation.prepared"))
-    assert length(prepared) == 2
-    assert Enum.all?(prepared, &(&1["turn_id"] == turn))
+    {:ok, d} = Durable.consume(d, [member["operation_id"]], "reply_recorded")
+    d
+  end
 
-    for event <- prepared do
-      operation_id = event["payload"]["operation_id"]
+  test "consumed model reply drives the tool batch after restore without repeating that model call",
+       ctx do
+    boot(ctx)
+    d = consumed_tool_reply(ctx.durable)
+    assert {:ok, ref} = Agent.restore(tool_locator(d), d.version, Ecto.UUID.generate())
+    assert {:ok, _} = Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+    eventually(fn -> assert {:ok, %{status: :done, final: "finished"}} = Agent.snapshot(ref) end)
+    assert_receive {:model_call, request}
+    assert Enum.count(request.messages, &(&1["role"] == "tool")) == 2
+    refute_receive {:model_call, _}
+  end
 
-      assert {:ok, %{"operation" => stored}} =
-               OperationRecords.fetch(SQLiteAuthorityRepo, operation_id)
+  test "unconsumed accepted tool results resume in ordinal order without dispatching tools",
+       ctx do
+    boot(ctx)
+    d = consumed_tool_reply(ctx.durable)
 
-      # The dispatched Runtime operation wrote the accepted Result onto this row.
-      assert stored["accepted_result"]["status"] == "ok"
-      assert stored["accepted_result"]["source"] == "execution"
+    operations =
+      Enum.map(tool_reply()["calls"], fn call ->
+        {:ok, operation} =
+          Caller.operation(%{id: "echo", capability: "echo"}, call["arguments"], 262_144)
+
+        %{id: call["id"], operation: operation}
+      end)
+
+    {:ok, d, members} = Durable.prepare(d, operations, "tool", d.control["timeline"])
+
+    for member <- Enum.reverse(members) do
+      assert {:ok, _} =
+               OperationRecords.accept_result(d.repo, %{
+                 operation_id: member["operation_id"],
+                 expected_version: 0,
+                 result: %{
+                   "status" => "ok",
+                   "value" => %{"text" => member["operation_id"]},
+                   "reason" => nil
+                 }
+               })
     end
 
-    # A restore of the finished turn reports confirmed Results, never
-    # `unconfirmed_tool_result`.
-    assert {:ok, restored} =
-             Durable.restore(
-               locator(ctx, durable, model: model_binding(provider: "scripted", config: %{})),
-               current_version(durable),
-               uuid()
-             )
+    assert {:ok, ref} = Agent.restore(tool_locator(d), d.version, Ecto.UUID.generate())
+    assert {:ok, _} = Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+    eventually(fn -> assert {:ok, %{status: :done}} = Agent.snapshot(ref) end)
+    assert_receive {:model_call, request}
 
-    assert restored.checkpoint["continuation"] == "reply_recorded"
-    assert restored.checkpoint["pending"] == []
+    assert Enum.map(Enum.filter(request.messages, &(&1["role"] == "tool")), & &1["call_id"]) == [
+             "one",
+             "two"
+           ]
+
+    refute_receive {:model_call, _}
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert length(loaded.control["consumed"]) == 4
   end
 
-  test "an uncertain Tool Result blocks the turn with no further model or Tool work", ctx do
-    boot_runtime(ctx, tool: Beamlet.Agent.HeldTool, tool_settings: %{observer: self()})
+  test "a malformed but digest-valid cache falls back without traversing invalid references", %{
+    durable: d
+  } do
+    checkpoint_id = Ecto.UUID.generate()
 
-    {durable, ref} =
-      start_durable(ctx,
-        definition: tool_definition(),
-        model: model_binding(provider: "scripted", config: %{"calls" => ["call-1"]})
-      )
+    assert {:ok, _} =
+             AgentRecords.checkpoint(d.repo, %{
+               command_id: Ecto.UUID.generate(),
+               position: Durable.position(d),
+               id: checkpoint_id,
+               through_seq: d.control["through_seq"],
+               reducer_version: Reducer.version(),
+               projection: d.control,
+               continuation: "await_input",
+               safe_to_fork: true
+             })
 
-    assert {:ok, _turn} = Agent.input(ref, "run one tool", uuid())
-    assert_receive {:tool_started, _worker}, 5000
+    bad = %{d.control | "pending" => [17]}
+    {:ok, digest} = Codec.digest(bad, :checkpoint)
 
-    eventually(fn ->
-      assert map_size(:sys.get_state(ref.pid).pending) == 1
-    end)
+    SQL.query!(d.repo, "UPDATE checkpoints SET data = $1, digest = $2 WHERE id = $3", [
+      Jason.encode!(bad),
+      digest,
+      checkpoint_id
+    ])
 
-    [entry] = Map.values(:sys.get_state(ref.pid).pending)
-    operation_id = entry.ref.id
-    # The single model step that requested the batch.
-    assert drain_model_calls() == 1
-
-    send(ref.pid, {:beamlet_operation, entry.ref, {:result, injected_result(operation_id)}})
-
-    eventually(fn ->
-      assert {:ok, %{status: :paused, final: :uncertain_external_effect}} = Agent.snapshot(ref)
-    end)
-
-    # No tool message was appended, no further model or Tool work was requested.
-    {head, _agent} = head(durable)
-    assert head["data"]["continuation"] == "blocked"
-    assert head["data"]["blocked"] == %{"reason" => "uncertain_external_effect"}
-    refute Enum.any?(head["data"]["messages"], &(&1["role"] == "tool"))
-    assert drain_model_calls() == 0
-    refute_receive {:tool_started, _worker}, 200
-
-    # The block is reachable: a decision returns the instance to `await_input`
-    # and is recorded exactly once.
-    version = current_version(durable)
-    assert {:error, {:blocked, :unresolved_effect}} = Agent.continue(ref, version, %{}, uuid())
-
-    command = uuid()
-
-    assert {:ok, %{status: :idle}} =
-             Agent.continue(ref, version, %{"resolution" => "confirmed_failed"}, command)
-
-    assert {:error, :not_paused} =
-             Agent.continue(ref, version, %{"resolution" => "confirmed_failed"}, command)
-
-    decisions = Enum.filter(events(durable), &(&1["type"] == "agent.decision"))
-    assert length(decisions) == 1
-    assert hd(decisions)["payload"]["decision"] == "confirmed_failed"
-    assert drain_model_calls() == 0
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert loaded.control == d.control
   end
 
-  test "a durable Agent without the Runtime section blocks before any Tool dispatch", ctx do
-    boot_runtime(ctx, persistence: false)
-
-    {durable, ref} =
-      start_durable(ctx,
-        definition: tool_definition(),
-        model: model_binding(provider: "scripted", config: %{}),
-        runtime: nil
-      )
-
-    assert {:ok, _turn} = Agent.input(ref, "run the batch", uuid())
-
-    eventually(fn ->
-      assert {:ok, %{status: :paused, final: :missing_durable_runtime}} = Agent.snapshot(ref)
-    end)
-
-    # Nothing was prepared and nothing was dispatched ephemerally.
-    refute Enum.any?(events(durable), &(&1["type"] == "operation.prepared"))
-    {head, _agent} = head(durable)
-    assert head["data"]["blocked"] == %{"reason" => "missing_durable_runtime"}
-    assert drain_model_calls() == 1
+  test "invalid consumption order and position refuse before committing", %{durable: d} do
+    {:ok, d} = input(d)
+    {d, _, member} = prepare(d)
+    assert {:ok, _} = accept(d, member)
+    assert {:error, _} = Durable.consume(d, [member["operation_id"]], "bogus")
+    assert version(d) == d.version
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert loaded.control == d.control
   end
 
-  test "duplicate restores leave a survivor that can still commit", ctx do
-    boot_runtime(ctx)
-    {durable, _ref} = start_durable(ctx, start: false)
-    {:ok, accepted} = accept_input(durable, "restore me")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
-    version = current_version(durable)
+  test "invalid model preparation refuses before committing while input is pending", %{durable: d} do
+    {:ok, d} = input(d)
+    {d, op, _} = prepare(d)
+    assert {:error, _} = Durable.prepare(d, [%{operation: op}], "model", d.control["timeline"])
+    assert version(d) == d.version
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert loaded.control == d.control
+  end
 
-    results =
-      1..2
-      |> Enum.map(fn _ ->
-        Task.async(fn -> Agent.restore(locator(ctx, durable), version, uuid()) end)
+  test "resolution cannot conceal a successful model reply", %{durable: d} do
+    {:ok, d} = input(d)
+    {d, _, member} = prepare(d)
+    assert {:ok, _} = accept(d, member)
+    assert {:ok, ref} = Agent.restore(locator(d), d.version, Ecto.UUID.generate())
+    before = version(d)
+    decision = %{"operation_id" => member["operation_id"], "resolution" => "confirmed_failed"}
+    assert {:error, _} = Agent.continue(ref, before, decision, Ecto.UUID.generate())
+    assert version(d) == before
+    assert {:ok, _} = Agent.continue(ref, before, %{}, Ecto.UUID.generate())
+    assert {:ok, %{status: :done, final: "saved"}} = Agent.snapshot(ref)
+    refute_receive {:model_call, _}
+  end
+
+  test "repeating the restore command does not activate another generation", %{durable: d} do
+    {:ok, d} = input(d)
+    command = Ecto.UUID.generate()
+    assert {:ok, first} = Durable.restore(locator(d), d.version, command)
+    assert {:ok, repeated} = Durable.restore(locator(d), d.version, command)
+    assert repeated.control == first.control
+    assert {:error, :invalid_data} = Durable.restore(locator(d), nil, command)
+    assert version(d) == first.durable.version
+    refute_receive {:model_call, _}
+  end
+
+  test "partially consumed tool batch resumes remaining identities and preserves original order",
+       ctx do
+    boot(ctx)
+    d = consumed_tool_reply(ctx.durable)
+
+    operations =
+      Enum.map(tool_reply()["calls"], fn call ->
+        {:ok, operation} =
+          Caller.operation(%{id: "echo", capability: "echo"}, call["arguments"], 262_144)
+
+        %{id: call["id"], operation: operation}
       end)
-      |> Enum.map(&Task.await(&1, 5000))
 
-    assert Enum.count(results, &match?({:ok, _}, &1)) == 1
-    assert Enum.count(results, &match?({:error, _}, &1)) == 1
-    assert [{_id, _pid}] = Registry.lookup(Beamlet.Agent.Registry, ctx.name) |> Enum.take(1)
+    {:ok, d, [first, second]} = Durable.prepare(d, operations, "tool", d.control["timeline"])
 
-    # Exactly one generation was committed by the two attempts.
-    assert Enum.count(events(durable), &(&1["type"] == "agent.restored")) == 1
+    for member <- [first, second] do
+      assert {:ok, _} =
+               OperationRecords.accept_result(d.repo, %{
+                 operation_id: member["operation_id"],
+                 expected_version: 0,
+                 result: %{
+                   "status" => "ok",
+                   "value" => %{"text" => member["operation_id"]},
+                   "reason" => nil
+                 }
+               })
+    end
 
-    # The survivor still commits: the decision is recorded and the turn advances.
-    {:ok, survivor} = Enum.find(results, &match?({:ok, _}, &1))
-
-    assert {:ok, %{status: _}} =
-             Agent.continue(survivor, current_version(durable), %{}, uuid())
-
-    eventually(fn ->
-      assert {:ok, %{status: :done}} = Agent.snapshot(survivor)
-    end)
-
-    assert Enum.count(events(durable), &(&1["type"] == "agent.decision")) == 1
-    assert drain_model_calls() == 1
-  end
-
-  test "an already active instance rejects a fresh restore before the generation bump", ctx do
-    boot_runtime(ctx)
-    {durable, ref} = start_durable(ctx)
-    version = current_version(durable)
-
-    assert {:error, :already_active} = Agent.restore(locator(ctx, durable), version, uuid())
-    assert {:ok, %{status: :idle}} = Agent.snapshot(ref)
-
-    {_head, agent} = head(durable)
-    assert agent["generation"] == 0
-    refute Enum.any?(events(durable), &(&1["type"] == "agent.restored"))
-
-    assert {:ok, turn} = Agent.input(ref, "after the rejection", uuid())
-
-    eventually(fn ->
-      {head, _agent} = head(durable)
-      assert head["turn_id"] == turn
-      assert {:ok, %{status: :done}} = Agent.snapshot(ref)
-    end)
-  end
-
-  test "a mid-turn checkpoint restores mid-turn and still advances", ctx do
-    boot_runtime(ctx)
-    {durable, _ref} = start_durable(ctx, definition: tool_definition(), start: false)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
-
-    assert {:ok, batch_response} =
-             batch(durable, [%{id: "call-1", name: "echo", arguments: %{"text" => "one"}}], 1)
-
-    durable = %{durable | version: batch_response.version, step: 1}
-    [operation] = batch_response.operations
-    assert {:ok, _} = accept_result(durable, operation, %{"text" => "one"})
-
-    {:ok, tool_messages} =
-      Context.append(messages(durable), [
-        %{"role" => "tool", "call_id" => "call-1", "content" => ~s({"status":"ok"})}
-      ])
-
-    assert {:ok, consumed} =
-             Durable.consume_results(durable, %{
-               operations: [%{operation_id: operation["operation_id"]}],
-               messages: tool_messages,
-               order: ["call-1"],
-               step: 2,
-               checkpoint_id: uuid()
-             })
-
-    durable = %{durable | version: consumed.version}
-    locator = locator(ctx, durable, model: model_binding(provider: "scripted", config: %{}))
-
-    assert {:ok, restored} = Durable.restore(locator, current_version(durable), uuid())
-    assert restored.checkpoint["continuation"] == "await_model_result"
-    assert restored.checkpoint["step"] == 2
-
-    assert {:ok, paused} = Agent.restore(locator, current_version(durable), uuid())
-    assert {:ok, %{status: :paused, steps: 2}} = Agent.snapshot(paused)
-
-    # Advancing resumes at step 2, well below the 16-step ceiling.
-    assert {:ok, %{status: :running}} =
-             Agent.continue(paused, current_version(durable), %{}, uuid())
-
-    eventually(fn ->
-      assert {:ok, %{status: :done, final: "finished"}} = Agent.snapshot(paused)
-    end)
-
-    assert drain_model_calls() == 1
-  end
-
-  test "a malformed provider reply blocks with a safe reason instead of crashing", ctx do
-    boot_runtime(ctx)
-
-    {durable, ref} =
-      start_durable(ctx, model: model_binding(provider: "malformed", config: %{}))
-
-    assert {:ok, _turn} = Agent.input(ref, "reply badly", uuid())
-
-    eventually(fn ->
-      assert {:ok, %{status: :paused, final: :invalid_reply}} = Agent.snapshot(ref)
-    end)
-
-    assert Process.alive?(ref.pid)
-    {head, _agent} = head(durable)
-    assert head["data"]["blocked"] == %{"reason" => "invalid_reply"}
-  end
-
-  test "stopping an idle durable instance writes no blocked checkpoint", ctx do
-    {durable, ref} = start_durable(ctx)
-    _ = durable
-
-    assert :ok = Agent.stop_turn(ref)
-    assert {:ok, %{status: :stopped}} = Agent.snapshot(ref)
-
-    refute Enum.any?(events(durable), &(&1["type"] == "agent.blocked"))
-    {head, _agent} = head(durable)
-    assert head["data"]["continuation"] == "await_input"
-  end
-
-  test "every implemented continuation restores a paused instance with no calls", ctx do
-    {durable, _ref} = start_durable(ctx, start: false)
-
-    assert {:ok, restored} =
-             Durable.restore(locator(ctx, durable), current_version(durable), uuid())
-
-    assert restored.checkpoint["continuation"] == "await_input"
-    assert {:ok, paused} = Agent.restore(locator(ctx, durable), current_version(durable), uuid())
-    assert {:ok, %{status: :paused}} = Agent.snapshot(paused)
-    assert model_calls() == 0
-
-    # await_model_result
-    {durable, _ref} = start_durable(%{ctx | name: ctx.name <> "-model"}, start: false)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
-
-    assert {:ok, restored} =
-             Durable.restore(locator(ctx, durable), current_version(durable), uuid())
-
-    assert restored.checkpoint["continuation"] == "await_model_result"
-    assert {:ok, paused} = Agent.restore(locator(ctx, durable), current_version(durable), uuid())
-    assert {:ok, %{status: :paused, turn: turn}} = Agent.snapshot(paused)
-    assert turn == accepted.turn_id
-    assert model_calls() == 0
-
-    # reply_recorded
-    {durable, _ref} = start_durable(%{ctx | name: ctx.name <> "-reply"}, start: false)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
-
-    assert {:ok, reply_response} =
-             Durable.record_reply(durable, %{
-               request: %{"messages" => messages(durable)},
-               messages: messages(durable),
-               reply: %{"kind" => "text", "content" => "stored", "calls" => []},
-               checkpoint_id: uuid(),
-               step: 1
-             })
-
-    durable = %{durable | version: reply_response.version}
-
-    assert {:ok, restored} =
-             Durable.restore(locator(ctx, durable), current_version(durable), uuid())
-
-    assert restored.checkpoint["continuation"] == "reply_recorded"
-    assert {:ok, paused} = Agent.restore(locator(ctx, durable), current_version(durable), uuid())
-    assert {:ok, %{status: :paused}} = Agent.snapshot(paused)
-
-    assert {:ok, %{status: :done}} =
-             Agent.continue(paused, current_version(durable), %{}, uuid())
-
-    assert model_calls() == 0
-
-    # await_tool_results with every accepted Result present
-    {durable, _ref} = start_durable(%{ctx | name: ctx.name <> "-tools"}, start: false)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
-
-    assert {:ok, batch_response} =
-             batch(durable, [%{id: "call-1", name: "echo", arguments: %{"text" => "a"}}])
-
-    durable = %{durable | version: batch_response.version}
-    [operation] = batch_response.operations
-    assert {:ok, _} = accept_result(durable, operation, %{"text" => "a"})
-
-    assert {:ok, restored} =
-             Durable.restore(locator(ctx, durable), current_version(durable), uuid())
-
-    assert restored.checkpoint["continuation"] == "await_tool_results"
-    assert {:ok, paused} = Agent.restore(locator(ctx, durable), current_version(durable), uuid())
-    assert {:ok, %{status: :paused}} = Agent.snapshot(paused)
-    assert model_calls() == 0
-
-    # An unsupported position is refused before anything is written.
-    assert {:error, {:unsupported_continuation, "await_tool_results"}} =
-             Agent.continue(paused, current_version(durable), %{}, uuid())
-
-    refute Enum.any?(events(durable), &(&1["type"] == "agent.decision"))
-  end
-
-  test "a missing dependency or artifact blocks the restore with zero dispatch", ctx do
-    secret_definition =
-      definition(%{"model" => %{"provider" => "counting", "secret_ref" => "vault-1"}})
-
-    {:ok, secret_durable} = open(ctx, secret_definition, ctx.name <> "-secret")
-
-    assert {:error, {:blocked, :missing_secret}} =
-             Agent.restore(
-               locator(ctx, secret_durable,
-                 model: %{provider: "counting", config: %{}, credentials: %{}}
-               ),
-               secret_durable.version,
-               uuid()
+    assert {:error, _} =
+             Durable.consume(
+               d,
+               [second["operation_id"], first["operation_id"]],
+               "await_model_result"
              )
 
-    artifact_definition =
-      definition(%{
-        "tools" => %{"echo" => %{"profile" => "echo-profile", "artifact_refs" => [uuid()]}}
-      })
-
-    {:ok, artifact_durable} = open(ctx, artifact_definition, ctx.name <> "-artifact")
-
-    assert {:error, {:blocked, :artifact_missing}} =
-             Agent.restore(
-               locator(ctx, artifact_durable),
-               current_version(artifact_durable),
-               uuid()
+    assert {:error, _} =
+             Durable.consume(
+               d,
+               [first["operation_id"], first["operation_id"]],
+               "await_model_result"
              )
 
-    assert model_calls() == 0
-    assert Registry.lookup(Beamlet.Agent.Registry, ctx.name <> "-secret") == []
-    assert Registry.lookup(Beamlet.Agent.Registry, ctx.name <> "-artifact") == []
+    assert version(d) == d.version
+    assert {:ok, d} = Durable.consume(d, [first["operation_id"]], "await_model_result")
+    assert {:ok, ref} = Agent.restore(tool_locator(d), d.version, Ecto.UUID.generate())
+    assert {:ok, _} = Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+    eventually(fn -> assert {:ok, %{status: :done, final: "finished"}} = Agent.snapshot(ref) end)
+    assert_receive {:model_call, request}
+
+    assert Enum.map(Enum.filter(request.messages, &(&1["role"] == "tool")), & &1["call_id"]) == [
+             "one",
+             "two"
+           ]
+
+    refute_receive {:model_call, _}
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert length(loaded.control["consumed"]) == 4
   end
 
-  test "an uncertain external effect blocks progression until an explicit decision", ctx do
-    {durable, _ref} = start_durable(ctx, start: false)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
+  test "definite accepted model errors consume once and do not require a false resolution", ctx do
+    boot(ctx)
+    {:ok, d} = input(ctx.durable)
+    {d, _, member} = prepare(d)
 
-    assert {:ok, blocked} = Durable.block(durable, :uncertain_external_effect)
-    durable = %{durable | version: blocked.version}
-
-    assert {:ok, paused} = Agent.restore(locator(ctx, durable), current_version(durable), uuid())
-    assert {:ok, %{status: :paused}} = Agent.snapshot(paused)
-
-    assert {:error, {:blocked, :unresolved_effect}} =
-             Agent.continue(paused, current_version(durable), %{}, uuid())
-
-    assert model_calls() == 0
-
-    assert {:ok, _snapshot} =
-             Agent.continue(
-               paused,
-               current_version(durable),
-               %{"resolution" => "confirmed_failed"},
-               uuid()
-             )
-
-    assert {:ok, %{status: :idle}} = Agent.snapshot(paused)
-    assert model_calls() == 0
-  end
-
-  test "restore rebuilds display annotations for restored messages", ctx do
-    {durable, _ref} = start_durable(ctx, start: false)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
-
-    assert {:ok, paused} = Agent.restore(locator(ctx, durable), current_version(durable), uuid())
-    stored = messages(durable)
-    assert length(stored) == 1
-
-    assert {:ok, %{display: display}} = Agent.snapshot(paused, view: :display)
-    assert [%{role: "user", content: "hello"}] = display.entries
-  end
-
-  test "display data is absent from persisted rows", ctx do
-    {durable, ref} = start_durable(ctx)
-    {:ok, accepted} = accept_input(durable, "hello")
-    durable = %{durable | turn_id: accepted.turn_id, version: accepted.version}
-
-    assert {:ok, reply_response} =
-             Durable.record_reply(durable, %{
-               request: %{"messages" => messages(durable)},
-               messages: messages(durable),
-               reply: %{"kind" => "text", "content" => "stored", "calls" => []},
-               checkpoint_id: uuid(),
-               step: 1
+    assert {:ok, _} =
+             OperationRecords.accept_result(d.repo, %{
+               operation_id: member["operation_id"],
+               expected_version: 0,
+               result: %{"status" => "error", "reason" => "provider_failure", "value" => nil}
              })
 
-    _durable = %{durable | version: reply_response.version}
+    assert {:ok, ref} = Agent.restore(locator(d), d.version, Ecto.UUID.generate())
+    assert {:ok, _} = Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+    assert {:ok, %{status: :error, final: %{status: :error}}} = Agent.snapshot(ref)
+    refute_receive {:model_call, _}
+    eventually(fn -> assert {:ok, _} = Agent.input(ref, "next") end)
+    eventually(fn -> assert {:ok, %{status: :done}} = Agent.snapshot(ref) end)
+    assert_receive {:model_call, request}
+    assert Enum.any?(request.messages, &String.contains?(&1["content"] || "", "provider_failure"))
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert length(loaded.control["consumed"]) == 2
+  end
 
-    {:ok, %{"agent" => agent, "head_checkpoint" => head}} =
-      AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
+  test "all uncertain tools need named truthful resolutions before another model call", ctx do
+    boot(ctx)
+    d = consumed_tool_reply(ctx.durable)
 
-    checkpoint = head["data"]
-    refute Map.has_key?(checkpoint, "display")
-    refute Map.has_key?(checkpoint, "display_entries")
-    refute Map.has_key?(checkpoint, "subscribers")
-    refute Map.has_key?(checkpoint, "annotation")
-    refute Map.has_key?(agent, "pid")
-    refute inspect(head) =~ "#PID"
-    refute inspect(head) =~ "#Reference"
+    operations =
+      Enum.map(tool_reply()["calls"], fn call ->
+        {:ok, operation} =
+          Caller.operation(%{id: "echo", capability: "echo"}, call["arguments"], 262_144)
 
-    # Display is rebuilt by the live Server, never read back from storage.
-    assert {:ok, %{status: _} = view} = Agent.snapshot(ref)
-    assert is_map(view)
+        %{id: call["id"], operation: operation}
+      end)
+
+    {:ok, d, members} = Durable.prepare(d, operations, "tool", d.control["timeline"])
+
+    for member <- members do
+      assert {:ok, _} =
+               OperationRecords.accept_result(d.repo, %{
+                 operation_id: member["operation_id"],
+                 expected_version: 0,
+                 result: %{"status" => "uncertain", "reason" => "lost", "value" => nil}
+               })
+    end
+
+    assert {:ok, ref} = Agent.restore(tool_locator(d), d.version, Ecto.UUID.generate())
+
+    decisions =
+      Enum.map(
+        members,
+        &%{"operation_id" => &1["operation_id"], "resolution" => "confirmed_failed"}
+      )
+
+    assert {:error, :unresolved_execution} =
+             Agent.continue(ref, version(d), hd(decisions), Ecto.UUID.generate())
+
+    refute_receive {:model_call, _}
+
+    assert {:ok, _} =
+             Agent.continue(ref, version(d), %{"resolutions" => decisions}, Ecto.UUID.generate())
+
+    eventually(fn -> assert {:ok, %{status: :done}} = Agent.snapshot(ref) end)
+    assert_receive {:model_call, request}
+    observations = Enum.filter(request.messages, &(&1["role"] == "tool"))
+    assert length(observations) == 2
+    assert Enum.all?(observations, &String.contains?(&1["content"], "explicit_decision"))
+    refute_receive {:model_call, _}
+  end
+
+  test "a safe input-only interruption can continue without fabricating execution evidence", %{
+    durable: d
+  } do
+    {:ok, d} = input(d)
+    {:ok, d} = Durable.block(d, :dependency_missing)
+    assert {:ok, d} = Durable.decide(d, %{decision: %{}, command_id: Ecto.UUID.generate()})
+    refute d.control["paused"]
+    assert d.control["resolutions"] == %{}
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert loaded.control == d.control
+  end
+
+  test "changed prepared dependencies block without executing or minting replacement work", ctx do
+    boot(ctx)
+    {:ok, d} = input(ctx.durable)
+    {d, _, member} = prepare(d)
+    changed = %{locator(d) | model: %{provider: "scripted", config: %{"changed" => true}}}
+    assert {:ok, ref} = Agent.restore(changed, d.version, Ecto.UUID.generate())
+    assert {:ok, _} = Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+    assert {:ok, %{status: :paused, final: :dependency_missing}} = Agent.snapshot(ref)
+
+    assert {:ok, %{"attempt" => %{"dispatch_state" => "prepared"}}} =
+             OperationRecords.fetch(d.repo, member["operation_id"])
+
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert length(loaded.control["pending"]) == 1
+    refute_receive {:model_call, _}
+  end
+
+  test "continue waits for actual owner retirement rather than reusing its old turn token", ctx do
+    boot(ctx)
+    d = ctx.durable
+    wait_binding = %{provider: "scripted", config: %{"wait" => true}}
+    assert {:ok, ref} = Agent.start(node(), id: d.agent_id, durable: d, model: wait_binding)
+    assert {:ok, _} = Agent.input(ref, "hello")
+    assert_receive {:model_waiting, _}, 3000
+    owner = :sys.get_state(ref.pid).owners |> Map.values() |> hd()
+    monitor = Process.monitor(owner.pid)
+    :erlang.suspend_process(owner.pid)
+
+    try do
+      assert :ok = Agent.stop_turn(ref)
+      before = version(d)
+      assert {:error, :owners_retiring} = Agent.continue(ref, before, %{}, Ecto.UUID.generate())
+      assert version(d) == before
+    after
+      :erlang.resume_process(owner.pid)
+    end
+
+    assert_receive {:DOWN, ^monitor, :process, _, _}, 3000
+    eventually(fn -> assert :sys.get_state(ref.pid).owners == %{} end)
+
+    assert {:error, :unresolved_execution} =
+             Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+
+    assert_receive {:model_call, _}
+    refute_receive {:model_call, _}
+  end
+
+  test "reducer rejects malformed schema and invalid orchestration without raising", %{durable: d} do
+    {:ok, %{"events" => [created]}} = AgentRecords.history_page(d.repo, d.agent_id)
+
+    for payload <- [nil, %{}, %{"definition_version" => 1, "extra" => true}] do
+      assert {:error, _} =
+               Reducer.reduce(Reducer.new(d.agent_id), %{created | "payload" => payload})
+    end
+
+    assert {:error, :invalid_history} =
+             Reducer.reduce(Reducer.new(d.agent_id), %{
+               created
+               | "type" => "context.selected",
+                 "payload" => %{}
+             })
+
+    {:ok, d} = input(d)
+    {d, _, member} = prepare(d)
+    assert {:ok, _} = accept(d, member)
+    assert {:ok, %{"events" => events}} = AgentRecords.history_page(d.repo, d.agent_id)
+    prepared = List.last(events)
+
+    for payload <- [
+          %{"operation_id" => member["operation_id"]},
+          %{prepared["payload"] | "ordinal" => 7}
+        ] do
+      event = %{prepared | "payload" => payload}
+
+      assert {:error, _} =
+               Reducer.reduce(%{d.control | "through_seq" => prepared["seq"] - 1}, event)
+    end
+  end
+
+  test "memory mode uncertain tool output blocks the next model and new input", ctx do
+    boot(ctx, Beamlet.Agent.DurableWaitingTool, false)
+    {:ok, catalogue} = Catalogue.new([Deterministic.descriptor()])
+
+    assert {:ok, ref} =
+             Agent.start(node(),
+               id: "memory-unknown",
+               model: binding(true),
+               catalogue: catalogue,
+               tools: %{"echo" => %{id: "echo", capability: "echo"}}
+             )
+
+    assert {:ok, _} = Agent.input(ref, "tools")
+    assert_receive {:tool_waiting, first, _}, 3000
+    assert_receive {:tool_waiting, second, _}, 3000
+    monitors = Enum.map([first, second], &Process.monitor/1)
+    eventually(fn -> assert map_size(:sys.get_state(ref.pid).pending) == 2 end)
+    state = :sys.get_state(ref.pid)
+    pending = Enum.find_value(state.pending, fn {_, p} -> if p.key == "one", do: p end)
+
+    result = %Result{
+      operation_id: pending.ref.id,
+      source: :coordinator,
+      status: :uncertain,
+      reason: :lost
+    }
+
+    assert Result.valid?(result)
+    send(ref.pid, {:beamlet_operation, pending.ref, {:result, result}})
+
+    eventually(fn ->
+      assert {:ok, %{status: :error, final: :unresolved_execution}} = Agent.snapshot(ref)
+    end)
+
+    for monitor <- monitors, do: assert_receive({:DOWN, ^monitor, :process, _, _}, 3000)
+    assert {:error, :unresolved_execution} = Agent.input(ref, "try again")
+    assert_receive {:model_call, _}
+    refute_receive {:model_call, _}
+  end
+
+  test "Operation row corruption cannot substitute a different immutable prepared request", %{
+    durable: d
+  } do
+    {:ok, d} = input(d)
+    {d, operation, member} = prepare(d)
+    description = Persistence.description(operation) |> Map.put("refs", %{"changed" => true})
+    {:ok, digest} = Codec.digest(description, :operation)
+
+    SQL.query!(
+      d.repo,
+      "UPDATE operations SET description = $1, description_digest = $2 WHERE id = $3",
+      [
+        Jason.encode!(description),
+        digest,
+        member["operation_id"]
+      ]
+    )
+
+    assert {:error, :invalid_reference} = Durable.inspect(locator(d))
+
+    assert {:error, :invalid_reference} =
+             Durable.restore(locator(d), d.version, Ecto.UUID.generate())
+
+    assert version(d) == d.version
+    refute_receive {:model_call, _}
+  end
+
+  test "stored reply conversion does not silently discard unknown model or call fields" do
+    reply = tool_reply()
+    assert {:error, :invalid_reply} = ContextBuilder.reply(Map.put(reply, "ignored", true))
+    calls = [Map.put(hd(reply["calls"]), "ignored", true)]
+    assert {:error, :invalid_reply} = ContextBuilder.reply(%{reply | "calls" => calls})
+  end
+
+  test "activation fences suspended old senders and waits for their inventoried group DOWN",
+       ctx do
+    boot(ctx)
+    d = ctx.durable
+
+    assert {:ok, ref} =
+             Agent.start(node(),
+               id: d.agent_id,
+               durable: d,
+               model: %{provider: "scripted", config: %{"wait" => true}}
+             )
+
+    assert {:ok, _} = Agent.input(ref, "hello")
+    assert_receive {:model_waiting, worker}, 3000
+    owner = :sys.get_state(ref.pid).owners |> Map.values() |> hd()
+
+    eventually(fn ->
+      resources = :sys.get_state(Agent.Resources)
+      assert Enum.any?(resources.identities, fn {_, identity} -> identity == {d.agent_id, 0} end)
+      assert owner.pid in Map.values(resources.processes)
+      assert length(Map.values(resources.processes)) >= 2
+    end)
+
+    :erlang.suspend_process(owner.pid)
+    monitor = Process.monitor(ref.pid)
+    Process.exit(ref.pid, :kill)
+    assert_receive {:DOWN, ^monitor, :process, _, _}, 3000
+    assert Process.alive?(owner.pid)
+    assert Process.alive?(worker)
+    inventory = :sys.get_state(Agent.Resources).processes |> Map.values()
+    monitors = Enum.map([worker | inventory], &Process.monitor/1)
+
+    try do
+      assert {:ok, restored} = Durable.restore(locator(d), version(d), Ecto.UUID.generate())
+      assert restored.control["paused"]
+      assert Enum.all?(inventory, &(not Process.alive?(&1)))
+      for mon <- monitors, do: assert_receive({:DOWN, ^mon, :process, _, _}, 3000)
+
+      assert {:error, :unresolved_execution} =
+               Durable.decide(restored.durable, %{
+                 command_id: Ecto.UUID.generate(),
+                 decision: %{}
+               })
+    after
+      if Process.alive?(owner.pid), do: :erlang.resume_process(owner.pid)
+    end
+
+    assert_receive {:model_call, _}
+    refute_receive {:model_call, _}
+  end
+
+  test "failed restored sibling dependency prevents every later sibling dispatch", ctx do
+    boot(ctx, Beamlet.Agent.DurableWaitingTool)
+    d = consumed_tool_reply(ctx.durable)
+
+    operations =
+      tool_reply()["calls"]
+      |> Enum.with_index()
+      |> Enum.map(fn {call, index} ->
+        profile = %{id: if(index == 0, do: "missing-profile", else: "echo"), capability: "echo"}
+        {:ok, operation} = Caller.operation(profile, call["arguments"], 262_144)
+        %{id: call["id"], operation: operation}
+      end)
+
+    {:ok, d, members} = Durable.prepare(d, operations, "tool", d.control["timeline"])
+    assert {:ok, ref} = Agent.restore(tool_locator(d), d.version, Ecto.UUID.generate())
+    assert {:ok, _} = Agent.continue(ref, version(d), %{}, Ecto.UUID.generate())
+    assert {:ok, %{status: :paused, final: :dependency_missing}} = Agent.snapshot(ref)
+    assert :sys.get_state(ref.pid).owners == %{}
+
+    for member <- members do
+      assert {:ok, %{"attempt" => %{"dispatch_state" => "prepared"}}} =
+               OperationRecords.fetch(d.repo, member["operation_id"])
+    end
+
+    refute_receive {:tool_waiting, _, _}
+    refute_receive {:model_call, _}
+  end
+
+  test "a valid cache cannot conceal a missing committed history event", %{durable: d} do
+    {:ok, d} = input(d)
+
+    assert {:ok, checkpoint} =
+             AgentRecords.checkpoint(d.repo, %{
+               command_id: Ecto.UUID.generate(),
+               position: Durable.position(d),
+               id: Ecto.UUID.generate(),
+               through_seq: d.control["through_seq"],
+               reducer_version: Reducer.version(),
+               projection: d.control,
+               continuation: "await_model_result",
+               safe_to_fork: false
+             })
+
+    SQL.query!(d.repo, "DELETE FROM events WHERE scope_id = $1 AND seq = 2", [d.agent_id])
+    assert {:error, :history_limit_or_gap} = Durable.inspect(locator(d))
+
+    assert {:error, :history_limit_or_gap} =
+             Durable.restore(locator(d), checkpoint["lock_version"], Ecto.UUID.generate())
+
+    assert version(d) == checkpoint["lock_version"]
+    refute_receive {:model_call, _}
+  end
+
+  test "memory mode uncertain model outcome blocks subsequent model calls", ctx do
+    boot(ctx, Deterministic, false)
+
+    assert {:ok, ref} =
+             Agent.start(node(),
+               id: "memory-model-unknown",
+               model: %{provider: "scripted", config: %{"wait" => true}}
+             )
+
+    assert {:ok, _} = Agent.input(ref, "hello")
+    assert_receive {:model_waiting, worker}, 3000
+    monitor = Process.monitor(worker)
+    eventually(fn -> assert map_size(:sys.get_state(ref.pid).pending) == 1 end)
+    [pending] = :sys.get_state(ref.pid).pending |> Map.values()
+
+    result = %Result{
+      operation_id: pending.ref.id,
+      source: :coordinator,
+      status: :uncertain,
+      reason: :lost
+    }
+
+    assert Result.valid?(result)
+    send(ref.pid, {:beamlet_operation, pending.ref, {:result, result}})
+
+    eventually(fn ->
+      assert {:ok, %{status: :error, final: %{status: :uncertain}}} = Agent.snapshot(ref)
+    end)
+
+    assert_receive {:DOWN, ^monitor, :process, ^worker, _}, 3000
+    assert {:error, :unresolved_execution} = Agent.input(ref, "try again")
+    assert_receive {:model_call, _}
+    refute_receive {:model_call, _}
+  end
+
+  test "malformed stored JSON blocks read-only reconstruction rather than raising", %{durable: d} do
+    {:ok, d} = input(d)
+
+    SQL.query!(d.repo, "UPDATE events SET payload = $1 WHERE scope_id = $2 AND seq = 2", [
+      "{bad",
+      d.agent_id
+    ])
+
+    assert {:error, :invalid_data} = Durable.inspect(locator(d))
+
+    assert_raise ArgumentError, "unrelated", fn ->
+      Transaction.read(fn -> raise ArgumentError, "unrelated" end)
+    end
+
+    assert {:error, :invalid_data} = Durable.restore(locator(d), d.version, Ecto.UUID.generate())
+    assert version(d) == d.version
+    refute_receive {:model_call, _}
+  end
+
+  test "effective configuration versions distinguish config and schema but exclude inputs and secrets",
+       %{durable: d} do
+    {:ok, d} = input(d)
+    assert {:ok, built} = Durable.context(d, %{})
+    assert {:ok, ^built} = Durable.context(d, %{})
+    assert built.policy["definition_version"] == 1
+    assert {:ok, original} = Caller.operation(binding(), built.request, 262_144)
+    version = original.metadata["configuration_version"]
+    assert version =~ ~r/\A[0-9a-f]{64}\z/
+
+    changed_input = %{
+      built.request
+      | "messages" => [%{"role" => "user", "content" => "different"}]
+    }
+
+    assert {:ok, other_input} = Caller.operation(binding(), changed_input, 262_144)
+    assert other_input.metadata["configuration_version"] == version
+
+    assert {:ok, other_secret} =
+             Caller.operation(
+               Map.put(binding(), :credentials, %{"api_key" => "not-persisted"}),
+               built.request,
+               262_144
+             )
+
+    assert other_secret.metadata["configuration_version"] == version
+    refute inspect(Persistence.description(other_secret)) =~ "not-persisted"
+    assert {:ok, other_config} = Caller.operation(binding(true), built.request, 262_144)
+    refute other_config.metadata["configuration_version"] == version
+    {:ok, catalogue} = Catalogue.new([Deterministic.descriptor()])
+
+    assert {:ok, other_schema} =
+             Caller.operation(binding(), %{built.request | "catalogue" => catalogue}, 262_144)
+
+    refute other_schema.metadata["configuration_version"] == version
+    profile = %{id: "echo", capability: "echo"}
+    assert {:ok, first} = Caller.operation(profile, %{"text" => "one"}, 262_144)
+    assert {:ok, second} = Caller.operation(profile, %{"text" => "two"}, 262_144)
+    assert first.metadata["configuration_version"] == second.metadata["configuration_version"]
+
+    assert {:ok, changed} =
+             Caller.operation(%{profile | id: "echo-v2"}, %{"text" => "one"}, 262_144)
+
+    refute first.metadata["configuration_version"] == changed.metadata["configuration_version"]
+  end
+
+  test "policy metadata counts in the executable limit before any Operation is prepared", %{
+    durable: d
+  } do
+    text = String.duplicate("a", 1000)
+    request = %{"messages" => [%{"role" => "user", "content" => text}], "catalogue" => %{}}
+    {:ok, operation} = Caller.operation(binding(), request, 262_144)
+    assert {:ok, ref} = Agent.start(node(), id: d.agent_id, durable: d, model: binding())
+    :sys.replace_state(ref.pid, &%{&1 | operation_limit: :erlang.external_size(operation)})
+    assert {:ok, _} = Agent.input(ref, text)
+
+    eventually(fn ->
+      assert {:ok, %{status: :paused, final: :executable_input_limit}} = Agent.snapshot(ref)
+    end)
+
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert loaded.control["pending"] == []
+    assert loaded.control["step"] == 0
+    assert {:ok, %{request: ^request}} = ContextBuilder.build(d.repo, loaded.control, %{})
+    refute_receive {:model_call, _}
+  end
+
+  test "cache prefix and suffix share the same total history byte budget", %{durable: d} do
+    payload = %{"selection_tag" => String.duplicate("a", 900_000)}
+
+    d =
+      Enum.reduce(1..40, d, fn index, current ->
+        assert {:ok, response} =
+                 AgentRecords.advance(current.repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: Durable.position(current),
+                   turn_id: nil,
+                   type: "context.selected",
+                   payload: payload
+                 })
+
+        {:ok, control} = Reducer.replay(current.control, response["events"])
+        current = %{current | version: response["lock_version"], control: control}
+
+        if index == 35 do
+          assert {:ok, checkpoint} =
+                   AgentRecords.checkpoint(current.repo, %{
+                     command_id: Ecto.UUID.generate(),
+                     position: Durable.position(current),
+                     id: Ecto.UUID.generate(),
+                     through_seq: control["through_seq"],
+                     reducer_version: Reducer.version(),
+                     projection: control,
+                     continuation: "await_input",
+                     safe_to_fork: true
+                   })
+
+          %{current | version: checkpoint["lock_version"]}
+        else
+          current
+        end
+      end)
+
+    assert {:error, :history_limit_or_gap} = Loader.load(d.repo, d.agent_id, cache: false)
+    assert {:error, :history_limit_or_gap} = Loader.load(d.repo, d.agent_id)
+    assert {:ok, _} = Loader.load(d.repo, d.agent_id, through_seq: 2)
+
+    assert {:error, :history_limit_or_gap} =
+             Durable.restore(locator(d), d.version, Ecto.UUID.generate())
+
+    assert version(d) == d.version
+    refute_receive {:model_call, _}
+  end
+
+  test "real durable model and parallel tool batch consume accepted output in ordinal order",
+       ctx do
+    boot(ctx)
+    {:ok, catalogue} = Catalogue.new([Deterministic.descriptor()])
+    d = ctx.durable
+
+    assert {:ok, ref} =
+             Agent.start(node(),
+               id: d.agent_id,
+               durable: d,
+               model: binding(true),
+               catalogue: catalogue,
+               tools: %{"echo" => %{id: "echo", capability: "echo"}}
+             )
+
+    assert {:ok, _} = Agent.input(ref, "tools")
+    eventually(fn -> assert {:ok, %{status: :done, final: "finished"}} = Agent.snapshot(ref) end)
+    assert_receive {:model_call, _}
+    assert_receive {:model_call, request}
+
+    assert Enum.map(Enum.filter(request.messages, &(&1["role"] == "tool")), & &1["call_id"]) == [
+             "one",
+             "two"
+           ]
+
+    assert {:ok, loaded} = Loader.load(d.repo, d.agent_id)
+    assert length(loaded.control["consumed"]) == 4
+
+    for reference <- loaded.control["consumed"] do
+      assert {:ok, %{"operation" => op}} = Loader.operation(d.repo, d.agent_id, reference)
+      metadata = op["description"]["safety"]["metadata"]
+      assert metadata["configuration_version"] =~ ~r/\A[0-9a-f]{64}\z/
+      if op["role"] == "model", do: assert(metadata["definition_version"] == 1)
+    end
+
+    assert :ok == Events.control(loaded.control)
   end
 end

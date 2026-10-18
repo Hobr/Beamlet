@@ -1,12 +1,13 @@
 defmodule Beamlet.Agent.Server do
-  alias Beamlet.Agent.{Display, Durable, ModelBinding}
+  alias Beamlet.Agent.{ContextBuilder, Display, Durable, Loader, ModelBinding}
   @moduledoc false
   use GenServer, restart: :temporary
   alias Beamlet.Actions.{Operation, Result}
   alias Beamlet.Agent.{Delegation, Integration.Caller, OperationOwner, Ref}
   alias Beamlet.Harness.{Catalogue, Context}
   alias Beamlet.Harness.Model
-  alias Beamlet.Runtime.Directory
+  alias Beamlet.Runtime.{Directory, Persistence}
+  alias Beamlet.Storage.AgentRecords
 
   def start_link(opts) do
     if valid_options?(opts) do
@@ -49,6 +50,7 @@ defmodule Beamlet.Agent.Server do
          model: Keyword.fetch!(opts, :model),
          tools: Keyword.get(opts, :tools, %{}),
          messages: [],
+         execution_blocked: false,
          display_entries: [],
          display_metadata: Keyword.get(opts, :display_metadata, %{}),
          turn: nil,
@@ -164,7 +166,7 @@ defmodule Beamlet.Agent.Server do
         Keyword.keys(opts) -- [:continue] == [] and
         is_boolean(Keyword.get(opts, :continue, false))
 
-    if s.status in [:idle, :done, :error, :stopped] and map_size(s.helpers) == 0 and valid do
+    if delegation_available?(s) and valid do
       group = make_ref()
 
       case start_children(specs, group, s.authority_resources) do
@@ -240,7 +242,34 @@ defmodule Beamlet.Agent.Server do
 
   defp control({:input, text}, s), do: control({:input, text, nil}, s)
 
-  defp control({:input, text, command_id}, %{status: status} = s)
+  defp control({:input, text, command_id}, %{durable: %Durable{} = d} = s)
+       when is_binary(command_id) do
+    case AgentRecords.command_response(d.repo, d.agent_id, command_id) do
+      {:ok,
+       %{
+         "events" => [
+           %{"type" => "input.accepted", "payload" => %{"text" => ^text}, "turn_id" => turn}
+         ]
+       }} ->
+        {:reply, {:ok, turn}, s}
+
+      {:ok, _} ->
+        {:reply, {:error, :conflict}, s}
+
+      {:error, :conflict} ->
+        control({:new_input, text, command_id}, s)
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, s}
+    end
+  end
+
+  defp control({:input, text, command_id}, s), do: control({:new_input, text, command_id}, s)
+
+  defp control({:new_input, _, _}, %{execution_blocked: true} = s),
+    do: {:reply, {:error, :unresolved_execution}, s}
+
+  defp control({:new_input, text, command_id}, %{status: status} = s)
        when status in [:idle, :done, :error, :stopped] do
     with true <- Enum.all?(s.owners, fn {_, o} -> Map.get(o, :completed, false) end),
          true <- is_binary(text) and String.valid?(text) and byte_size(text) <= 65_536,
@@ -274,7 +303,7 @@ defmodule Beamlet.Agent.Server do
     end
   end
 
-  defp control({:input, _, _}, s), do: {:reply, {:error, :busy}, s}
+  defp control({:new_input, _, _}, s), do: {:reply, {:error, :busy}, s}
 
   defp control(:stop, s) do
     {s, blocked, block_error} = block_turn(s, :unconfirmed_stop)
@@ -351,7 +380,7 @@ defmodule Beamlet.Agent.Server do
     end
   end
 
-  @resume_positions ~w(await_input completed blocked await_model_result reply_recorded)
+  @resume_positions ~w(await_input completed blocked await_model_result reply_recorded model_prepared await_tool_results)
 
   defp control({:continue, version, decisions, command_id}, %{status: :paused} = s) do
     continue(s, version, decisions, command_id)
@@ -633,6 +662,11 @@ defmodule Beamlet.Agent.Server do
 
   defp helper_monitors(children), do: Map.new(children, fn {_, c} -> {c.monitor, c.pid} end)
 
+  defp delegation_available?(s),
+    do:
+      not s.execution_blocked and s.status in [:idle, :done, :error, :stopped] and
+        map_size(s.helpers) == 0
+
   defp accept_delegation(s, group, children, opts) do
     s = %{
       s
@@ -680,6 +714,20 @@ defmodule Beamlet.Agent.Server do
     %{status: status, value: value}
   end
 
+  defp dispatch(%{durable: %Durable{}} = s, _profile, _request, :model) do
+    with {:ok, built} <- Durable.context(s.durable, s.catalogue),
+         {:ok, operation} <- Caller.operation(s.model, built.request, s.operation_limit),
+         operation = %{operation | metadata: Map.merge(operation.metadata, built.policy)},
+         true <- :erlang.external_size(operation) <= s.operation_limit,
+         {:ok, durable, [prepared]} <-
+           Durable.prepare(s.durable, [%{operation: operation}], "model", built.sources) do
+      start_operation(%{s | durable: durable}, operation, :model, prepared)
+    else
+      false -> fail(s, :executable_input_limit)
+      {:error, reason} -> fail(s, reason)
+    end
+  end
+
   defp dispatch(s, profile, request, key) do
     case Caller.operation(profile, request, s.operation_limit) do
       {:ok, operation} ->
@@ -687,15 +735,6 @@ defmodule Beamlet.Agent.Server do
 
       error ->
         fail(s, %{type: :dispatch_failed, reason: error})
-    end
-  end
-
-  # The model step of a durable turn is durable too: an executor configured for
-  # durable work rejects an ephemeral admission instead of running it.
-  defp step_dispatch(%{durable: %Durable{} = durable}) do
-    case Durable.model_persistence(durable) do
-      {:ok, persistence} -> {:persistence, persistence}
-      {:error, _reason} -> :ephemeral
     end
   end
 
@@ -727,8 +766,16 @@ defmodule Beamlet.Agent.Server do
   # committed: the Runtime must not mint an unrelated id the batch cannot consume.
   defp dispatch_options(s, prepared) do
     case Durable.persistence(s.durable, prepared) do
-      {:ok, persistence} -> {:ok, [persistence: persistence, prepared: prepared]}
-      {:error, reason} -> {:error, reason}
+      {:ok, persistence} ->
+        {:ok,
+         [
+           persistence: persistence,
+           prepared: prepared,
+           agent_identity: {s.durable.agent_id, s.durable.generation}
+         ]}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -739,37 +786,113 @@ defmodule Beamlet.Agent.Server do
     end
   end
 
-  defp complete(%{durable: %Durable{}} = s, :model, %{status: :uncertain}),
-    do: fail(s, :uncertain_external_effect)
+  defp complete(%{durable: %Durable{} = durable} = s, :model, result) do
+    case durable.control["resolutions"][result.operation_id] do
+      nil ->
+        complete_durable_model(s, result)
+
+      resolution ->
+        case Durable.consume(durable, [result.operation_id], "completed") do
+          {:ok, next} -> publish(%{s | durable: next, status: :done, final: resolution})
+          {:error, reason} -> fail(s, reason)
+        end
+    end
+  end
 
   defp complete(s, :model, %{status: :ok, value: reply}) do
-    case record_reply(s, reply) do
-      {:ok, s} -> complete_reply(s, reply)
+    complete_reply(s, reply)
+  end
+
+  defp complete(s, :model, result) do
+    s = %{s | execution_blocked: result.status in [:uncertain, :cancelled, :deadline]}
+
+    fail(s, %{
+      type: :model_failed,
+      status: result.status,
+      reason: result.reason,
+      operation_id: result.operation_id
+    })
+  end
+
+  defp complete(%{durable: %Durable{}} = s, id, result) do
+    with {:ok, %{"operation" => op}} <-
+           Loader.operation(s.durable.repo, s.durable.agent_id, %{
+             "operation_id" => result.operation_id
+           }),
+         accepted when is_map(accepted) <- op["accepted_result"],
+         {:ok, content} <-
+           ContextBuilder.observation(accepted, s.durable.control["resolutions"][op["id"]]) do
+      complete_tool(s, id, content)
+    else
+      _ -> fail(s, :unresolved_execution)
+    end
+  end
+
+  defp complete(s, id, result) do
+    observation = %{
+      "status" => to_string(result.status),
+      "value" => result.value,
+      "reason" => result.reason
+    }
+
+    case ContextBuilder.observation(observation, nil) do
+      {:ok, content} ->
+        complete_tool(s, id, content)
+
+      {:error, :unresolved_execution} ->
+        fail(%{s | execution_blocked: true}, :unresolved_execution)
+
+      _ ->
+        fail(s, :invalid_tool_observation)
+    end
+  rescue
+    _ -> fail(s, :invalid_tool_observation)
+  end
+
+  defp complete_durable_model(s, result) do
+    case Loader.operation(s.durable.repo, s.durable.agent_id, %{
+           "operation_id" => result.operation_id
+         }) do
+      {:ok, %{"operation" => %{"accepted_result" => %{"status" => "error"}} = op}} ->
+        complete_model_error(s, op)
+
+      {:ok, %{"operation" => op}} ->
+        complete_model_output(s, op)
+
+      _ ->
+        fail(s, :unresolved_execution)
+    end
+  end
+
+  defp complete_model_error(s, op) do
+    with {:ok, durable} <- Durable.consume(s.durable, [op["id"]], "completed"),
+         {:ok, messages} <- ContextBuilder.materialize(durable.repo, durable.control) do
+      publish(%{
+        Display.annotate(s, messages)
+        | durable: durable,
+          status: :error,
+          final: %{
+            type: :model_failed,
+            operation_id: op["id"],
+            status: :error,
+            reason: op["accepted_result"]["reason"]
+          }
+      })
+    else
       {:error, reason} -> fail(s, reason)
     end
   end
 
-  defp complete(s, :model, result),
-    do:
-      fail(s, %{
-        type: :model_failed,
-        status: result.status,
-        reason: result.reason,
-        operation_id: result.operation_id
-      })
-
-  # An uncertain external effect is never an ordinary tool observation: a durable
-  # turn stops here and waits for an explicit decision.
-  defp complete(%{durable: %Durable{}} = s, _id, %{status: :uncertain}),
-    do: fail(s, :uncertain_external_effect)
-
-  defp complete(s, id, result) do
-    case Jason.encode(%{status: result.status, value: result.value, reason: result.reason}) do
-      {:ok, content} -> complete_tool(s, id, content)
-      _ -> fail(s, :invalid_tool_observation)
+  defp complete_model_output(s, op) do
+    with %{"status" => "ok", "value" => value} <- op["accepted_result"],
+         {:ok, reply} <- ContextBuilder.reply(value),
+         :ok <- Model.validate_reply(reply, s.catalogue),
+         position = if(reply.kind == :text, do: "completed", else: "reply_recorded"),
+         {:ok, durable} <- Durable.consume(s.durable, [op["id"]], position) do
+      complete_reply(%{s | durable: durable}, reply)
+    else
+      _ -> fail(s, :unresolved_execution)
     end
-  rescue
-    _ -> fail(s, :invalid_tool_observation)
   end
 
   defp complete_reply(s, reply) do
@@ -910,8 +1033,7 @@ defmodule Beamlet.Agent.Server do
        when not is_nil(turn) do
     case Durable.block(durable, reason) do
       {:ok, blocked} ->
-        {%{s | durable: %{durable | version: blocked.version}, durable_continuation: "blocked"},
-         true, nil}
+        {%{s | durable: blocked, durable_continuation: "blocked"}, true, nil}
 
       {:error, error} ->
         {s, false, error}
@@ -925,7 +1047,17 @@ defmodule Beamlet.Agent.Server do
   defp stop_status(false, nil), do: :stopped
   defp stop_status(false, _error), do: :error
 
-  defp fail(%{durable: nil} = s, reason), do: do_fail(%{s | status: :error}, reason)
+  defp fail(%{durable: nil} = s, reason),
+    do:
+      do_fail(
+        %{
+          s
+          | status: :error,
+            execution_blocked:
+              s.execution_blocked or reason in [:infrastructure_lost, :dispatch_failed]
+        },
+        reason
+      )
 
   # A durable failure is a durable fact: the blocked checkpoint commits first and
   # its version is kept, so the instance pauses for an explicit decision instead
@@ -937,7 +1069,7 @@ defmodule Beamlet.Agent.Server do
           %{
             s
             | status: :paused,
-              durable: %{durable | version: blocked.version},
+              durable: blocked,
               durable_continuation: "blocked"
           },
           reason
@@ -979,45 +1111,35 @@ defmodule Beamlet.Agent.Server do
 
   defp restore_state(state, nil), do: state
 
-  defp restore_state(state, %{checkpoint: data, durable: durable}) do
-    messages = Map.get(data, "messages", [])
+  defp restore_state(state, %{control: data, durable: durable}) do
+    messages =
+      case ContextBuilder.materialize(durable.repo, data) do
+        {:ok, messages} -> messages
+        _ -> []
+      end
 
     %{
       state
-      | messages: [],
-        status: :paused,
-        turn: Map.get(data, "turn_id"),
-        steps: restored_step(Map.get(data, "step")),
-        assistant: restored_assistant(Map.get(data, "assistant")),
-        order: Map.get(data, "order", []),
-        restored_pending: Map.get(data, "pending", []),
+      | status: :paused,
+        turn: data["turn_id"],
+        steps: data["step"],
+        restored_pending: data["pending"],
         durable: durable,
-        durable_continuation: Map.get(data, "continuation", "await_input"),
-        results: %{}
+        durable_continuation: data["continuation"]
     }
-    # The projection is rebuilt from restored messages; annotations stay in memory.
     |> Display.annotate(messages)
   end
-
-  defp restored_step(step) when is_integer(step), do: step |> max(0) |> min(16)
-  defp restored_step(_), do: 0
 
   defp durable_input(s, messages, command_id) do
     attrs = %{
       command_id: command_id || Ecto.UUID.generate(),
       turn_id: Ecto.UUID.generate(),
-      messages: messages,
-      checkpoint_id: Ecto.UUID.generate()
+      text: List.last(messages)["content"]
     }
 
     case Durable.accept_input(s.durable, attrs) do
       {:ok, accepted} ->
-        durable = %{
-          s.durable
-          | turn_id: accepted.turn_id,
-            version: accepted.version,
-            generation: accepted.generation
-        }
+        durable = accepted
 
         s = %{
           s
@@ -1028,51 +1150,15 @@ defmodule Beamlet.Agent.Server do
             final: nil,
             progress: nil,
             durable_continuation: "await_model_result",
-            status: if(accepted.replayed?, do: s.status, else: :running)
+            status: :running
         }
 
-        if accepted.replayed? do
-          {:reply, {:ok, s.turn}, s}
-        else
-          s = Display.annotate(s, messages)
-          send(self(), {:advance, s.turn})
-          {:reply, {:ok, s.turn}, publish(s)}
-        end
+        s = Display.annotate(s, messages)
+        send(self(), {:advance, s.turn})
+        {:reply, {:ok, s.turn}, publish(s)}
 
       {:error, reason} ->
         {:reply, {:error, reason}, s}
-    end
-  end
-
-  defp record_reply(%{durable: nil} = s, _reply), do: {:ok, s}
-
-  defp record_reply(%{durable: %Durable{} = durable} = s, reply) do
-    case plain_reply(reply) do
-      {:ok, reply} -> persist_reply(s, durable, reply)
-      :error -> {:error, :invalid_reply}
-    end
-  end
-
-  defp persist_reply(s, durable, reply) do
-    attrs = %{
-      request: %{"messages" => s.messages, "catalogue" => s.catalogue},
-      messages: s.messages,
-      reply: reply,
-      checkpoint_id: Ecto.UUID.generate(),
-      step: s.steps
-    }
-
-    case Durable.record_reply(durable, attrs) do
-      {:ok, response} ->
-        {:ok,
-         %{
-           s
-           | durable: %{durable | version: response.version, step: s.steps},
-             durable_continuation: "reply_recorded"
-         }}
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -1080,20 +1166,12 @@ defmodule Beamlet.Agent.Server do
     {:ok, %{s | assistant: assistant, order: Enum.map(calls, & &1.id), results: %{}}}
   end
 
-  defp commit_batch(%{durable: %Durable{} = durable} = s, assistant, calls, operations, messages) do
-    attrs = %{
-      calls: operations,
-      messages: messages,
-      assistant: assistant,
-      step: s.steps,
-      checkpoint_id: Ecto.UUID.generate()
-    }
-
-    case Durable.prepare_batch(durable, attrs) do
-      {:ok, response} ->
+  defp commit_batch(%{durable: %Durable{} = durable} = s, assistant, calls, operations, _messages) do
+    case Durable.prepare(durable, operations, "tool", durable.control["timeline"]) do
+      {:ok, next, prepared_members} ->
         batch =
           operations
-          |> Enum.zip_with(response.operations, fn call, prepared ->
+          |> Enum.zip_with(prepared_members, fn call, prepared ->
             {call.id, %{operation: call.operation, prepared: prepared}}
           end)
           |> Map.new()
@@ -1105,7 +1183,7 @@ defmodule Beamlet.Agent.Server do
              order: Enum.map(calls, & &1.id),
              results: %{},
              durable_batch: batch,
-             durable: %{durable | version: response.version, step: s.steps},
+             durable: next,
              durable_continuation: "await_tool_results"
          }}
 
@@ -1116,32 +1194,16 @@ defmodule Beamlet.Agent.Server do
 
   defp commit_consumption(%{durable: nil} = s, _messages), do: {:ok, s}
 
-  defp commit_consumption(%{durable: %Durable{} = durable} = s, messages) do
-    operations =
-      Enum.map(s.order, fn call_id ->
-        %{operation_id: Map.fetch!(s.durable_batch, call_id).prepared["operation_id"]}
-      end)
+  defp commit_consumption(%{durable: %Durable{} = durable} = s, _messages) do
+    ids = Enum.map(s.order, &Map.fetch!(s.durable_batch, &1).prepared["operation_id"])
 
-    attrs = %{
-      operations: operations,
-      messages: messages,
-      order: s.order,
-      step: s.steps,
-      checkpoint_id: Ecto.UUID.generate()
-    }
-
-    case Durable.consume_results(durable, attrs) do
-      {:ok, response} ->
+    case Durable.consume(durable, ids, "await_model_result") do
+      {:ok, next} ->
         {:ok,
-         %{
-           s
-           | durable: %{durable | version: response.version},
-             durable_batch: %{},
-             durable_continuation: "await_model_result"
-         }}
+         %{s | durable: next, durable_batch: %{}, durable_continuation: "await_model_result"}}
 
-      {:error, reason} ->
-        {:error, reason}
+      error ->
+        error
     end
   end
 
@@ -1154,6 +1216,9 @@ defmodule Beamlet.Agent.Server do
 
       version != durable.version ->
         {:reply, {:error, :stale_version}, s}
+
+      owners_retiring?(s) ->
+        {:reply, {:error, :owners_retiring}, s}
 
       # A position the Server cannot resume is refused before the decision commits.
       s.durable_continuation not in @resume_positions ->
@@ -1173,14 +1238,14 @@ defmodule Beamlet.Agent.Server do
     end
   end
 
-  defp resume(s, decision) do
-    durable = %{s.durable | version: decision.version, generation: decision.generation}
-    s = %{s | durable: durable, durable_continuation: decision.continuation}
+  defp owners_retiring?(s), do: map_size(s.owners) > 0 or map_size(s.helpers) > 0
 
-    case decision.continuation do
-      "await_input" ->
-        s = %{s | status: :idle, turn: nil, restored_pending: [], order: [], results: %{}}
-        {:reply, {:ok, view(s)}, publish(s)}
+  defp resume(s, durable) do
+    s = %{s | durable: durable, durable_continuation: durable.control["continuation"]}
+
+    case durable.control["continuation"] do
+      position when position in ~w(await_input completed) ->
+        {:reply, {:ok, view(%{s | status: :idle})}, publish(%{s | status: :idle, turn: nil})}
 
       "await_model_result" ->
         s = %{s | status: :running, turn: durable.turn_id, terminal_turn: nil}
@@ -1191,69 +1256,110 @@ defmodule Beamlet.Agent.Server do
         s = replay_reply(%{s | status: :running, turn: durable.turn_id})
         {:reply, {:ok, view(s)}, s}
 
+      position when position in ~w(model_prepared await_tool_results) ->
+        s = resume_pending(%{s | status: :running, turn: durable.turn_id})
+        {:reply, {:ok, view(s)}, publish(s)}
+
       position ->
         {:reply, {:error, {:unsupported_continuation, position}}, s}
     end
   end
 
-  # The stored reply is re-validated, never re-requested from the model.
   defp replay_reply(s) do
-    case s.assistant do
-      nil ->
-        fail(s, :invalid_reply)
+    ref = List.last(s.durable.control["consumed"])
 
-      assistant ->
-        reply = %{
-          kind: reply_kind(assistant["kind"]),
-          content: assistant["content"],
-          calls: Enum.map(assistant["calls"] || [], &restored_call/1)
-        }
-
-        complete_reply(s, reply)
-    end
-  end
-
-  defp reply_kind("text"), do: :text
-  defp reply_kind("tool_calls"), do: :tool_calls
-  defp reply_kind(_), do: nil
-
-  defp restored_call(%{"id" => id, "name" => name, "arguments" => arguments}),
-    do: %{id: id, name: name, arguments: arguments}
-
-  defp restored_call(_), do: %{id: nil, name: nil, arguments: nil}
-
-  defp restored_assistant(%{"kind" => _} = assistant), do: assistant
-  defp restored_assistant(_), do: nil
-
-  # The reply is persisted before validation, so it must be normalized to plain
-  # data without raising on whatever a provider returned.
-  defp plain_reply(reply) when is_map(reply) do
-    kind = Map.get(reply, :kind)
-    content = Map.get(reply, :content)
-    calls = Map.get(reply, :calls, [])
-
-    if kind in [:text, :tool_calls] and is_list(calls) and Enum.all?(calls, &plain_call?/1) do
-      {:ok,
-       %{
-         "kind" => Atom.to_string(kind),
-         "content" => content,
-         "calls" => Enum.map(calls, &plain_call/1)
-       }}
+    with {:ok, %{"operation" => op}} <-
+           Loader.operation(s.durable.repo, s.durable.agent_id, ref),
+         {:ok, reply} <- ContextBuilder.reply(op["accepted_result"]["value"]) do
+      messages = Enum.drop(s.messages, -1)
+      complete_reply(%{s | messages: messages}, reply)
     else
-      :error
+      _ -> fail(s, :invalid_reply)
     end
   end
 
-  defp plain_reply(_), do: :error
-
-  defp plain_call?(%{id: id, name: name, arguments: arguments} = call) do
-    map_size(call) == 3 and is_binary(id) and is_binary(name) and is_map(arguments)
+  defp resume_pending(s) do
+    case pending_rows(s) do
+      {:ok, rows} -> resume_rows(s, Enum.sort_by(rows, & &1["operation"]["ordinal"]))
+      {:error, reason} -> fail(s, reason)
+    end
   end
 
-  defp plain_call?(_), do: false
+  defp pending_rows(s) do
+    Enum.reduce_while(s.durable.control["pending"], {:ok, []}, fn ref, {:ok, rows} ->
+      case Loader.operation(s.durable.repo, s.durable.agent_id, ref) do
+        {:ok, row} -> {:cont, {:ok, rows ++ [row]}}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
-  defp plain_call(%{id: id, name: name, arguments: arguments}),
-    do: %{"id" => id, "name" => name, "arguments" => arguments}
+  defp resume_rows(s, rows) do
+    batch =
+      Map.new(rows, fn row ->
+        op = row["operation"]
+        {op["tool_call_id"], %{prepared: %{"operation_id" => op["id"]}}}
+      end)
+
+    s =
+      if s.durable.control["continuation"] == "await_tool_results" do
+        %{
+          s
+          | order: Enum.map(rows, & &1["operation"]["tool_call_id"]),
+            assistant: List.last(s.messages),
+            messages: Enum.drop(s.messages, -1),
+            durable_batch: batch
+        }
+      else
+        s
+      end
+
+    Enum.reduce_while(rows, s, fn row, current ->
+      next = resume_operation(row, current)
+      if next.status == :running, do: {:cont, next}, else: {:halt, next}
+    end)
+  end
+
+  defp resume_operation(row, s) do
+    op = row["operation"]
+    key = if op["role"] == "model", do: :model, else: op["tool_call_id"]
+
+    if op["accepted_result"] do
+      complete(s, key, %{operation_id: op["id"]})
+    else
+      dispatch_restored(s, row, key)
+    end
+  end
+
+  defp dispatch_restored(s, %{"operation" => op, "attempt" => attempt}, key) do
+    payload = op["description"]["payload"]
+
+    profile = restored_profile(s, key, payload)
+
+    with {:ok, operation} <- Caller.operation(profile, payload["request"], s.operation_limit),
+         operation = %{operation | metadata: op["description"]["safety"]["metadata"]},
+         true <- Persistence.description(operation) == op["description"] do
+      prepared = %{
+        "operation_id" => op["id"],
+        "attempt_id" => attempt["attempt_id"],
+        "description_digest" => op["description_digest"],
+        "attempt_version" => attempt["lock_version"],
+        "lock_version" => op["lock_version"]
+      }
+
+      start_operation(s, operation, key, prepared)
+    else
+      _ -> fail(s, :dependency_missing)
+    end
+  end
+
+  defp restored_profile(s, :model, _payload), do: s.model
+
+  defp restored_profile(s, _key, payload) do
+    Enum.find_value(s.tools, fn {_, profile} ->
+      if profile.id == payload["profile"], do: profile
+    end)
+  end
 
   defp durable_reason(reason) when is_atom(reason), do: reason
   defp durable_reason(%{type: type}), do: type

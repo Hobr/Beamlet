@@ -3,11 +3,14 @@ defmodule Beamlet.Agent.OperationOwner do
   alias Beamlet.Agent.Lifecycle
 
   def run(agent, token, operation, authority, dispatch \\ []) do
+    {identity, dispatch} = Keyword.pop(dispatch, :agent_identity)
+
     Lifecycle.run(
       agent,
       fn controller -> submit(controller, token, operation, dispatch) end,
       authority,
-      :operation
+      :operation,
+      identity
     )
   end
 

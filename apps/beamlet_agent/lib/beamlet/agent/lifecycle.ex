@@ -3,12 +3,12 @@ defmodule Beamlet.Agent.Lifecycle do
 
   # The controller never calls infrastructure. Every blocking call belongs to its
   # linked worker; killing the controller also kills that worker.
-  def run(agent, fun, authority, kind) do
+  def run(agent, fun, authority, kind, identity \\ nil) do
     Process.flag(:trap_exit, true)
     Process.put(:authority_resources, authority)
     monitors = [Process.monitor(agent), Process.monitor(authority)]
     ticket = make_ref()
-    send(authority, {:register, self(), ticket, agent, kind})
+    send(authority, {:register, self(), ticket, agent, kind, identity})
 
     receive do
       {:registered, ^ticket} -> start_worker(agent, fun, authority, monitors)
