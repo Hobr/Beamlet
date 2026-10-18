@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
+- **Total Sessions**: 11
 - **Last Active**: 2026-10-18
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~381 | Active |
+| `journal-1.md` | ~403 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-10-18 | Server/Web host naming and native Release migration | `7e81f23` | `refactor/app-host-naming` |
 | 10 | 2026-10-18 | 撤回自定义配置需求，回归默认 Mix Release 部署 | `6041b20` | `dev` |
 | 6 | 2026-10-17 | 归档Node宿主拆分与查询研究任务 | `ee16a0b`, `5556375`, `c21e3c8`, `830b361`, `29ce823`, `4ed6531`, `77b212f`, `0b41d19`, `9657d2a`, `2735879` | `dev` |
 | 5 | 2026-10-17 | Agent查询简化验收、清理与归档 | `2735879`, `dafaa8f` | `dev` |

@@ -379,3 +379,25 @@ Delivered immutable Agent-owned provider/config/credentials/placement bindings, 
 ### Next Steps
 
 - 活动任务已清空并归档；dev 本地领先 origin/dev，未推送。
+
+
+## Session 11: Server/Web host naming and native Release migration
+<!-- trellis-session: v=2 fp=14bbd0de49e8c363 -->
+
+**Date**: 2026-10-18
+**Task**: Server/Web host naming and native Release migration
+**Branch**: `refactor/app-host-naming`
+
+### Summary
+
+Renamed host apps to beamlet_app_server/beamlet_app_web and Server modules to Beamlet.Server without compatibility. Default release is beamlet_server; Web release/profile remains beamlet_web. Updated config, Phoenix/Gettext/assets, deployment checks and current specs. Native daemon lifecycle and cleanup verified. 441 ordinary and 34 named distributed tests, static checks, copied Server/CLI/Web artifacts and durable e2e passed. Independent READY review fixed dev watcher profile references and passed 43 focused tests. PostgreSQL-specific suite not run; Elixir LSP inconclusive. Task archived; branch refactor/app-host-naming, no push.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7e81f23` | refactor(apps): rename server and web host applications |
+
+### Status
+
+[OK] **Completed**
