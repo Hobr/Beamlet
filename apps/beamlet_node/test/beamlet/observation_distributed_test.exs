@@ -16,7 +16,11 @@ defmodule Beamlet.Node.ObservationDistributedTest do
           :peer.start_link(%{
             name: String.to_atom("discovery_#{System.unique_integer([:positive])}"),
             connection: :standard_io,
-            args: [~c"+S", ~c"2:2", ~c"-setcookie", Atom.to_charlist(Node.get_cookie())] ++ paths,
+            # Explicit hidden connections isolate the requested one-link partition.
+            # A visible triangle lets OTP global disconnect the other peer too.
+            args:
+              [~c"+S", ~c"2:2", ~c"-hidden", ~c"-setcookie", Atom.to_charlist(Node.get_cookie())] ++
+                paths,
             wait_boot: 10_000,
             shutdown: 3000
           })
@@ -45,12 +49,15 @@ defmodule Beamlet.Node.ObservationDistributedTest do
     assert nodes[b].roles == [:executor]
     assert nodes[a].services.authority == :ready
     assert nodes[b].services.authority == :not_configured
+    assert a in Node.list(:hidden)
+    assert b in Node.list(:hidden)
     assert Node.disconnect(b)
 
     assert {:ok, %{nodes: nodes, failures: %{^b => :unavailable}, complete: false}} =
              Beamlet.Node.observe([a, b])
 
     assert Map.has_key?(nodes, a)
+    assert a in Node.list(:connected)
     refute b in Node.list(:connected)
   end
 

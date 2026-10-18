@@ -25,11 +25,11 @@ end
 
 defmodule Beamlet.Server.DurableEndToEndTest do
   @moduledoc """
-  Stage F end-to-end path over real SQLite files: explicit operator migration, one
-  durable operation through the Agent and Runtime with a deterministic model and
-  Tool, a host restart, a paused restore that dispatches nothing, an explicit
-  continuation, bounded trace export, verification and a fork of the safe
-  checkpoint.
+  Format2 end-to-end path over fresh SQLite files: explicit operator initialization,
+  one durable turn through Agent/Runtime with a deterministic model and Tool, host
+  restart, paused restore with zero dispatch, explicit continuation, bounded trace
+  export, offline verification and immutable-reference fork at a safe committed
+  position. No transcript checkpoint is copied.
 
   The ordinary test restarts the host wiring inside one VM. `scripts/deployment/
   durable-e2e.sh` runs the same phases as two separate OS processes
@@ -84,7 +84,7 @@ defmodule Beamlet.Server.DurableEndToEndTest do
     first = phase_one(ctx.dir)
     assert first.tool_results == 1
     assert first.messages >= 3
-    assert first.boundary_checkpoint_id != first.checkpoint_id
+    assert first.through_seq > first.boundary_seq
     stop_wiring()
 
     second = phase_two(ctx.dir, first)
@@ -111,7 +111,7 @@ defmodule Beamlet.Server.DurableEndToEndTest do
 
   defp phase_one(dir) do
     storage = storage(dir)
-    authority_id = read_or_put(dir, :authority_id)
+    authority_id = storage[:dataset_id]
 
     assert {:ok, %{authority: :installed, journal: :installed}} =
              Operator.initialize([:authority, :executor], storage)
@@ -122,16 +122,18 @@ defmodule Beamlet.Server.DurableEndToEndTest do
 
     durable = durable(runtime, authority_id)
 
-    {:ok, %{"head_checkpoint" => initial}} =
-      AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
+    initial_seq = durable.control["through_seq"]
 
     {:ok, ref} = Agent.start(node(), agent_options(durable))
     Process.put(:e2e_ref, ref)
     {:ok, _view} = Agent.input(ref, "run the deterministic tool", uuid())
     wait_for_turn(durable)
 
-    {:ok, %{"agent" => agent, "head_checkpoint" => head}} =
-      AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id)
+    {:ok, loaded} = Durable.inspect(%{repo: SQLiteAuthorityRepo, agent_id: durable.agent_id})
+    agent = loaded.agent
+
+    {:ok, context} =
+      Agent.history(%{repo: SQLiteAuthorityRepo, agent_id: durable.agent_id}, %{view: :context})
 
     {:ok, %{"events" => events}} =
       AgentRecords.history_page(SQLiteAuthorityRepo, durable.agent_id, limit: 500)
@@ -141,10 +143,15 @@ defmodule Beamlet.Server.DurableEndToEndTest do
       agent_id: durable.agent_id,
       authority_id: authority_id,
       version: agent["lock_version"],
-      checkpoint_id: head["id"],
-      boundary_checkpoint_id: initial["id"],
-      messages: length(head["data"]["messages"]),
-      tool_results: Enum.count(events, &(&1["type"] == "result.consumed")),
+      through_seq: loaded.control["through_seq"],
+      boundary_seq: initial_seq,
+      messages: length(context["messages"]),
+      tool_results:
+        Enum.count(
+          events,
+          &(&1["type"] == "operation.result_consumed" and
+              &1["payload"]["consumption_kind"] == "tool_result")
+        ),
       events: length(events)
     }
   end
@@ -180,7 +187,7 @@ defmodule Beamlet.Server.DurableEndToEndTest do
     {:ok, %{"agent" => %{"lock_version" => version}}} =
       AgentRecords.fetch(SQLiteAuthorityRepo, state.agent_id)
 
-    assert {:ok, %{status: :done}} = Agent.continue(ref, version, %{}, uuid())
+    assert {:ok, %{status: :idle}} = Agent.continue(ref, version, %{}, uuid())
     step("restored instance becomes idle", fn -> wait_for_idle(ref) end)
 
     # Explicit continuation after the paused restore: a new durable turn.
@@ -195,32 +202,28 @@ defmodule Beamlet.Server.DurableEndToEndTest do
 
     step("continued turn completes", fn -> wait_for_turn(durable) end)
 
-    {:ok, %{"head_checkpoint" => head}} =
-      AgentRecords.fetch(SQLiteAuthorityRepo, state.agent_id)
+    {:ok, context} = Agent.history(locator, %{view: :context})
 
     export_dir = Path.join(dir, "export")
     {:ok, manifest} = Agent.export(locator, %{agent_id: state.agent_id}, %{dir: export_dir})
     {:ok, verified} = TraceExport.verify(export_dir)
-    assert verified["events"] == manifest["counts"]["events"]
-    assert verified["checkpoints"] == manifest["counts"]["checkpoints"]
+    assert verified["events"] == manifest["files"]["events"]["count"]
+    assert verified["operations"] == manifest["files"]["operations"]["count"]
 
-    # Fork the safe checkpoint of the completed turn, then verify its own export.
+    # Fork direct references at the completed control position, then verify offline.
     Agent.close(ref)
     wait_until(fn -> Agent.lookup(node(), state.agent_id) == {:error, :not_found} end)
 
-    # The fork copies the source's last safe boundary (an `await_input` checkpoint).
-    # A completed turn rests at `reply_recorded`, whose stored reply is pending
-    # state: forking it is refused instead of copying an undecided boundary.
-    source = Map.put(locator, :source, %{freeze: :frozen, environment: :confirmed_stopped})
+    # A prepared but unconsumed historical position is unsafe; completed is safe.
+    source = Map.put(locator, :source, %{environment: :confirmed_stopped})
 
     {:ok, %{"agent" => %{"lock_version" => source_version}}} =
       AgentRecords.fetch(SQLiteAuthorityRepo, state.agent_id)
 
-    assert {:error, :unsafe_checkpoint} =
-             Agent.fork(source, state.checkpoint_id, source_version, uuid())
+    assert {:error, :unsafe_position} = Agent.fork(source, 3, source_version, uuid())
 
     fork_dir = Path.join(dir, "fork")
-    {:ok, fork} = Agent.fork(source, state.boundary_checkpoint_id, source_version, uuid())
+    {:ok, fork} = Agent.fork(source, context["through_seq"], source_version, uuid())
 
     {:ok, %{"events" => fork_events}} =
       AgentRecords.history_page(SQLiteAuthorityRepo, fork.agent_id, limit: 500)
@@ -233,16 +236,18 @@ defmodule Beamlet.Server.DurableEndToEndTest do
       )
 
     {:ok, fork_verified} = TraceExport.verify(fork_dir)
-    assert fork_verified["events"] == fork_manifest["counts"]["events"]
+    assert fork_verified["events"] == fork_manifest["files"]["events"]["count"]
+    assert fork_manifest["history_complete"]
+    assert fork_manifest["provenance"]["performed_operations"] == 0
     assert Enum.any?(fork_events, &(&1["type"] == "agent.forked"))
 
-    assert Enum.count(fork_events, &(&1["type"] == "context.inherited")) ==
-             fork.copied["messages"]
+    assert Enum.count(fork_events, &(&1["type"] == "context.inherited")) == 1
+    assert fork_manifest["provenance"]["inherited_references"] == length(context["sources"])
 
     %{
       model_calls_before_continue: model_calls_before_continue,
-      export_events: manifest["counts"]["events"],
-      export_messages: length(head["data"]["messages"]),
+      export_events: manifest["files"]["events"]["count"],
+      export_messages: length(context["messages"]),
       verified_events: verified["events"],
       fork_agent_id: fork.agent_id
     }
@@ -415,18 +420,17 @@ defmodule Beamlet.Server.DurableEndToEndTest do
 
   defp wait_for_turn(durable) do
     wait_until(fn ->
-      case AgentRecords.fetch(SQLiteAuthorityRepo, durable.agent_id) do
-        {:ok, %{"head_checkpoint" => head}} ->
-          continuation = get_in(head, ["data", "continuation"])
-
-          continuation in ["reply_recorded", "await_input"] and
-            Enum.any?(head["data"]["messages"], &(&1["role"] == "tool"))
-
-        _ ->
-          false
+      case Durable.inspect(%{repo: SQLiteAuthorityRepo, agent_id: durable.agent_id}) do
+        {:ok, loaded} -> completed_tool_turn?(loaded.control)
+        _ -> false
       end
     end)
   end
+
+  defp completed_tool_turn?(control),
+    do:
+      control["continuation"] == "completed" and
+        Enum.any?(control["consumed"], &(&1["consumption_kind"] == "tool_result"))
 
   defp wait_for_idle(ref) do
     wait_until(fn ->

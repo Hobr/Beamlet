@@ -359,13 +359,24 @@ Installed Owl uses Ucwidth for CJK/emoji/combining terminal column measurement,
 wrapping and truncation; actual beam behavior and copied closure are checked.
 The independent4096-codepoint watch limit remains distinct from display width.
 
-## Durable storage (stage F)
+## Durable storage (authority format2 / journal format1)
 
-Durable storage is opt-in application configuration in the daemon's shared
-config/bundled runtime.exs; omit the `storage:` block and the host stays ephemeral and
-starts no database. Keys, the explicit migration command, the backup/restore
-runbook and the full evidence are in
-[the stage F release evidence](../../.trellis/tasks/archive/2026-10/10-18-durable-release-operations/research/release-evidence.md).
+Durable storage is opt-in application configuration in the server's shared
+config/bundled runtime.exs; omit storage and no database starts. The
+[Storage README](../../apps/beamlet_storage/README.md) documents initialization,
+strict format/identity rejection and transaction contracts; the
+[Agent README](../../apps/beamlet_agent/README.md) documents reference fork,
+paused activation and offline trace packages. Archived Stage F evidence predates
+format2 and is not current acceptance.
+
+Explicit initialization installs only a new format2 authority and format1 journal.
+Boot/open never migrate, repair, delete or silently convert old datasets. Do not
+point initialization at a real existing database, delete a real database to make
+boot pass, or reuse old authority files with this artifact. Preserve consistent
+backups and deploy matching full artifacts/config. Unknown claimed attempts remain
+blocked after restart; never reset their identities to retry them. Forked Agents
+start paused and default to unconfirmed shared-environment risk. Content referenced
+by forks/exports must stay retained; there is no automatic GC.
 
 ```elixir
 config :beamlet_app_server,
