@@ -298,7 +298,8 @@ defmodule Beamlet.Runtime.ExecutorGateway do
         # Saturation invalidates old leases even when no tombstone slot is available.
         {:noreply, %{s | rejected_through: System.monotonic_time(:millisecond)}}
 
-      not valid_admission?(s, request.incarnation, request.lease, request.op, remaining) ->
+      not durable_envelope?(s, request) or
+          not valid_admission?(s, request.incarnation, request.lease, request.op, remaining) ->
         send(request.coordinator, {:rejected, request.attempt, :ineligible})
         {:noreply, remember(s, key, :rejected)}
 
@@ -313,6 +314,17 @@ defmodule Beamlet.Runtime.ExecutorGateway do
             {:noreply, remember(s, key, :rejected)}
         end
     end
+  end
+
+  defp durable_envelope?(_s, %{durable: nil}), do: true
+
+  defp durable_envelope?(s, request) do
+    message =
+      {:admit, request.coordinator, request.id, request.attempt, request.incarnation,
+       request.lease, request.op, request.remaining, request.durable}
+
+    is_map(request.durable) and request.durable[:operation_id] == request.id and
+      :erlang.external_size(message) <= s.limits.operation_bytes
   end
 
   defp claim_start(%{persistence: nil}, _attempt, nil, _op), do: {:ok, nil}
@@ -339,8 +351,11 @@ defmodule Beamlet.Runtime.ExecutorGateway do
         {:ok, _stored} ->
           {:error, :duplicate_admission}
 
-        {:error, _reason} ->
+        {:error, :conflict} ->
           start_intent(s, durable)
+
+        {:error, _reason} ->
+          {:error, :durable_unavailable}
       end
     else
       {:error, :durable_unavailable}
@@ -478,6 +493,8 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   # before the coordinator may hear a completion. If it cannot commit, nothing is
   # reported as durably complete.
   defp complete(s, key, entry, result, termination) do
+    result = bound_durable_completion(s, key, entry, result, termination)
+
     case record_terminal(s, entry, result, termination) do
       {:ok, receipt} ->
         message =
@@ -495,12 +512,29 @@ defmodule Beamlet.Runtime.ExecutorGateway do
     end
   end
 
+  defp bound_durable_completion(_s, _key, %{journal: nil}, result, _termination), do: result
+
+  defp bound_durable_completion(s, key, entry, result, termination) do
+    with {:ok, receipt} <- Persistence.receipt(entry.journal, result, termination),
+         true <-
+           :erlang.external_size({:completed, elem(key, 1), entry.handle, result, receipt}) <=
+             s.limits.result_bytes do
+      result
+    else
+      _ ->
+        %{result | status: :error, value: nil, reason: :invalid_or_oversize_result, metadata: %{}}
+    end
+  end
+
   defp record_terminal(_s, %{journal: nil}, _result, _termination), do: {:ok, nil}
 
   defp record_terminal(s, entry, result, termination) do
     journal = entry.journal
 
     with {:ok, receipt} <- Persistence.receipt(journal, result, termination),
+         true <-
+           :erlang.external_size({:completed, journal.attempt_id, entry.handle, result, receipt}) <=
+             s.limits.result_bytes,
          {:ok, _stored} <-
            safe_journal(fn ->
              ExecutorJournal.record_terminal(s.persistence.journal_repo, %{
@@ -516,6 +550,9 @@ defmodule Beamlet.Runtime.ExecutorGateway do
              })
            end) do
       {:ok, receipt}
+    else
+      false -> {:error, :limit}
+      error -> error
     end
   end
 

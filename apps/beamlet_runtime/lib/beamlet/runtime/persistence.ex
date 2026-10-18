@@ -10,10 +10,9 @@ defmodule Beamlet.Runtime.Persistence do
   and stable identities; PIDs, references, monitors, timers and worker handles
   stay in memory.
 
-  An `owner` names the Agent/turn an accepted Result belongs to and carries
-  exactly one Agent position: `expected_version` for the strict version CAS of a
-  single owned Operation, or `accept_seq` for the position a whole batch reserved
-  for that Operation's Result (siblings of one batch accept concurrently).
+  Owned model/tool work is prepared atomically by Storage AgentRecords. Runtime
+  accepts its committed identity through `submit/2`'s `prepared:` option; Result
+  acceptance belongs only to the Operation and never advances Agent state.
   """
   alias Beamlet.Actions.{Operation, Result}
   alias Beamlet.Storage.{Admission, Codec, OperationRecords}
@@ -28,20 +27,13 @@ defmodule Beamlet.Runtime.Persistence do
     :owner
   ]
 
-  @type owner :: %{
-          agent_id: binary(),
-          turn_id: binary(),
-          expected_version: non_neg_integer() | nil,
-          expected_generation: non_neg_integer(),
-          accept_seq: non_neg_integer() | nil
-        }
   @type t :: %__MODULE__{
           authority_repo: term(),
           journal_repo: term(),
           authority_id: binary(),
           executor_id: binary(),
           executor_boot_id: binary(),
-          owner: owner() | nil
+          owner: %{agent_id: binary(), turn_id: binary(), step_id: binary()} | nil
         }
 
   def new(nil), do: nil
@@ -60,48 +52,41 @@ defmodule Beamlet.Runtime.Persistence do
 
   def uuid, do: Ecto.UUID.generate()
 
-  @doc "Persistent, non executable Operation description; credentials and placement stay local."
+  @doc "Fixed logical Operation description, excluding transient invocation credentials."
   def description(%Operation{} = operation) do
     %{
       "kind" => operation.kind,
       "protocol_version" => operation.version,
       "payload" => operation.payload,
       "budget" => %{"budget_ms" => operation.budget_ms},
-      "claims" => operation.claims
+      "claims" => operation.claims,
+      "safety" => %{
+        "metadata" => operation.metadata,
+        "capabilities" => operation.capabilities,
+        "environment" => operation.environment,
+        "allowed_nodes" => value(operation.allowed_nodes)
+      }
     }
   end
 
   @doc "Authority commit of the immutable Operation and one prepared attempt, before dispatch."
   def prepare(nil, _operation), do: {:ok, nil}
 
+  def prepare(%__MODULE__{owner: owner}, %Operation{}) when not is_nil(owner),
+    do: {:error, :invalid_operation}
+
   def prepare(%__MODULE__{} = persistence, %Operation{} = operation) do
     attempt_id = uuid()
 
     attrs = %{
-      operation:
-        persistence.owner
-        |> owner_fields()
-        |> Map.merge(%{id: uuid(), description: description(operation)}),
+      operation: %{id: uuid(), description: description(operation), sources: []},
       attempt: %{
         attempt_id: attempt_id,
         executor_id: persistence.executor_id,
         executor_boot_id: persistence.executor_boot_id,
         budget: %{"budget_ms" => operation.budget_ms}
-      },
-      event: %{id: uuid(), type: "operation.prepared", payload: %{"attempt_id" => attempt_id}}
+      }
     }
-
-    attrs =
-      case persistence.owner do
-        nil ->
-          attrs
-
-        owner ->
-          Map.put(attrs, :agent, %{
-            expected_version: owner.expected_version,
-            expected_generation: owner.expected_generation
-          })
-      end
 
     case OperationRecords.prepare(persistence.authority_repo, attrs) do
       {:ok, prepared} ->
@@ -166,7 +151,7 @@ defmodule Beamlet.Runtime.Persistence do
   @doc false
   # A durable Result is plain JSON data: labels the handler carried as atoms are
   # stored as strings, so a receipt always has a stable digest.
-  def value(nil), do: nil
+  def value(item) when item in [nil, true, false], do: item
   def value(item) when is_atom(item), do: Atom.to_string(item)
   def value(item) when is_list(item), do: Enum.map(item, &value/1)
 
@@ -175,12 +160,6 @@ defmodule Beamlet.Runtime.Persistence do
   end
 
   def value(item), do: item
-
-  defp owner_fields(nil), do: %{}
-
-  defp owner_fields(owner) do
-    %{owner_agent_id: owner.agent_id, turn_id: owner.turn_id}
-  end
 
   defp submit_error(:invalid_data), do: :invalid_operation
   defp submit_error(:limit), do: :invalid_operation
@@ -198,17 +177,11 @@ defmodule Beamlet.Runtime.Persistence do
 
   defp owner?(nil), do: true
 
-  defp owner?(owner) do
-    is_map(owner) and not is_struct(owner) and
-      Map.keys(owner) --
-        [:agent_id, :turn_id, :expected_version, :expected_generation, :accept_seq] == [] and
+  defp owner?(owner) when is_map(owner) and not is_struct(owner) do
+    Enum.sort(Map.keys(owner)) == [:agent_id, :step_id, :turn_id] and
       Codec.uuid?(owner[:agent_id]) and Codec.uuid?(owner[:turn_id]) and
-      position?(owner[:expected_version], owner[:accept_seq]) and
-      is_integer(owner[:expected_generation]) and owner[:expected_generation] >= 0
+      is_binary(owner[:step_id]) and byte_size(owner[:step_id]) in 1..255
   end
 
-  defp position?(version, accept_seq) do
-    (is_integer(version) and version >= 0 and is_nil(accept_seq)) or
-      (is_nil(version) and is_integer(accept_seq) and accept_seq > 0)
-  end
+  defp owner?(_), do: false
 end

@@ -98,6 +98,46 @@ defmodule Beamlet.Runtime.DurableAdmissionTest do
     assert is_binary(ref.id)
   end
 
+  for form <- [:struct, :keyword] do
+    @persistence_form form
+    test "recorded admission failure refuses #{@persistence_form} persistence before preparation",
+         ctx do
+      persistence =
+        Persistence.new(
+          authority_repo: SQLiteAuthorityRepo,
+          journal_repo: ExecutorJournalRepo,
+          authority_id: ctx.authority_id,
+          executor_id: ctx.executor_id,
+          executor_boot_id: Ecto.UUID.generate()
+        )
+
+      boot(persistence)
+
+      start_supervised!(%{
+        id: :admission,
+        start:
+          {Admission, :start_link,
+           [[repo: SQLiteAuthorityRepo, dataset_id: ctx.authority_opts[:dataset_id]]]}
+      })
+
+      assert :admitted = Admission.status()
+      assert :ok = Admission.failure(:storage_outcome_unknown)
+      before_count = SQLiteAuthorityRepo.aggregate(Beamlet.Storage.Schema.Operation, :count)
+
+      input =
+        if @persistence_form == :keyword,
+          do: Enum.to_list(Map.from_struct(persistence)),
+          else: persistence
+
+      assert {:error, :unavailable} = Runtime.submit(operation(), persistence: input)
+
+      assert SQLiteAuthorityRepo.aggregate(Beamlet.Storage.Schema.Operation, :count) ==
+               before_count
+
+      refute_receive {:handler_started, _, _}, 100
+    end
+  end
+
   defp boot(persistence) do
     {:ok, pid} =
       Runtime.SharedSupervisor.start_link(

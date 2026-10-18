@@ -3,7 +3,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   use GenServer, restart: :temporary
   alias Beamlet.Actions.{Execution, ExecutionHandle, OperationRef, Result}
   alias Beamlet.Runtime.{Directory, Persistence}
-  alias Beamlet.Storage.{Admission, OperationRecords}
+  alias Beamlet.Storage.{Admission, Codec, OperationRecords}
 
   def start_link({_, _, owner, _, true, _} = args) do
     if Process.alive?(owner), do: GenServer.start_link(__MODULE__, args), else: :ignore
@@ -61,11 +61,10 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   @impl true
   def handle_info(:dispatch, %{result: nil, stopping: nil, execution: nil} = s) do
     if owner_alive?(s.owner, s.guarded) do
-      selection = Directory.select(s.op)
-
-      if owner_alive?(s.owner, s.guarded),
-        do: dispatch(selection, s),
-        else: {:stop, :normal, s}
+      case claim_dispatch(s) do
+        :ok -> select_and_dispatch(s)
+        {:error, _} -> {:stop, :normal, s}
+      end
     else
       {:stop, :normal, s}
     end
@@ -81,6 +80,12 @@ defmodule Beamlet.Runtime.OperationCoordinator do
       {:noreply, s}
     end
   end
+
+  def handle_info(
+        {:rejected, attempt, :duplicate_admission},
+        %{result: nil, execution: %{attempt_id: attempt}} = s
+      ),
+      do: {:noreply, finish(s, :uncertain, :duplicate_admission)}
 
   def handle_info(
         {:rejected, attempt, reason},
@@ -99,7 +104,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
 
   def handle_info(
         {:completed, attempt, %ExecutionHandle{} = handle, %Result{} = result},
-        %{result: nil, execution: %{attempt_id: attempt}} = s
+        %{result: nil, durable: nil, execution: %{attempt_id: attempt}} = s
       ) do
     if valid_completion?(result, handle, s) do
       {:noreply,
@@ -113,7 +118,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
         {:completed, attempt, %ExecutionHandle{} = handle, %Result{} = result, receipt},
         %{result: nil, execution: %{attempt_id: attempt}} = s
       ) do
-    if valid_completion?(result, handle, s) and valid_receipt?(receipt) do
+    if valid_completion?(result, handle, s) and valid_receipt?(receipt, s, result) do
       {:noreply,
        accept(
          %{s | execution: %{s.execution | handle: handle, state: :completed}},
@@ -159,6 +164,20 @@ defmodule Beamlet.Runtime.OperationCoordinator do
     end
   end
 
+  # Late terminal evidence remains useful after an uncertain Result was accepted.
+  # It may never replace that authority Result or produce another sink completion.
+  def handle_info(
+        {:completed, attempt, %ExecutionHandle{} = handle, %Result{} = result, receipt},
+        %{durable: durable, execution: %{attempt_id: attempt}} = s
+      )
+      when not is_nil(durable) do
+    if valid_completion?(result, handle, s) and valid_receipt?(receipt, s, result) do
+      persist_evidence(durable.persistence, durable, receipt)
+    end
+
+    {:noreply, s}
+  end
+
   def handle_info(:expire, s), do: {:stop, :normal, s}
   def handle_info(_, s), do: {:noreply, s}
   @impl true
@@ -168,7 +187,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
        {:ok,
         %{
           execution: s.execution,
-          result: s.result,
+          result: visible_result(s),
           stopping: s.stopping,
           progress_dropped: s.progress_dropped,
           durable: durable_status(s.durable)
@@ -191,21 +210,24 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   defp owner_alive?(_, false), do: true
   defp owner_alive?(owner, true), do: Process.alive?(owner)
 
+  defp select_and_dispatch(s) do
+    durable = if s.durable, do: %{s.durable | claimed: true}, else: nil
+    s = %{s | durable: durable}
+    selection = Directory.select(s.op)
+
+    if owner_alive?(s.owner, s.guarded),
+      do: dispatch(selection, s),
+      else: {:stop, :normal, s}
+  end
+
   defp dispatch(selection, s) do
     case selection do
       :none ->
         {:noreply, finish(s, :error, :no_target)}
 
       {:ok, endpoint, report} ->
-        case claim_dispatch(s) do
-          :ok ->
-            Process.monitor(endpoint)
-            admit(s, endpoint, report)
-
-          {:error, reason} ->
-            # A claim that did not commit is never treated as permission to send.
-            {:noreply, finish(s, :error, reason)}
-        end
+        Process.monitor(endpoint)
+        admit(s, endpoint, report)
     end
   end
 
@@ -331,6 +353,9 @@ defmodule Beamlet.Runtime.OperationCoordinator do
 
   defp persist(nil, _result, _receipt), do: nil
 
+  defp persist(%{claimed: false} = durable, _result, _receipt),
+    do: %{durable | accept_error: :dispatch_not_claimed}
+
   defp persist(durable, result, receipt) do
     persistence = durable.persistence
 
@@ -353,8 +378,12 @@ defmodule Beamlet.Runtime.OperationCoordinator do
            evidence_id: receipt.id,
            content: Persistence.evidence(receipt)
          }) do
-      {:ok, _evidence} -> :ok
-      {:error, _reason} -> {:error, :durable_unavailable}
+      {:ok, _evidence} ->
+        :ok
+
+      {:error, reason} ->
+        admission_failure(reason)
+        {:error, :durable_unavailable}
     end
   end
 
@@ -363,36 +392,39 @@ defmodule Beamlet.Runtime.OperationCoordinator do
       operation_id: durable.operation_id,
       expected_version: durable.operation_version,
       result: Persistence.result_payload(result),
-      evidence_id: receipt && receipt.id,
-      event: %{
-        id: Persistence.uuid(),
-        type: "operation.result_accepted",
-        payload: %{
-          "status" => Atom.to_string(result.status),
-          "attempt_id" => durable.attempt_id
-        }
-      }
+      evidence_id: receipt && receipt.id
     }
-
-    attrs =
-      case persistence.owner do
-        nil ->
-          attrs
-
-        owner ->
-          Map.put(attrs, :agent, accept_identity(owner))
-      end
 
     # Accept is gated on live durable admission: a host that turned admission off
     # (unwritable or refused dataset) must not commit an accepted Result. The gate
     # probes the dataset, so recovery re-enables accept without a restart.
     with :ok <- admission(),
-         {:ok, accepted} <- OperationRecords.accept_result(persistence.authority_repo, attrs) do
+         {:ok, accepted} <- accept_result(persistence, attrs) do
       {:ok, accepted}
     else
       {:error, reason} ->
         admission_failure(reason)
         {:error, :durable_unavailable}
+    end
+  end
+
+  defp accept_result(persistence, attrs) do
+    case OperationRecords.accept_result(persistence.authority_repo, attrs) do
+      {:error, :storage_outcome_unknown} -> reconcile_accept(persistence, attrs)
+      response -> response
+    end
+  end
+
+  # A lost commit acknowledgement is reconciled by identity; never retry a write.
+  defp reconcile_accept(persistence, attrs) do
+    with {:ok, stored} <- OperationRecords.fetch(persistence.authority_repo, attrs.operation_id),
+         row = stored["operation"],
+         true <-
+           row["accepted_result"] == attrs.result and
+             row["accepted_evidence_id"] == attrs.evidence_id do
+      {:ok, row}
+    else
+      _ -> {:error, :storage_outcome_unknown}
     end
   end
 
@@ -409,16 +441,8 @@ defmodule Beamlet.Runtime.OperationCoordinator do
 
   defp admission_failure(_reason), do: :ok
 
-  # An owner carries exactly one Agent position: the strict version CAS or the
-  # position a whole batch reserved for this Operation's accepted Result.
-  defp accept_identity(owner) do
-    agent = %{expected_generation: owner.expected_generation}
-
-    case owner[:accept_seq] do
-      nil -> Map.put(agent, :expected_version, owner.expected_version)
-      seq -> Map.put(agent, :accept_seq, seq)
-    end
-  end
+  defp visible_result(%{durable: %{accepted: false}}), do: nil
+  defp visible_result(s), do: s.result
 
   defp durable_state(nil), do: nil
 
@@ -442,11 +466,24 @@ defmodule Beamlet.Runtime.OperationCoordinator do
     Map.take(durable, [:operation_id, :attempt_id, :claimed, :accepted, :accept_error])
   end
 
-  defp valid_receipt?(receipt) do
+  defp valid_receipt?(receipt, s, result) do
     is_map(receipt) and not is_struct(receipt) and is_binary(receipt[:id]) and
-      is_binary(receipt[:digest]) and is_map(receipt[:content]) and
-      not is_struct(receipt[:content])
+      is_map(receipt[:content]) and not is_struct(receipt[:content]) and
+      receipt_binding?(receipt.content, s, result) and
+      Codec.digest(receipt.content, :event) == {:ok, receipt[:digest]}
   end
+
+  defp receipt_binding?(content, %{durable: durable}, result) when not is_nil(durable) do
+    content["authority_id"] == durable.persistence.authority_id and
+      content["operation_id"] == durable.operation_id and
+      content["attempt_id"] == durable.attempt_id and
+      content["executor_id"] == durable.persistence.executor_id and
+      content["executor_boot_id"] == durable.persistence.executor_boot_id and
+      content["description_digest"] == durable.description_digest and
+      content["result"] == Persistence.result_payload(result)
+  end
+
+  defp receipt_binding?(_, _, _), do: false
 
   defp valid_completion?(result, handle, s) do
     Result.valid?(result) and result.source == :execution and

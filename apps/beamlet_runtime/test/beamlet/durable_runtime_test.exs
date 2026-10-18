@@ -26,6 +26,7 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
   alias Beamlet.Runtime.Persistence
 
   alias Beamlet.Storage.{
+    AgentRecords,
     Codec,
     Dataset,
     ExecutorJournal,
@@ -69,7 +70,7 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
     end)
 
     %{
-      authority_id: Ecto.UUID.generate(),
+      authority_id: authority_opts[:dataset_id],
       executor_id: Ecto.UUID.generate(),
       authority_opts: authority_opts,
       journal_opts: journal_opts
@@ -241,12 +242,7 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
         operation_id: ref.id,
         expected_version: operation["lock_version"],
         result: result,
-        evidence_id: evidence_id,
-        event: %{
-          id: Ecto.UUID.generate(),
-          type: "operation.result_accepted",
-          payload: %{"retry" => true}
-        }
+        evidence_id: evidence_id
       })
     end
 
@@ -357,6 +353,499 @@ defmodule Beamlet.Runtime.DurableRuntimeTest do
 
     assert journal["stop_reason"] == "deadline"
     assert journal["state"] == "terminal"
+  end
+
+  test "owned model and tool siblings accept in reverse order without Agent CAS", context do
+    persistence = persistence(context)
+    boot(persistence)
+    op = %{operation("hold") | claims: %{}}
+    {agent_id, position, [first, second]} = prepare_owned(persistence, [op, op])
+
+    assert {:ok, a} = Runtime.submit(op, persistence: persistence, prepared: first)
+    assert_receive {:handler_started, worker_a, _}, 2000
+    assert {:ok, b} = Runtime.submit(op, persistence: persistence, prepared: second)
+    assert_receive {:handler_started, worker_b, _}, 2000
+    send(worker_b, :release)
+    assert_receive {:beamlet_operation, ^b, {:result, %{status: :ok}}}, 3000
+    send(worker_a, :release)
+    assert_receive {:beamlet_operation, ^a, {:result, %{status: :ok}}}, 3000
+
+    assert {:ok, agent} = AgentRecords.fetch(SQLiteAuthorityRepo, agent_id)
+    assert agent["agent"]["lock_version"] == position.lock_version
+    assert agent["agent"]["history_seq"] == 4
+
+    for ref <- [a, b] do
+      assert {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, ref.id)
+      assert row["operation"]["accepted_result"]["status"] == "ok"
+      assert row["operation"]["history_seq"] == 2
+    end
+  end
+
+  test "simultaneous sibling completion accepts both Operations", context do
+    persistence = persistence(context)
+    boot(persistence)
+    op = %{operation("hold") | claims: %{}}
+    {agent_id, position, prepared} = prepare_owned(persistence, [op, op])
+
+    refs =
+      Enum.map(prepared, fn member ->
+        {:ok, ref} = Runtime.submit(op, persistence: persistence, prepared: member)
+        ref
+      end)
+
+    assert_receive {:handler_started, a, _}, 2000
+    assert_receive {:handler_started, b, _}, 2000
+    Enum.each([a, b], &send(&1, :release))
+
+    for ref <- refs do
+      assert_receive {:beamlet_operation, ^ref, {:result, %{status: :ok}}}, 3000
+    end
+
+    {:ok, agent} = AgentRecords.fetch(SQLiteAuthorityRepo, agent_id)
+    assert agent["agent"]["lock_version"] == position.lock_version
+    assert agent["agent"]["history_seq"] == 4
+  end
+
+  test "racing submissions of one prepared identity run once and never accept a losing claim",
+       context do
+    persistence = persistence(context)
+    boot(persistence)
+    op = operation("hold")
+    {:ok, prepared} = Persistence.prepare(persistence, op)
+    caller = self()
+
+    jobs =
+      for _ <- 1..2 do
+        Task.async(fn ->
+          Runtime.submit(op,
+            persistence: persistence,
+            prepared: prepared,
+            owner: caller,
+            sink: caller
+          )
+        end)
+      end
+
+    replies = Enum.map(jobs, &Task.await/1)
+    assert Enum.any?(replies, &match?({:ok, _}, &1))
+    assert_receive {:handler_started, worker, _}, 2000
+    refute_receive {:handler_started, _, _}, 50
+    {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, prepared["operation_id"])
+    assert row["operation"]["accepted_result"] == nil
+    send(worker, :release)
+    assert_receive {:beamlet_operation, _, {:result, %{status: :ok}}}, 3000
+    refute_receive {:beamlet_operation, _, {:result, _}}, 50
+  end
+
+  test "prepared submission binds full committed request and attempt; credentials stay transient",
+       context do
+    persistence = persistence(context)
+    boot(persistence)
+    op = %{operation("hold") | credentials: %{"api_key" => "transient-credential"}}
+    {:ok, prepared} = Persistence.prepare(persistence, op)
+    changed = %{op | payload: Map.put(op.payload, "marker", "changed")}
+
+    assert {:error, :invalid_operation} =
+             Runtime.submit(changed, persistence: persistence, prepared: prepared)
+
+    wrong = Map.put(prepared, "attempt_id", Ecto.UUID.generate())
+
+    assert {:error, :invalid_operation} =
+             Runtime.submit(op, persistence: persistence, prepared: wrong)
+
+    refute_received {:handler_started, _, _}
+
+    assert {:ok, ref} = Runtime.submit(op, persistence: persistence, prepared: prepared)
+    assert_receive {:handler_started, worker, _}, 2000
+
+    assert {:error, :invalid_operation} =
+             Runtime.submit(op, persistence: persistence, prepared: prepared)
+
+    refute_received {:handler_started, _, _}
+    send(worker, :release)
+    assert_receive {:beamlet_operation, ^ref, {:result, %{status: :ok}}}, 3000
+    assert {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, ref.id)
+    refute inspect(row) =~ "transient-credential"
+    ExecutorJournalRepo.stop()
+    assert {:ok, evidence} = Runtime.evidence(persistence, ref.id, prepared["attempt_id"])
+    assert evidence.journal == :unavailable
+    assert evidence.authority["operation"]["accepted_result"]["status"] == "ok"
+  end
+
+  test "stale control generation cannot claim prepared work", context do
+    persistence = persistence(context)
+    boot(persistence)
+    op = operation("hold")
+    {_id, position, [prepared]} = prepare_owned(persistence, [op])
+
+    assert {:ok, _} =
+             AgentRecords.restore(SQLiteAuthorityRepo, %{
+               command_id: Ecto.UUID.generate(),
+               position: position
+             })
+
+    assert {:ok, ref} = Runtime.submit(op, persistence: persistence, prepared: prepared)
+    monitor = Process.monitor(ref.pid)
+    assert_receive {:DOWN, ^monitor, :process, _, _}, 2000
+    refute_received {:handler_started, _, _}
+    assert {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, ref.id)
+    assert row["attempt"]["dispatch_state"] == "prepared"
+    assert row["operation"]["accepted_result"] == nil
+  end
+
+  for delta <- [0, -1] do
+    @admit_delta delta
+    test "durable admission counts credentials and identity envelope at delta #{delta}",
+         context do
+      persistence = persistence(context)
+      boot(persistence)
+
+      op = %{
+        operation("hold", 5000, %{"marker" => String.duplicate("x", 1000)})
+        | credentials: %{"token" => String.duplicate("y", 1000)}
+      }
+
+      {:ok, prepared} = Persistence.prepare(persistence, op)
+      {:ok, endpoint, report} = Runtime.Directory.select(op)
+
+      {:ok, _} =
+        OperationRecords.claim_dispatch(SQLiteAuthorityRepo, %{
+          operation_id: prepared["operation_id"],
+          attempt_id: prepared["attempt_id"],
+          expected_version: 0
+        })
+
+      durable = %{
+        authority_id: persistence.authority_id,
+        operation_id: prepared["operation_id"],
+        attempt_id: prepared["attempt_id"],
+        description_digest: prepared["description_digest"],
+        executor_id: persistence.executor_id,
+        executor_boot_id: persistence.executor_boot_id
+      }
+
+      message =
+        {:admit, self(), prepared["operation_id"], prepared["attempt_id"], report.incarnation,
+         report.lease, op, op.budget_ms, durable}
+
+      bytes = :erlang.external_size(message)
+
+      :sys.replace_state(Runtime.ExecutorGateway, fn state ->
+        %{state | limits: %{state.limits | operation_bytes: bytes + @admit_delta}}
+      end)
+
+      send(endpoint, message)
+
+      if @admit_delta == 0 do
+        assert_receive {:handler_started, worker, _}, 2000
+        send(worker, :release)
+        assert_receive {:completed, _, _, %{status: :ok}, _}, 3000
+      else
+        assert_receive {:rejected, _, :ineligible}, 2000
+        refute_received {:handler_started, _, _}
+
+        assert {:error, :conflict} =
+                 ExecutorJournal.fetch(
+                   ExecutorJournalRepo,
+                   persistence.authority_id,
+                   prepared["attempt_id"]
+                 )
+      end
+    end
+  end
+
+  for delta <- [0, -1] do
+    @envelope_delta delta
+    test "durable completion counts the entire receipt envelope at delta #{delta}", context do
+      persistence = persistence(context)
+      boot(persistence)
+      marker = String.duplicate("x", 2000)
+
+      {:ok, ref} =
+        Runtime.submit(operation("hold", 5000, %{"marker" => marker}), persistence: persistence)
+
+      assert_receive {:handler_started, worker, _}, 2000
+      gateway = Process.whereis(Runtime.ExecutorGateway)
+      state = :sys.get_state(gateway)
+      [{key, entry}] = Enum.to_list(state.attempts)
+
+      result = %Beamlet.Actions.Result{
+        operation_id: ref.id,
+        execution_id: entry.handle.id,
+        status: :ok,
+        source: :execution,
+        value: %{"echo" => marker},
+        metadata: %{gateway_progress_dropped: false, producer_progress_dropped: 0}
+      }
+
+      {:ok, receipt} = Persistence.receipt(entry.journal, result, %{"kind" => "returned"})
+      bytes = :erlang.external_size({:completed, elem(key, 1), entry.handle, result, receipt})
+      assert bytes > 1024
+
+      :sys.replace_state(gateway, fn state ->
+        %{state | limits: %{state.limits | result_bytes: bytes + @envelope_delta}}
+      end)
+
+      send(worker, :release)
+      assert_receive {:beamlet_operation, ^ref, {:result, accepted}}, 3000
+
+      if @envelope_delta == 0 do
+        assert accepted.status == :ok
+        assert accepted.value == %{"echo" => marker}
+      else
+        assert accepted.status == :error
+        assert accepted.reason == :invalid_or_oversize_result
+        assert accepted.value == nil
+      end
+    end
+  end
+
+  test "late terminal receipt is retained without replacing an accepted uncertain outcome",
+       context do
+    persistence = persistence(context)
+    boot(persistence, cancel_ms: 400)
+
+    {:ok, ref} =
+      Runtime.submit(operation("hold", 5000, %{"trap" => true}), persistence: persistence)
+
+    assert_receive {:handler_started, worker, _}, 2000
+    gateway = Process.whereis(Runtime.ExecutorGateway)
+    :sys.suspend(gateway)
+
+    try do
+      send(ref.pid, :deadline)
+      assert_receive {:beamlet_operation, ^ref, {:result, %{status: :deadline}}}, 2000
+      {:ok, before} = OperationRecords.fetch(SQLiteAuthorityRepo, ref.id)
+      assert before["operation"]["accepted_evidence_id"] == nil
+      send(worker, :release)
+    after
+      :sys.resume(gateway)
+    end
+
+    assert :ok = wait_late_evidence(ref.id)
+    {:ok, after_late} = OperationRecords.fetch(SQLiteAuthorityRepo, ref.id)
+    assert after_late["operation"]["accepted_result"]["status"] == "deadline"
+    assert after_late["operation"]["accepted_evidence_id"] == nil
+    refute_receive {:beamlet_operation, ^ref, {:result, _}}, 50
+  end
+
+  defp wait_late_evidence(id, attempts \\ 100)
+  defp wait_late_evidence(_id, 0), do: :timeout
+
+  defp wait_late_evidence(id, attempts) do
+    {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, id)
+
+    if SQLiteAuthorityRepo.aggregate(Beamlet.Storage.Schema.ExecutionEvidence, :count) > 0 do
+      assert row["operation"]["accepted_result"]["status"] == "deadline"
+      :ok
+    else
+      Process.sleep(5)
+      wait_late_evidence(id, attempts - 1)
+    end
+  end
+
+  test "failed authority acceptance produces no sink completion or status Result", context do
+    persistence = persistence(context)
+    boot(persistence)
+    {:ok, ref} = Runtime.submit(operation("hold"), persistence: persistence)
+    assert_receive {:handler_started, worker, _}, 2000
+    SQLiteAuthorityRepo.stop()
+    send(worker, :release)
+    assert :ok = wait_accept_failure(ref)
+    assert {:ok, %{result: nil, durable: %{accepted: false}}} = Runtime.status(ref)
+    refute_received {:beamlet_operation, ^ref, {:result, _}}
+  end
+
+  defp wait_accept_failure(ref, attempts \\ 100)
+  defp wait_accept_failure(_ref, 0), do: :timeout
+
+  defp wait_accept_failure(ref, attempts) do
+    case Runtime.status(ref) do
+      {:ok, %{durable: %{accept_error: error}}} when not is_nil(error) ->
+        :ok
+
+      _ ->
+        Process.sleep(5)
+        wait_accept_failure(ref, attempts - 1)
+    end
+  end
+
+  defp prepare_owned(persistence, operations) do
+    agent_id = Ecto.UUID.generate()
+    turn_id = Ecto.UUID.generate()
+
+    {:ok, _} =
+      AgentRecords.create_agent(SQLiteAuthorityRepo, %{
+        command_id: Ecto.UUID.generate(),
+        id: agent_id,
+        authority_id: persistence.authority_id,
+        definition: %{}
+      })
+
+    position = %{agent_id: agent_id, lock_version: 0, generation: 0}
+
+    {:ok, input} =
+      AgentRecords.accept_input(SQLiteAuthorityRepo, %{
+        command_id: Ecto.UUID.generate(),
+        position: position,
+        turn_id: turn_id,
+        input: %{"text" => "original"}
+      })
+
+    members =
+      Enum.with_index(operations, fn op, ordinal ->
+        %{
+          operation: %{
+            id: Ecto.UUID.generate(),
+            owner_agent_id: agent_id,
+            turn_id: turn_id,
+            step_id: "step-#{ordinal}",
+            role: if(ordinal == 0, do: "model", else: "tool"),
+            ordinal: ordinal,
+            description: Persistence.description(op),
+            sources: []
+          },
+          attempt: %{
+            attempt_id: Ecto.UUID.generate(),
+            executor_id: persistence.executor_id,
+            executor_boot_id: persistence.executor_boot_id,
+            budget: %{"budget_ms" => op.budget_ms}
+          }
+        }
+      end)
+
+    {:ok, prepared} =
+      AgentRecords.prepare_operations(SQLiteAuthorityRepo, %{
+        command_id: Ecto.UUID.generate(),
+        position: %{position | lock_version: input["lock_version"]},
+        turn_id: turn_id,
+        operations: members,
+        orchestration: %{}
+      })
+
+    {agent_id, %{position | lock_version: prepared["lock_version"]}, prepared["operations"]}
+  end
+
+  @tag :distributed
+  test "named peer journals committed work and keeps credentials out of both databases",
+       context do
+    unless Node.alive?(), do: flunk("distributed tests require a named VM")
+    persistence = persistence(context)
+    paths = Enum.flat_map(:code.get_path(), &[~c"-pa", &1])
+
+    {:ok, peer, remote} =
+      :peer.start_link(%{
+        name: String.to_atom("durable_b_#{System.unique_integer([:positive])}"),
+        connection: :standard_io,
+        args: [~c"+S", ~c"2:2", ~c"-setcookie", Atom.to_charlist(Node.get_cookie())] ++ paths,
+        wait_boot: 10_000,
+        shutdown: 3000
+      })
+
+    Process.unlink(peer)
+    on_exit(fn -> if Process.alive?(peer), do: :peer.stop(peer) end)
+
+    remote_opts =
+      Keyword.put(context.journal_opts, :database, context.journal_opts[:database] <> ".remote")
+
+    :ok = :peer.call(peer, Runtime.TestPeer, :boot_durable, [remote_opts, persistence, self()])
+    start_supervised!({Runtime.SharedSupervisor, limits: [refresh_ms: 10, expiry_ms: 1000]})
+    true = Node.connect(remote)
+    Runtime.TestPeer.barrier("durable", 4000)
+    credentials = %{"token" => "remote-only-credential"}
+
+    {:ok, op} =
+      Operation.new(
+        kind: "durable",
+        allowed_nodes: [remote],
+        payload: %{"mode" => "credentials"},
+        credentials: credentials
+      )
+
+    {:ok, prepared} = Persistence.prepare(persistence, op)
+    assert {:ok, ref} = Runtime.submit(op, persistence: persistence, prepared: prepared)
+    assert_receive {:credentials, ^remote, ^credentials}, 3000
+    assert_receive {:beamlet_operation, ^ref, {:result, %{status: :ok}}}, 3000
+    {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, ref.id)
+
+    {:ok, journal} =
+      :peer.call(peer, ExecutorJournal, :fetch, [
+        ExecutorJournalRepo,
+        context.authority_id,
+        prepared["attempt_id"]
+      ])
+
+    assert journal["state"] == "terminal"
+    refute inspect({row, journal}) =~ "remote-only-credential"
+
+    assert {:error, :invalid_operation} =
+             Runtime.submit(op, persistence: persistence, prepared: prepared)
+
+    refute_receive {:credentials, _, _}, 100
+    assert_durable_peer_loss(peer, remote, persistence, context.authority_id)
+  end
+
+  defp assert_durable_peer_loss(peer, remote, persistence, authority_id) do
+    {:ok, op} =
+      Operation.new(kind: "durable", allowed_nodes: [remote], payload: %{"mode" => "hold"})
+
+    await_peer_capacity(peer, op)
+    {:ok, prepared} = Persistence.prepare(persistence, op)
+    assert {:ok, ref} = Runtime.submit(op, persistence: persistence, prepared: prepared)
+    assert_receive {:worker, worker}, 3000
+    assert node(worker) == remote
+
+    assert {:ok, %{"state" => "start_intent"}} =
+             :peer.call(peer, ExecutorJournal, :fetch, [
+               ExecutorJournalRepo,
+               authority_id,
+               prepared["attempt_id"]
+             ])
+
+    :ok = :peer.stop(peer)
+    assert_receive {:beamlet_operation, ^ref, {:result, %{status: :uncertain}}}, 3000
+    assert {:ok, row} = OperationRecords.fetch(SQLiteAuthorityRepo, ref.id)
+    assert row["attempt"]["dispatch_state"] == "send_claimed"
+    assert row["operation"]["accepted_result"]["status"] == "uncertain"
+
+    assert {:error, :invalid_operation} =
+             Runtime.submit(op, persistence: persistence, prepared: prepared)
+
+    refute_receive {:worker, _}, 100
+  end
+
+  defp await_peer_capacity(peer, op) do
+    deadline = System.monotonic_time(:millisecond) + 3000
+
+    await_condition(
+      fn ->
+        state = :peer.call(peer, :sys, :get_state, [Runtime.ExecutorGateway])
+        state.ready and map_size(state.tasks) == 0
+      end,
+      deadline
+    )
+
+    released_at = :peer.call(peer, System, :monotonic_time, [:millisecond])
+
+    await_condition(
+      fn ->
+        case Runtime.Directory.select(op) do
+          {:ok, _, report} -> report.lease > released_at
+          :none -> false
+        end
+      end,
+      deadline
+    )
+  end
+
+  defp await_condition(condition, deadline) do
+    unless condition.() do
+      if System.monotonic_time(:millisecond) >= deadline,
+        do: flunk("fresh remote capacity not observed")
+
+      Process.sleep(5)
+      await_condition(condition, deadline)
+    end
   end
 
   defp persistence(context, overrides \\ []) do

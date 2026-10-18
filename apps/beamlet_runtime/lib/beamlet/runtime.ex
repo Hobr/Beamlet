@@ -58,8 +58,8 @@ defmodule Beamlet.Runtime do
          true <-
            is_pid(Keyword.get(opts, :owner, self())) and is_pid(Keyword.get(opts, :sink, self())),
          true <- valid_owner_guard?(opts),
-         :ok <- coordinators_available(Keyword.get(opts, :persistence)),
          persistence <- Persistence.new(Keyword.get(opts, :persistence)),
+         :ok <- coordinators_available(persistence),
          {:ok, prepared} <- prepare(persistence, operation, Keyword.get(opts, :prepared)) do
       {id, durable} =
         case prepared do
@@ -98,7 +98,8 @@ defmodule Beamlet.Runtime do
   """
   def evidence(%Persistence{} = persistence, operation_id, attempt_id) do
     with {:ok, authority} <-
-           OperationRecords.fetch(persistence.authority_repo, operation_id) do
+           OperationRecords.fetch(persistence.authority_repo, operation_id),
+         true <- authority["attempt"]["attempt_id"] == attempt_id do
       journal =
         case ExecutorJournal.fetch(
                persistence.journal_repo,
@@ -113,6 +114,9 @@ defmodule Beamlet.Runtime do
         end
 
       {:ok, %{authority: authority, journal: journal}}
+    else
+      false -> {:error, :invalid_operation}
+      error -> error
     end
   end
 
@@ -124,9 +128,49 @@ defmodule Beamlet.Runtime do
 
   # An attempt committed with its Operation is dispatched as it stands: preparing
   # again would mint an unrelated Operation and leave the caller's row unaccepted.
-  defp prepare(%Persistence{}, _operation, prepared), do: prepared(prepared)
+  defp prepare(%Persistence{} = persistence, operation, prepared) do
+    with {:ok, prepared} <- prepared(prepared),
+         {:ok, stored} <-
+           OperationRecords.fetch(persistence.authority_repo, prepared["operation_id"]),
+         true <- matches_prepared?(persistence, operation, prepared, stored) do
+      {:ok, prepared}
+    else
+      {:error, reason} when reason in [:storage_unavailable, :storage_outcome_unknown] ->
+        {:error, :unavailable}
+
+      _ ->
+        {:error, :invalid_operation}
+    end
+  end
 
   defp prepare(nil, _operation, _prepared), do: {:error, :invalid_operation}
+
+  defp matches_prepared?(persistence, operation, prepared, stored) do
+    row = stored["operation"]
+    attempt = stored["attempt"]
+
+    owner_matches?(persistence.owner, row) and
+      row["description"] == Persistence.description(operation) and
+      row["description_digest"] == prepared["description_digest"] and
+      row["lock_version"] == prepared["lock_version"] and
+      is_nil(row["accepted_result"]) and
+      attempt_matches?(persistence, prepared, attempt)
+  end
+
+  defp attempt_matches?(persistence, prepared, attempt) do
+    attempt["attempt_id"] == prepared["attempt_id"] and
+      attempt["lock_version"] == prepared["attempt_version"] and
+      attempt["dispatch_state"] == "prepared" and
+      attempt["executor_id"] == persistence.executor_id and
+      attempt["executor_boot_id"] == persistence.executor_boot_id
+  end
+
+  defp owner_matches?(nil, _row), do: true
+
+  defp owner_matches?(owner, row) do
+    owner.agent_id == row["owner_agent_id"] and owner.turn_id == row["turn_id"] and
+      owner.step_id == row["step_id"]
+  end
 
   defp prepared(prepared) when is_map(prepared) and not is_struct(prepared) do
     valid =
@@ -158,8 +202,6 @@ defmodule Beamlet.Runtime do
       _refused -> {:error, :unavailable}
     end
   end
-
-  defp coordinators_available(_), do: :ok
 
   defp valid_owner_guard?(opts) do
     case Keyword.get(opts, :require_live_owner, false) do

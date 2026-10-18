@@ -56,11 +56,28 @@ defmodule Beamlet.Runtime.TestPeer do
   @moduledoc false
   alias Beamlet.Actions.Operation
   alias Beamlet.Runtime.{Directory, SharedSupervisor}
+  alias Beamlet.Storage.{Dataset, ExecutorJournalRepo}
 
   def boot(opts) do
     {:ok, pid} = SharedSupervisor.start_link(opts)
     Process.unlink(pid)
     :ok
+  end
+
+  def boot_durable(journal_opts, persistence, observer) do
+    Application.ensure_all_started(:beamlet_storage)
+
+    {:ok, repo} =
+      Dataset.initialize(ExecutorJournalRepo, journal_opts)
+
+    Process.unlink(repo)
+
+    boot(
+      execution: true,
+      persistence: persistence,
+      handlers: %{"durable" => {Beamlet.Runtime.TestHandler, observer}},
+      limits: [refresh_ms: 10, expiry_ms: 1000]
+    )
   end
 
   def operation_cap(bytes) do
