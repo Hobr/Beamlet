@@ -1,540 +1,990 @@
-defmodule Beamlet.Storage.ContractSuite do
+defmodule Beamlet.Storage.Format2Contract do
   @moduledoc false
-  # One storage contract, two real databases. Every test body below is inserted
-  # verbatim into both adapter modules, so an assertion cannot drift between
-  # SQLite and PostgreSQL; only `Beamlet.Storage.ContractFixture` differs.
-  #
-  # The executor journal is deliberately SQLite-only (executor-local evidence) and
-  # is exercised by `record_transactions_test.exs`; this suite covers the authority
-  # dataset, which must behave identically on both adapters.
-
   defmacro __using__(backend: backend) do
-    quote do
-      unquote(common(backend))
-      unquote(fixture_helpers())
-      unquote(attribute_helpers())
-      unquote(durability_tests())
-      unquote(atomicity_tests())
-      unquote(receipt_tests())
-      unquote(boundary_tests())
-    end
+    [
+      support(backend),
+      preparation_tests(),
+      rollback_tests(),
+      control_tests(),
+      execution_tests(),
+      request_tests(),
+      concurrency_tests(),
+      review_tests(),
+      lifecycle_tests(),
+      continuation_tests()
+    ]
   end
 
-  # Each fragment is a separate `quote`, so no single block grows past the Credo
-  # line budget; the generated test names and bodies stay identical.
-  defp common(backend) do
+  defp support(backend) do
     quote do
       use ExUnit.Case, async: false
 
-      # Excluded by default (see test_helper.exs): the PostgreSQL half requires an
-      # isolated cluster, and its absence must never be reported as a pass.
-      if unquote(backend) == :postgres, do: @moduletag(:postgres_db)
-
       alias Beamlet.Storage.{
         AgentRecords,
-        Artifacts,
         Codec,
+        ContractFixture,
         Dataset,
         ExecutorJournalRepo,
-        OperationRecords,
-        Transaction
+        History,
+        OperationRecords
       }
 
-      alias Beamlet.Storage.ContractFixture, as: Fixture
-      alias Ecto.Adapters.SQL
-
-      @errors ~w(invalid_data limit conflict stale_generation schema_unsupported
-                 artifact_missing storage_unavailable storage_outcome_unknown)a
-
+      alias Beamlet.Storage.Schema.{Agent, Command, Event, Operation}
       @backend unquote(backend)
-
       setup do
-        fixture = Fixture.open(@backend)
-        on_exit(fn -> Fixture.close(fixture) end)
-        {:ok, fixture: fixture}
-      end
-    end
-  end
-
-  defp fixture_helpers do
-    quote do
-      defp sql(fixture, statement, params \\ []), do: Fixture.sql(fixture, statement, params)
-
-      defp raw_connection(fixture), do: Fixture.raw_connection(fixture)
-      defp run_raw(conn, statement), do: Fixture.run_raw(conn, statement)
-      defp close_raw(conn), do: Fixture.close_raw(conn)
-
-      # `repo.stop/0` is called from the test process more than once per fixture, so
-      # a second stop must be tolerated rather than retried.
-      defp stop_repo(%{repo: repo}) do
-        repo.stop()
-      catch
-        _, _ -> :ok
+        fixture = ContractFixture.open(@backend)
+        on_exit(fn -> ContractFixture.close(fixture) end)
+        {:ok, fixture: fixture, repo: fixture.repo}
       end
 
-      # A private connection is needed while the Repo is stopped, so it can mutate
-      # installation metadata without going through the guarded pool.
-      defp raw(fixture) do
-        database =
-          if fixture.backend == :sqlite, do: fixture.opts[:database], else: fixture.database
+      defp create(fixture) do
+        attrs = %{
+          id: Ecto.UUID.generate(),
+          command_id: Ecto.UUID.generate(),
+          authority_id: fixture.authority_id,
+          definition: %{"version" => 1}
+        }
 
-        {:ok, conn} = raw_connection(Map.put(fixture, :database, database))
-        conn
-      end
-    end
-  end
+        assert {:ok, response} = AgentRecords.create_agent(fixture.repo, attrs)
+        assert {:ok, ^response} = AgentRecords.create_agent(fixture.repo, attrs)
 
-  defp attribute_helpers do
-    quote do
-      defp event(type, payload \\ %{}) do
-        %{id: Ecto.UUID.generate(), type: type, payload: payload}
-      end
+        assert {:ok, ^response} =
+                 AgentRecords.command_response(fixture.repo, attrs.id, attrs.command_id)
 
-      defp command(params) do
-        scope_id = Ecto.UUID.generate()
+        assert {:error, :conflict} =
+                 AgentRecords.create_agent(fixture.repo, %{attrs | definition: %{"version" => 2}})
 
-        %{scope_id: scope_id, command_id: Ecto.UUID.generate(), params: params}
-      end
+        pos = %{agent_id: attrs.id, generation: 0, lock_version: 0}
 
-      defp create_attrs(authority_id, overrides \\ %{}) do
-        id = Ecto.UUID.generate()
+        input = %{
+          command_id: Ecto.UUID.generate(),
+          position: pos,
+          turn_id: Ecto.UUID.generate(),
+          input: %{"text" => "original input"}
+        }
 
-        Map.merge(
-          %{
-            command: command(%{"op" => "create_agent", "agent_id" => id}),
-            id: id,
-            authority_id: authority_id,
-            definition: %{"provider" => "native", "profile" => "default"},
-            generation: 0,
-            checkpoint: %{
-              id: Ecto.UUID.generate(),
-              data: %{"messages" => [], "continuation" => "await_input"},
-              safe_to_fork: true
-            },
-            event: event("agent.created", %{"alias" => nil})
-          },
-          overrides
-        )
+        assert {:ok, accepted} = AgentRecords.accept_input(fixture.repo, input)
+        {Map.put(pos, :lock_version, 1), input.turn_id, accepted}
       end
 
-      defp attempt_attrs do
+      defp member(pos, turn, ordinal) do
         %{
-          attempt_id: Ecto.UUID.generate(),
-          executor_id: Ecto.UUID.generate(),
-          executor_boot_id: Ecto.UUID.generate(),
-          budget: %{"milliseconds" => 5000}
+          operation: %{
+            id: Ecto.UUID.generate(),
+            owner_agent_id: pos.agent_id,
+            turn_id: turn,
+            step_id: "step-1",
+            role: "tool",
+            ordinal: ordinal,
+            tool_call_id: "call-#{ordinal}",
+            sources: [],
+            description: %{
+              "kind" => "tool_call",
+              "protocol_version" => 1,
+              "payload" => %{"arguments" => %{"text" => "request body"}}
+            }
+          },
+          attempt: %{
+            attempt_id: Ecto.UUID.generate(),
+            executor_id: Ecto.UUID.generate(),
+            executor_boot_id: Ecto.UUID.generate(),
+            budget: %{}
+          }
         }
       end
 
-      defp prepare(fixture, overrides \\ %{}) do
-        id = Ecto.UUID.generate()
-
-        attrs =
-          Map.merge(
-            %{
-              operation: %{
-                id: id,
-                description: %{
-                  "kind" => "tool_call",
-                  "protocol_version" => 1,
-                  "payload" => %{"tool" => "echo"}
-                }
-              },
-              attempt: attempt_attrs(),
-              event: event("operation.prepared")
-            },
-            overrides
-          )
-
-        {OperationRecords.prepare(fixture.repo, attrs), attrs}
+      defp batch(pos, turn, members) do
+        %{
+          command_id: Ecto.UUID.generate(),
+          position: pos,
+          turn_id: turn,
+          operations: members,
+          orchestration: %{"mode" => "all"}
+        }
       end
     end
   end
 
-  defp durability_tests do
+  defp continuation_tests do
     quote do
-      ## 1. Per-connection durability settings
+      test "explicit continuation adopts prepared and accepted identities but refuses claimed unresolved work",
+           %{fixture: f, repo: repo} do
+        {pos, turn, _} = create(f)
 
-      test "every physical connection enforces full synchronous durability", %{fixture: fixture} do
-        settings = Fixture.settings(fixture)
+        assert {:ok, prepared} =
+                 AgentRecords.prepare_operations(
+                   repo,
+                   batch(pos, turn, [
+                     member(pos, turn, 0),
+                     member(pos, turn, 1),
+                     member(pos, turn, 2)
+                   ])
+                 )
 
-        assert settings.connections == fixture.pool_size,
-               "expected #{fixture.pool_size} connections, got #{settings.connections}"
+        [fresh, accepted, claimed] = prepared["operations"]
 
-        assert length(settings.per_connection) == fixture.pool_size
+        assert {:ok, result} =
+                 OperationRecords.accept_result(repo, %{
+                   operation_id: accepted["operation_id"],
+                   expected_version: 0,
+                   result: %{"status" => "ok"}
+                 })
 
-        for entry <- settings.per_connection, {key, expected} <- settings.required do
-          actual = entry[key]
+        assert {:ok, _} =
+                 OperationRecords.claim_dispatch(repo, %{
+                   operation_id: claimed["operation_id"],
+                   attempt_id: claimed["attempt_id"],
+                   expected_version: 0
+                 })
 
-          assert actual == expected,
-                 "#{inspect(key)} is #{inspect(actual)}, expected #{inspect(expected)}"
-        end
-      end
+        assert {:ok, activated} =
+                 AgentRecords.restore(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{pos | lock_version: prepared["lock_version"]}
+                 })
 
-      ## 2. Schema shape and installation identity
+        position = %{pos | lock_version: activated["lock_version"], generation: 1}
 
-      test "installation creates the same authority schema and one metadata row", %{
-        fixture: fixture
-      } do
-        expected =
-          ~w(agents artifacts checkpoints commands events execution_evidence executions
-             operations schema_migrations storage_metadata)
+        assert {:error, :stale_generation} =
+                 OperationRecords.claim_dispatch(repo, %{
+                   operation_id: fresh["operation_id"],
+                   attempt_id: fresh["attempt_id"],
+                   expected_version: 0
+                 })
 
-        assert Fixture.tables(fixture) == expected
+        command = %{
+          command_id: Ecto.UUID.generate(),
+          position: position,
+          turn_id: turn,
+          type: "agent.continue_decided",
+          payload: %{"resume_operations" => [claimed["operation_id"]]}
+        }
 
-        assert [[dataset_id, "authority", 1, backup]] =
-                 sql(
-                   fixture,
-                   "SELECT dataset_id, role, format_version, restored_backup FROM storage_metadata"
-                 ).rows
+        assert {:error, :unresolved_execution} = AgentRecords.advance(repo, command)
 
-        assert dataset_id == fixture.authority_id
-        # SQLite stores BOOLEAN as 0/1; PostgreSQL returns false.
-        assert backup in [false, 0]
+        command = %{
+          command
+          | command_id: Ecto.UUID.generate(),
+            payload: %{
+              "resume_operations" => [fresh["operation_id"], accepted["operation_id"]]
+            }
+        }
 
-        assert [[1]] == sql(fixture, "SELECT COUNT(*) FROM schema_migrations").rows
+        assert {:ok, continued} = AgentRecords.advance(repo, command)
+        assert {:ok, ^continued} = AgentRecords.advance(repo, command)
 
-        # Loading and opening created facts only in this dataset: no business rows.
-        for table <- ~w(agents checkpoints events operations executions commands artifacts) do
-          assert [[0]] == sql(fixture, "SELECT COUNT(*) FROM #{table}").rows
-        end
+        assert {:ok, _} =
+                 OperationRecords.claim_dispatch(repo, %{
+                   operation_id: fresh["operation_id"],
+                   attempt_id: fresh["attempt_id"],
+                   expected_version: 0
+                 })
 
-        refute Process.whereis(ExecutorJournalRepo)
-      end
+        assert {:ok, _} =
+                 AgentRecords.consume_results(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{position | lock_version: continued["lock_version"]},
+                   turn_id: turn,
+                   accepted_refs: [
+                     %{
+                       "operation_id" => accepted["operation_id"],
+                       "accepted_digest" => result["accepted_digest"],
+                       "consumption_kind" => "tool_result"
+                     }
+                   ],
+                   join: %{}
+                 })
 
-      ## 5b. Close/reopen and format refusal (both adapters)
+        assert {:ok, %{"operation" => stored}} =
+                 OperationRecords.fetch(repo, accepted["operation_id"])
 
-      test "a dataset with committed facts reopens and reads them back", %{fixture: fixture} do
-        attrs = create_attrs(fixture.authority_id)
-        {:ok, created} = AgentRecords.create_agent(fixture.repo, attrs)
-        :ok = stop_repo(fixture)
-
-        assert {:ok, pid} = Dataset.open(fixture.repo, fixture.opts)
-        assert is_pid(pid)
-
-        assert {:ok, %{"agent" => agent}} = AgentRecords.fetch(fixture.repo, created["agent_id"])
-        assert agent["id"] == created["agent_id"]
-      end
-
-      test "reopening refuses a newer format version", %{fixture: fixture} do
-        :ok = stop_repo(fixture)
-        conn = raw(fixture)
-        :ok = run_raw(conn, "UPDATE storage_metadata SET format_version = 2")
-        :ok = close_raw(conn)
-
-        assert {:error, :schema_unsupported} = Dataset.open(fixture.repo, fixture.opts)
-      end
-
-      test "reopening refuses an explicit restored-backup marker", %{fixture: fixture} do
-        :ok = stop_repo(fixture)
-        conn = raw(fixture)
-        :ok = run_raw(conn, "UPDATE storage_metadata SET restored_backup = TRUE")
-        :ok = close_raw(conn)
-
-        assert {:error, :restored_backup} = Dataset.open(fixture.repo, fixture.opts)
+        assert stored["accepted_result"] == %{"status" => "ok"}
       end
     end
   end
 
-  defp atomicity_tests do
+  defp preparation_tests do
     quote do
-      ## 6. Multi-table atomicity
-
-      test "a failing step rolls back every table of the transaction", %{fixture: fixture} do
-        committed = create_attrs(fixture.authority_id)
-        {:ok, first} = AgentRecords.create_agent(fixture.repo, committed)
-
-        # A colliding checkpoint id fails late, after the Agent row is staged.
-        dup = create_attrs(fixture.authority_id, %{checkpoint: committed.checkpoint})
-        assert {:error, :conflict} = AgentRecords.create_agent(fixture.repo, dup)
-
-        assert [[1]] == sql(fixture, "SELECT COUNT(*) FROM agents").rows
-        assert [[1]] == sql(fixture, "SELECT COUNT(*) FROM commands").rows
-        assert [[1]] == sql(fixture, "SELECT COUNT(*) FROM checkpoints").rows
-        assert {:ok, _} = AgentRecords.fetch(fixture.repo, first["agent_id"])
-
-        # No sibling fact from the rolled-back write set is visible.
-        assert {:error, :conflict} = AgentRecords.fetch(fixture.repo, dup.id)
+      test "role format, durable connections, and safe driver failure", %{fixture: f} do
+        assert ContractFixture.sql(f, "SELECT format_version FROM storage_metadata").rows == [[2]]
+        settings = ContractFixture.settings(f)
+        assert settings.connections == f.pool_size
+        assert Enum.all?(settings.per_connection, &(&1 == settings.required))
+        assert {:error, :storage_outcome_unknown} = ContractFixture.driver_failure(f)
       end
 
-      ## 7. Command idempotence and CAS under real concurrency
-
-      test "concurrent identical commands commit one fact; the loser conflicts", %{
-        fixture: fixture
+      test "atomic prepare, independent concurrent accept and reference consume", %{
+        fixture: f,
+        repo: repo
       } do
-        attrs = create_attrs(fixture.authority_id)
+        {pos, turn, input} = create(f)
+        [input_event] = input["events"]
+        {:ok, digest} = Codec.digest(input_event["payload"], :event)
+        first = member(pos, turn, 0)
+
+        first =
+          put_in(first, [:operation, :sources], [
+            %{"type" => "input", "event_id" => input_event["id"], "seq" => 2, "digest" => digest}
+          ])
+
+        attrs = batch(pos, turn, [first, member(pos, turn, 1)])
+        assert {:ok, prepared} = AgentRecords.prepare_operations(repo, attrs)
+        assert prepared["through_seq"] == 4
+        assert {:ok, ^prepared} = AgentRecords.prepare_operations(repo, attrs)
+
+        refs =
+          prepared["operations"]
+          |> Enum.map(fn op ->
+            Task.async(fn ->
+              args = %{
+                operation_id: op["operation_id"],
+                expected_version: 0,
+                result: %{"status" => "success", "output" => "reply body"}
+              }
+
+              assert {:ok, result} = OperationRecords.accept_result(repo, args)
+              assert {:ok, ^result} = OperationRecords.accept_result(repo, args)
+
+              assert {:error, :conflict} =
+                       OperationRecords.accept_result(repo, %{
+                         args
+                         | result: %{"status" => "other"}
+                       })
+
+              %{
+                "operation_id" => op["operation_id"],
+                "accepted_digest" => result["accepted_digest"],
+                "consumption_kind" => "tool_result"
+              }
+            end)
+          end)
+          |> Enum.map(&Task.await(&1, 10_000))
+
+        assert {:ok, agent} = AgentRecords.fetch(repo, pos.agent_id)
+        assert agent["agent"]["lock_version"] == 2
+
+        consume = %{
+          command_id: Ecto.UUID.generate(),
+          position: %{pos | lock_version: 2},
+          turn_id: turn,
+          accepted_refs: refs,
+          join: %{}
+        }
+
+        assert {:ok, consumed} = AgentRecords.consume_results(repo, consume)
+        assert consumed["through_seq"] == 6
+        assert {:ok, ^consumed} = AgentRecords.consume_results(repo, consume)
+
+        assert {:error, :conflict} =
+                 AgentRecords.consume_results(repo, %{
+                   consume
+                   | command_id: Ecto.UUID.generate(),
+                     position: %{pos | lock_version: 3}
+                 })
+
+        assert {:ok, page} = History.event_page(repo, pos.agent_id, through_seq: 6)
+        assert Enum.map(page["events"], & &1["seq"]) == Enum.to_list(1..6)
+        refute inspect(page["events"]) =~ "request body"
+        refute inspect(page["events"]) =~ "reply body"
+
+        for op <- prepared["operations"] do
+          assert {:ok, own} = History.event_page(repo, op["operation_id"])
+          assert Enum.map(own["events"], & &1["seq"]) == [1, 2]
+          assert {:ok, body} = OperationRecords.fetch(repo, op["operation_id"])
+          assert body["operation"]["accepted_result"]["output"] == "reply body"
+        end
+      end
+    end
+  end
+
+  defp rollback_tests do
+    quote do
+      test "prepare failure after first member rolls back all work", %{fixture: f, repo: repo} do
+        {pos, turn, _} = create(f)
+        a = member(pos, turn, 0)
+        b = member(pos, turn, 1)
+        # A duplicate attempt primary key fails after the first Operation and attempt.
+        b = put_in(b, [:attempt, :attempt_id], a.attempt.attempt_id)
+
+        assert {:error, :conflict} =
+                 AgentRecords.prepare_operations(repo, batch(pos, turn, [a, b]))
+
+        assert repo.aggregate(Operation, :count) == 0
+        assert repo.aggregate(Event, :count) == 2
+        assert {:ok, state} = AgentRecords.fetch(repo, pos.agent_id)
+        assert state["agent"]["lock_version"] == 1
+      end
+
+      test "forged digest, foreign turn, owner and stale generation reject atomically", %{
+        fixture: f,
+        repo: repo
+      } do
+        {pos, turn, _} = create(f)
+
+        assert {:ok, prepared} =
+                 AgentRecords.prepare_operations(repo, batch(pos, turn, [member(pos, turn, 0)]))
+
+        [op] = prepared["operations"]
+
+        assert {:ok, result} =
+                 OperationRecords.accept_result(repo, %{
+                   operation_id: op["operation_id"],
+                   expected_version: 0,
+                   result: %{"status" => "success"}
+                 })
+
+        ref = %{
+          "operation_id" => op["operation_id"],
+          "accepted_digest" => result["accepted_digest"],
+          "consumption_kind" => "tool_result"
+        }
+
+        attrs = %{
+          command_id: Ecto.UUID.generate(),
+          position: %{pos | lock_version: 2},
+          turn_id: turn,
+          accepted_refs: [ref],
+          join: %{}
+        }
+
+        bad =
+          put_in(attrs, [:accepted_refs], [
+            %{ref | "accepted_digest" => String.duplicate("0", 64)}
+          ])
+
+        assert {:error, :conflict} = AgentRecords.consume_results(repo, bad)
+
+        assert {:error, :conflict} =
+                 AgentRecords.consume_results(repo, %{attrs | turn_id: Ecto.UUID.generate()})
+
+        {foreign, foreign_turn, _} = create(f)
+
+        assert {:error, :conflict} =
+                 AgentRecords.consume_results(repo, %{
+                   attrs
+                   | position: foreign,
+                     turn_id: foreign_turn
+                 })
+
+        assert {:ok, _} =
+                 AgentRecords.restore(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: attrs.position
+                 })
+
+        assert {:error, :stale_generation} = AgentRecords.consume_results(repo, attrs)
+        current = %{attrs.position | generation: 1, lock_version: 3}
+
+        assert {:error, :conflict} =
+                 AgentRecords.consume_results(repo, %{attrs | position: current})
+
+        assert repo.aggregate(Event, :count) == 8
+      end
+    end
+  end
+
+  defp control_tests do
+    quote do
+      test "checkpoint is optional, positioned and body-free", %{fixture: f, repo: repo} do
+        {pos, _turn, _} = create(f)
+        assert {:ok, %{"checkpoint" => nil}} = History.checkpoint_at(repo, pos.agent_id, 2)
+
+        cp = %{
+          command_id: Ecto.UUID.generate(),
+          position: pos,
+          id: Ecto.UUID.generate(),
+          through_seq: 2,
+          reducer_version: 1,
+          projection: %{"pending" => [], "input_refs" => [2]},
+          continuation: "await_input",
+          safe_to_fork: true
+        }
+
+        assert {:error, :invalid_data} =
+                 AgentRecords.checkpoint(repo, %{cp | projection: %{"messages" => []}})
+
+        assert {:error, :conflict} = AgentRecords.checkpoint(repo, %{cp | through_seq: 3})
+        assert {:ok, _} = AgentRecords.checkpoint(repo, cp)
+        assert {:ok, %{"checkpoint" => checkpoint}} = History.checkpoint_at(repo, pos.agent_id, 2)
+        assert checkpoint["through_seq"] == 2
+        assert checkpoint["reducer_version"] == 1
+        assert {:ok, page} = History.event_page(repo, pos.agent_id, limit: 1, through_seq: 2)
+        assert page["next_cursor"] == 1
+        assert {:error, :limit} = History.event_page(repo, pos.agent_id, limit: 501)
+        # Corrupt cache content cannot prevent reading events or Operation bodies.
+        ContractFixture.sql(f, "UPDATE checkpoints SET data = 'invalid' WHERE id = $1", [cp.id])
+        assert {:ok, %{"checkpoint" => nil}} = History.checkpoint_at(repo, pos.agent_id, 2)
+        assert {:ok, events} = History.event_page(repo, pos.agent_id)
+        assert List.last(events["events"])["payload"] == %{"text" => "original input"}
+      end
+
+      test "competing controls yield one committed continuous position", %{fixture: f, repo: repo} do
+        {pos, turn, _} = create(f)
 
         results =
-          1..4
-          |> Enum.map(fn _ ->
-            Task.async(fn -> AgentRecords.create_agent(fixture.repo, attrs) end)
-          end)
-          |> Enum.map(&Task.await(&1, 20_000))
+          for _ <- 1..4 do
+            Task.async(fn ->
+              AgentRecords.advance(repo, %{
+                command_id: Ecto.UUID.generate(),
+                position: pos,
+                turn_id: turn,
+                type: "turn.interrupted",
+                payload: %{"reason" => "explicit"}
+              })
+            end)
+          end
+          |> Enum.map(&Task.await(&1, 10_000))
 
-        # A single-connection adapter replays the stored response; a pooled adapter
-        # may instead surface the unique-constraint conflict. Both are one fact.
-        assert Enum.all?(results, &(match?({:ok, _}, &1) or &1 == {:error, :conflict}))
-
-        assert {:ok, response} = Enum.find(results, &match?({:ok, _}, &1))
-        assert {:ok, ^response} = AgentRecords.create_agent(fixture.repo, attrs)
-
-        assert [[1]] == sql(fixture, "SELECT COUNT(*) FROM agents").rows
-        assert [[1]] == sql(fixture, "SELECT COUNT(*) FROM commands").rows
-        assert [[1]] == sql(fixture, "SELECT COUNT(*) FROM events").rows
-
-        # Different parameters under the same command identity is a conflict.
-        changed = put_in(attrs, [:command, :params], %{"op" => "create_agent", "other" => true})
-        assert {:error, :conflict} = AgentRecords.create_agent(fixture.repo, changed)
+        assert Enum.count(results, &match?({:ok, _}, &1)) == 1
+        assert {:ok, page} = History.event_page(repo, pos.agent_id)
+        assert Enum.map(page["events"], & &1["seq"]) == [1, 2, 3]
       end
+    end
+  end
 
-      test "concurrent dispatch claims have exactly one winner", %{fixture: fixture} do
-        {{:ok, prepared}, attrs} = prepare(fixture)
+  defp execution_tests do
+    quote do
+      test "claim is single-use, evidence replay checks identity, and dangling artifacts reject",
+           %{fixture: f, repo: repo} do
+        {pos, turn, _} = create(f)
+        m = member(pos, turn, 0)
+        assert {:ok, _} = AgentRecords.prepare_operations(repo, batch(pos, turn, [m]))
 
         claim = %{
-          operation_id: prepared["operation_id"],
-          attempt_id: attrs.attempt.attempt_id,
+          operation_id: m.operation.id,
+          attempt_id: m.attempt.attempt_id,
           expected_version: 0
         }
 
         results =
-          1..4
-          |> Enum.map(fn _ ->
-            Task.async(fn -> OperationRecords.claim_dispatch(fixture.repo, claim) end)
-          end)
-          |> Enum.map(&Task.await(&1, 20_000))
+          for _ <- 1..4, do: Task.async(fn -> OperationRecords.claim_dispatch(repo, claim) end)
 
-        assert Enum.count(results, &match?({:ok, _}, &1)) == 1
-        assert Enum.count(results, &match?({:error, :conflict}, &1)) == 3
-
-        assert {:ok, fetched} = OperationRecords.fetch(fixture.repo, prepared["operation_id"])
-        assert fetched["attempt"]["dispatch_state"] == "send_claimed"
-        assert fetched["attempt"]["lock_version"] == 1
-      end
-    end
-  end
-
-  defp receipt_tests do
-    quote do
-      ## 8. Receipt idempotence and accepted-result immutability
-
-      test "evidence and accepted Results are idempotent and never overwritten", %{
-        fixture: fixture
-      } do
-        {{:ok, prepared}, attrs} = prepare(fixture)
+        assert Enum.count(Enum.map(results, &Task.await/1), &match?({:ok, _}, &1)) == 1
 
         evidence = %{
           id: Ecto.UUID.generate(),
-          operation_id: prepared["operation_id"],
-          attempt_id: attrs.attempt.attempt_id,
-          executor_id: attrs.attempt.executor_id,
+          operation_id: m.operation.id,
+          attempt_id: m.attempt.attempt_id,
+          executor_id: m.attempt.executor_id,
           evidence_id: Ecto.UUID.generate(),
-          content: %{"status" => "success", "output" => %{"stdout" => "done"}}
+          content: %{"receipt" => "done"}
         }
 
-        assert {:ok, first} = OperationRecords.record_evidence(fixture.repo, evidence)
-        assert {:ok, ^first} = OperationRecords.record_evidence(fixture.repo, evidence)
+        assert {:ok, receipt} = OperationRecords.record_evidence(repo, evidence)
+        assert {:ok, ^receipt} = OperationRecords.record_evidence(repo, evidence)
 
-        conflicting = %{evidence | content: %{"status" => "failed"}}
-        assert {:error, :conflict} = OperationRecords.record_evidence(fixture.repo, conflicting)
-        assert [[1]] == sql(fixture, "SELECT COUNT(*) FROM execution_evidence").rows
-
-        bytes = :crypto.strong_rand_bytes(64)
-
-        artifact = %{
-          id: Ecto.UUID.generate(),
-          content: bytes,
-          digest: Codec.hash(bytes),
-          size: byte_size(bytes),
-          media_type: "application/octet-stream",
-          recorded_at: DateTime.utc_now()
-        }
+        assert {:error, :conflict} =
+                 OperationRecords.record_evidence(repo, %{
+                   evidence
+                   | content: %{"receipt" => "different"}
+                 })
 
         accept = %{
-          operation_id: prepared["operation_id"],
+          operation_id: m.operation.id,
           expected_version: 0,
-          result: %{"status" => "success", "output" => %{"stdout" => "done"}},
-          event: event("result.accepted", %{"operation_id" => prepared["operation_id"]})
+          result: %{"status" => "success"},
+          evidence_id: evidence.id
         }
 
-        assert {:ok, _} =
-                 Transaction.write(fixture.repo, fn -> Artifacts.put(fixture.repo, artifact) end)
-
-        assert {:ok, accepted} =
+        assert {:error, :artifact_missing} =
                  OperationRecords.accept_result(
-                   fixture.repo,
-                   Map.put(accept, :artifact_ids, [artifact.id])
+                   repo,
+                   Map.put(accept, :artifact_ids, [Ecto.UUID.generate()])
                  )
 
-        assert {:ok, ^accepted} =
-                 OperationRecords.accept_result(
-                   fixture.repo,
-                   Map.put(accept, :artifact_ids, [artifact.id])
+        assert {:ok, %{"operation" => %{"accepted_result" => nil}}} =
+                 OperationRecords.fetch(repo, m.operation.id)
+
+        assert {:ok, _} = OperationRecords.accept_result(repo, accept)
+        other = member(%{pos | lock_version: 2}, turn, 1)
+
+        assert {:ok, _} =
+                 AgentRecords.prepare_operations(
+                   repo,
+                   batch(%{pos | lock_version: 2}, turn, [other])
+                 )
+
+        assert {:ok, _} =
+                 AgentRecords.restore(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{pos | lock_version: 3}
+                 })
+
+        assert {:error, :stale_generation} =
+                 OperationRecords.claim_dispatch(repo, %{
+                   claim
+                   | operation_id: other.operation.id,
+                     attempt_id: other.attempt.attempt_id
+                 })
+      end
+
+      test "failure on second consumption event rolls back first event and Agent CAS", %{
+        fixture: f,
+        repo: repo
+      } do
+        {pos, turn, _} = create(f)
+
+        assert {:ok, prepared} =
+                 AgentRecords.prepare_operations(
+                   repo,
+                   batch(pos, turn, [member(pos, turn, 0), member(pos, turn, 1)])
+                 )
+
+        refs =
+          Enum.map(prepared["operations"], fn op ->
+            assert {:ok, accepted} =
+                     OperationRecords.accept_result(repo, %{
+                       operation_id: op["operation_id"],
+                       expected_version: 0,
+                       result: %{"status" => "success"}
+                     })
+
+            %{
+              "operation_id" => op["operation_id"],
+              "accepted_digest" => accepted["accepted_digest"],
+              "consumption_kind" => "tool_result"
+            }
+          end)
+
+        ContractFixture.reject_consumption(f, 6)
+
+        assert {:error, reason} =
+                 AgentRecords.consume_results(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{pos | lock_version: 2},
+                   turn_id: turn,
+                   accepted_refs: refs,
+                   join: %{}
+                 })
+
+        assert reason in [:conflict, :invalid_data, :storage_outcome_unknown]
+        assert {:ok, page} = History.event_page(repo, pos.agent_id)
+        assert Enum.map(page["events"], & &1["seq"]) == [1, 2, 3, 4]
+        assert {:ok, state} = AgentRecords.fetch(repo, pos.agent_id)
+        assert state["agent"]["lock_version"] == 2
+      end
+    end
+  end
+
+  defp request_tests do
+    quote do
+      test "fixed request rejects forged sources, body control and credentials without preparing work",
+           %{fixture: f, repo: repo} do
+        {pos, turn, input} = create(f)
+        m = member(pos, turn, 0)
+        [event] = input["events"]
+
+        forged =
+          put_in(m, [:operation, :sources], [
+            %{
+              "type" => "input",
+              "event_id" => event["id"],
+              "seq" => 2,
+              "digest" => String.duplicate("0", 64)
+            }
+          ])
+
+        assert {:error, :conflict} =
+                 AgentRecords.prepare_operations(repo, batch(pos, turn, [forged]))
+
+        secret =
+          put_in(m, [:operation, :description, "payload"], %{"client_secret" => "never-store"})
+
+        assert {:error, :invalid_data} =
+                 AgentRecords.prepare_operations(repo, batch(pos, turn, [secret]))
+
+        assert {:error, :invalid_data} =
+                 AgentRecords.prepare_operations(repo, %{
+                   batch(pos, turn, [m])
+                   | orchestration: %{"nested" => %{"reply" => "body"}}
+                 })
+
+        assert repo.aggregate(Operation, :count) == 0
+        assert {:ok, _} = AgentRecords.prepare_operations(repo, batch(pos, turn, [m]))
+
+        {:ok, result} =
+          OperationRecords.accept_result(repo, %{
+            operation_id: m.operation.id,
+            expected_version: 0,
+            result: %{"status" => "success"}
+          })
+
+        ref = %{
+          "operation_id" => m.operation.id,
+          "accepted_digest" => result["accepted_digest"],
+          "consumption_kind" => "tool_result"
+        }
+
+        next =
+          member(pos, turn, 1)
+          |> put_in([:operation, :sources], [%{"type" => "accepted_result", "reference" => ref}])
+
+        assert {:error, :conflict} =
+                 AgentRecords.prepare_operations(
+                   repo,
+                   batch(%{pos | lock_version: 2}, turn, [next])
                  )
 
         assert {:error, :conflict} =
-                 OperationRecords.accept_result(fixture.repo, %{
-                   accept
-                   | result: %{"status" => "uncertain"}
+                 AgentRecords.consume_results(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{pos | lock_version: 2},
+                   turn_id: turn,
+                   accepted_refs: [%{ref | "consumption_kind" => "model_result"}],
+                   join: %{}
                  })
-
-        assert {:ok, fetched} = OperationRecords.fetch(fixture.repo, prepared["operation_id"])
-        assert fetched["operation"]["accepted_result"] == accept.result
       end
 
-      ## 9. Safe error mapping and unknown outcome
+      test "independent preparation replays exact identities and changed sources or attempts conflict",
+           %{repo: repo} do
+        pos = %{agent_id: Ecto.UUID.generate()}
+        m = member(pos, Ecto.UUID.generate(), 0)
 
-      test "errors are taxonomy atoms with no SQL, connection or secret detail", %{
-        fixture: fixture
-      } do
-        for bad <- [
-              %{id: "not-a-uuid"},
-              %{definition: %{"credentials" => %{"k" => "v"}}},
-              %{definition: %{"nested" => %{"credentials" => %{"k" => "v"}}}}
+        op =
+          Map.drop(m.operation, [
+            :owner_agent_id,
+            :turn_id,
+            :step_id,
+            :role,
+            :ordinal,
+            :tool_call_id
+          ])
+
+        attrs = %{operation: op, attempt: m.attempt}
+
+        for invalid <- [
+              Map.put(op, :role, "model"),
+              Map.put(op, :step_id, "unowned-step"),
+              %{op | sources: [%{"type" => "accepted_result", "reference" => %{}}]}
             ] do
-          attrs =
-            create_attrs(fixture.authority_id)
-            |> Map.merge(bad)
-            |> then(fn attrs ->
-              Map.put(attrs, :command, command(%{"op" => "create_agent", "agent_id" => attrs.id}))
+          assert {:error, :invalid_data} =
+                   OperationRecords.prepare(repo, %{attrs | operation: invalid})
+        end
+
+        assert {:error, :conflict} = OperationRecords.fetch(repo, op.id)
+        assert {:ok, prepared} = OperationRecords.prepare(repo, attrs)
+        assert {:ok, ^prepared} = OperationRecords.prepare(repo, attrs)
+
+        assert {:error, :conflict} =
+                 OperationRecords.prepare(
+                   repo,
+                   put_in(attrs, [:attempt, :executor_boot_id], Ecto.UUID.generate())
+                 )
+
+        assert {:error, :artifact_missing} =
+                 OperationRecords.accept_result(repo, %{
+                   operation_id: op.id,
+                   expected_version: 0,
+                   result: %{"artifact_id" => Ecto.UUID.generate()}
+                 })
+      end
+    end
+  end
+
+  defp concurrency_tests do
+    quote do
+      test "claim serializes with uncommitted activation and terminal acceptance", %{
+        fixture: f,
+        repo: repo
+      } do
+        for change <- [:restore, :accept] do
+          {pos, turn, _} = create(f)
+          m = member(pos, turn, 0)
+          assert {:ok, _} = AgentRecords.prepare_operations(repo, batch(pos, turn, [m]))
+          parent = self()
+
+          writer =
+            Task.async(fn -> hold_write(repo, parent, change, pos, m) end)
+
+          assert_receive {:write_held, writer_pid}, 2000
+
+          claimant =
+            Task.async(fn ->
+              OperationRecords.claim_dispatch(repo, %{
+                operation_id: m.operation.id,
+                attempt_id: m.attempt.attempt_id,
+                expected_version: 0
+              })
             end)
 
-          assert {:error, reason} = AgentRecords.create_agent(fixture.repo, attrs)
-          assert reason in @errors
-          refute inspect(reason) =~ "SELECT"
+          try do
+            assert Task.yield(claimant, 100) == nil
+          after
+            send(writer_pid, :release_write)
+          end
+
+          assert {:ok, :ok} = Task.await(writer)
+          expected = if change == :restore, do: :stale_generation, else: :conflict
+          assert {:error, ^expected} = Task.await(claimant)
         end
+      end
 
-        # A driver-level failure inside a write transaction is outcome-unknown, not
-        # "absent": the caller must reconcile by stable identity.
-        assert {:error, :storage_outcome_unknown} = Fixture.driver_failure(fixture)
+      defp hold_write(repo, parent, change, pos, m) do
+        repo.transaction(fn ->
+          assert {:ok, _} = change_before_claim(repo, change, pos, m)
+          send(parent, {:write_held, self()})
+          receive do: (:release_write -> :ok)
+        end)
+      end
 
-        assert [[0]] == sql(fixture, "SELECT COUNT(*) FROM agents").rows
+      defp change_before_claim(repo, :restore, pos, _m) do
+        AgentRecords.restore(repo, %{
+          command_id: Ecto.UUID.generate(),
+          position: %{pos | lock_version: 2}
+        })
+      end
+
+      defp change_before_claim(repo, :accept, _pos, m) do
+        OperationRecords.accept_result(repo, %{
+          operation_id: m.operation.id,
+          expected_version: 0,
+          result: %{"status" => "uncertain"}
+        })
       end
     end
   end
 
-  defp boundary_tests do
+  defp review_tests do
     quote do
-      ## 10. Raw objects and structured credentials
+      test "accepted work cannot acquire first dispatch permission", %{fixture: f, repo: repo} do
+        {pos, turn, _} = create(f)
+        m = member(pos, turn, 0)
+        attrs = batch(pos, turn, [m])
+        assert {:ok, prepared} = AgentRecords.prepare_operations(repo, attrs)
 
-      test "raw objects, secrets and unknown fields are rejected at the write entry", %{
-        fixture: fixture
+        assert {:ok, _} =
+                 OperationRecords.accept_result(repo, %{
+                   operation_id: m.operation.id,
+                   expected_version: 0,
+                   result: %{"status" => "uncertain"}
+                 })
+
+        assert {:ok, ^prepared} = AgentRecords.prepare_operations(repo, attrs)
+
+        assert {:error, :conflict} =
+                 OperationRecords.claim_dispatch(repo, %{
+                   operation_id: m.operation.id,
+                   attempt_id: m.attempt.attempt_id,
+                   expected_version: 0
+                 })
+
+        assert {:ok, %{"attempt" => %{"dispatch_state" => "prepared"}}} =
+                 OperationRecords.fetch(repo, m.operation.id)
+      end
+
+      test "all control write entries reject foreign operations and missing artifacts", %{
+        fixture: f,
+        repo: repo
       } do
-        pid = Ecto.UUID.generate()
+        {foreign, foreign_turn, _} = create(f)
+        m = member(foreign, foreign_turn, 0)
+        assert {:ok, _} = AgentRecords.prepare_operations(repo, batch(foreign, foreign_turn, [m]))
+        {pos, turn, _} = create(f)
+
+        for bad <- [%{"operation_id" => m.operation.id}, %{"artifact_id" => Ecto.UUID.generate()}] do
+          assert {:error, reason} =
+                   AgentRecords.advance(repo, %{
+                     command_id: Ecto.UUID.generate(),
+                     position: pos,
+                     turn_id: turn,
+                     type: "context.selected",
+                     payload: %{"selected" => [bad]}
+                   })
+
+          assert reason in [:conflict, :artifact_missing]
+
+          assert {:error, ^reason} =
+                   AgentRecords.prepare_operations(
+                     repo,
+                     %{batch(pos, turn, [member(pos, turn, 0)]) | orchestration: bad}
+                   )
+
+          assert {:error, ^reason} =
+                   AgentRecords.consume_results(repo, %{
+                     command_id: Ecto.UUID.generate(),
+                     position: pos,
+                     turn_id: turn,
+                     accepted_refs: [%{}],
+                     join: bad
+                   })
+        end
+
+        assert {:ok, state} = AgentRecords.fetch(repo, pos.agent_id)
+        assert state["agent"]["lock_version"] == 1
+        assert repo.aggregate(Operation, :count) == 1
+      end
+
+      test "turn pagination uses complete groups and first sequence cursor", %{
+        fixture: f,
+        repo: repo
+      } do
+        {pos, first, _} = create(f)
+        second = Ecto.UUID.generate()
+
+        assert {:ok, _} =
+                 AgentRecords.accept_input(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: pos,
+                   turn_id: second,
+                   input: %{"text" => "second"}
+                 })
+
+        # A later control fact can still refer to the first turn.
+        assert {:ok, _} =
+                 AgentRecords.advance(repo, %{
+                   command_id: Ecto.UUID.generate(),
+                   position: %{pos | lock_version: 2},
+                   turn_id: first,
+                   type: "turn.interrupted",
+                   payload: %{}
+                 })
+
+        assert {:ok, page} = History.turns(repo, pos.agent_id, limit: 1)
+        assert [%{"turn_id" => ^first, "first_seq" => 2, "last_seq" => 4}] = page["turns"]
+        assert page["next_cursor"] == 2
+        assert {:ok, next} = History.turns(repo, pos.agent_id, limit: 1, after_first_seq: 2)
+        assert [%{"turn_id" => ^second, "first_seq" => 3}] = next["turns"]
+        assert {:ok, %{"turns" => []}} = History.turns(repo, pos.agent_id, after_first_seq: 3)
+      end
+    end
+  end
+
+  defp lifecycle_tests do
+    quote do
+      test "installation tables and committed facts reopen with their original identity", %{
+        fixture: f,
+        repo: repo
+      } do
+        assert ContractFixture.tables(f) ==
+                 Enum.sort(
+                   ~w(agents checkpoints events operations executions execution_evidence commands artifacts storage_metadata schema_migrations)
+                 )
+
+        assert ContractFixture.sql(
+                 f,
+                 "SELECT dataset_id, role, format_version FROM storage_metadata"
+               ).rows == [[f.authority_id, "authority", 2]]
+
+        assert ContractFixture.sql(f, "SELECT version FROM schema_migrations").rows == [[2]]
+        refute Process.whereis(ExecutorJournalRepo)
+        {pos, _, _} = create(f)
+        repo.stop()
+        assert {:ok, _} = Dataset.open(repo, f.opts)
+        assert {:ok, %{"agent" => agent}} = AgentRecords.fetch(repo, pos.agent_id)
+        assert agent["id"] == pos.agent_id
+      end
+
+      test "wrong format, restored backup and identity refuse reopen", %{fixture: f, repo: repo} do
+        repo.stop()
+
+        assert {:error, :dataset_mismatch} =
+                 Dataset.open(
+                   repo,
+                   Keyword.put(f.opts, :dataset_id, Ecto.UUID.generate())
+                 )
+
+        assert {:ok, _} = Dataset.open(repo, f.opts)
+        ContractFixture.sql(f, "UPDATE storage_metadata SET format_version = 3")
+        repo.stop()
+        assert {:error, :schema_unsupported} = Dataset.open(repo, f.opts)
+
+        {:ok, raw} =
+          ContractFixture.raw_connection(%{backend: @backend, database: f.opts[:database]})
+
+        ContractFixture.run_raw(
+          raw,
+          "UPDATE storage_metadata SET format_version = 2, restored_backup = TRUE"
+        )
+
+        ContractFixture.close_raw(raw)
+        assert {:error, :restored_backup} = Dataset.open(repo, f.opts)
+      end
+
+      test "concurrent identical commands create exactly one Agent and replay the same response",
+           %{fixture: f, repo: repo} do
+        attrs = %{
+          id: Ecto.UUID.generate(),
+          command_id: Ecto.UUID.generate(),
+          authority_id: f.authority_id,
+          definition: %{}
+        }
+
+        tasks = for _ <- 1..4, do: Task.async(fn -> AgentRecords.create_agent(repo, attrs) end)
+        results = Enum.map(tasks, &Task.await/1)
+        assert Enum.all?(results, &(match?({:ok, _}, &1) or &1 == {:error, :conflict}))
+        {:ok, response} = Enum.find(results, &match?({:ok, _}, &1))
+        assert {:ok, ^response} = AgentRecords.create_agent(repo, attrs)
+        assert repo.aggregate(Agent, :count) == 1
+        assert repo.aggregate(Command, :count) == 1
+        assert repo.aggregate(Event, :count) == 1
+      end
+
+      test "raw objects, unknown fields and payload/page limits reject at facade", %{
+        fixture: f,
+        repo: repo
+      } do
+        attrs = %{
+          id: Ecto.UUID.generate(),
+          command_id: Ecto.UUID.generate(),
+          authority_id: f.authority_id,
+          definition: %{}
+        }
 
         for definition <- [
-              %{"live" => self()},
-              %{"ref" => make_ref()},
-              %{"atom" => :not_persisted},
-              %{"tuple" => {1, 2}},
-              %{"struct" => DateTime.utc_now()},
-              %{"bin" => <<0xFF>>},
-              %{"credentials" => %{"password" => "x"}},
-              %{"authorization" => "Bearer abc"},
-              deep_payload()
+              %{"pid" => self()},
+              %{"credentials" => %{}},
+              %{"tuple" => {:invalid, 1}}
             ] do
-          attrs =
-            create_attrs(fixture.authority_id, %{
-              id: pid,
-              command: command(%{"op" => "create_agent", "agent_id" => pid}),
-              definition: definition
-            })
-
-          assert {:error, reason} = AgentRecords.create_agent(fixture.repo, attrs)
-          assert reason in [:invalid_data, :limit]
+          assert {:error, :invalid_data} =
+                   AgentRecords.create_agent(repo, %{attrs | definition: definition})
         end
 
-        assert [[0]] == sql(fixture, "SELECT COUNT(*) FROM agents").rows
+        assert {:error, :invalid_data} =
+                 AgentRecords.create_agent(repo, Map.put(attrs, :unknown, 1))
 
-        # Operation descriptions reject live objects and unknown envelope fields.
-        for description <- [
-              %{"kind" => "x", "protocol_version" => 1, "payload" => %{"p" => self()}},
-              %{"kind" => "x", "protocol_version" => 0, "payload" => %{}},
-              %{"kind" => "x", "protocol_version" => 1},
-              %{"kind" => "x", "protocol_version" => 1, "payload" => %{}, "credentials" => %{}}
-            ] do
-          attrs =
-            Map.merge(
-              %{attempt: nil, event: event("operation.prepared")},
-              %{operation: Map.merge(%{id: Ecto.UUID.generate()}, %{description: description})}
-            )
+        assert repo.aggregate(Agent, :count) == 0
+        m = member(%{agent_id: Ecto.UUID.generate()}, Ecto.UUID.generate(), 0)
 
-          assert {:error, reason} = OperationRecords.prepare(fixture.repo, attrs)
-          assert reason in [:invalid_data, :limit]
+        op =
+          Map.drop(m.operation, [
+            :owner_agent_id,
+            :turn_id,
+            :step_id,
+            :role,
+            :ordinal,
+            :tool_call_id
+          ])
+
+        huge =
+          put_in(op, [:description, "payload"], %{
+            "text" => String.duplicate("x", Codec.limit(:operation))
+          })
+
+        assert {:error, :limit} =
+                 OperationRecords.prepare(repo, %{operation: huge, attempt: m.attempt})
+
+        assert repo.aggregate(Operation, :count) == 0
+
+        for opts <- [[limit: 0], [after_seq: -1], [unknown: 1]] do
+          assert {:error, :invalid_data} = AgentRecords.history_page(repo, attrs.id, opts)
         end
 
-        assert [[0]] == sql(fixture, "SELECT COUNT(*) FROM operations").rows
-      end
-
-      ## 11. Page and transaction budget bounds
-
-      test "page and payload budgets are explicit errors, never truncation", %{fixture: fixture} do
-        {:ok, created} =
-          AgentRecords.create_agent(fixture.repo, create_attrs(fixture.authority_id))
-
-        agent_id = created["agent_id"]
-
-        assert {:ok, %{"events" => [event], "next_cursor" => 1}} =
-                 AgentRecords.history_page(fixture.repo, agent_id, limit: 1)
-
-        assert event["seq"] == 1
-
-        assert {:error, :invalid_data} =
-                 AgentRecords.history_page(fixture.repo, agent_id, limit: 0)
-
-        assert {:error, :limit} = AgentRecords.history_page(fixture.repo, agent_id, limit: 501)
-
-        assert {:error, :invalid_data} =
-                 AgentRecords.history_page(fixture.repo, agent_id, bogus: 1)
-
-        assert {:error, :invalid_data} = AgentRecords.history_page(fixture.repo, "nope")
-
-        oversized = %{
-          "kind" => "tool_call",
-          "protocol_version" => 1,
-          "payload" => %{"blob" => String.duplicate("x", 1_048_577)}
-        }
-
-        attrs = %{
-          operation: %{id: Ecto.UUID.generate(), description: oversized},
-          attempt: nil,
-          event: event("operation.prepared")
-        }
-
-        assert {:error, :limit} = OperationRecords.prepare(fixture.repo, attrs)
-        assert [[0]] == sql(fixture, "SELECT COUNT(*) FROM operations").rows
-
-        # Cross-table reference integrity is enforced inside one transaction.
-        assert {:error, :artifact_missing} =
-                 OperationRecords.accept_result(fixture.repo, %{
-                   operation_id:
-                     prepare(fixture) |> elem(0) |> elem(1) |> Map.fetch!("operation_id"),
-                   expected_version: 0,
-                   result: %{"status" => "success"},
-                   artifact_ids: [Ecto.UUID.generate()],
-                   event: event("result.accepted")
-                 })
-      end
-
-      defp deep_payload do
-        Enum.reduce(1..40, "leaf", fn _, acc -> %{"n" => acc} end)
+        assert {:error, :invalid_data} = AgentRecords.history_page(repo, "nope")
       end
     end
   end
 end
 
-defmodule Beamlet.Storage.SQLiteContractTest do
-  use Beamlet.Storage.ContractSuite, backend: :sqlite
+defmodule Beamlet.Storage.SQLiteFormat2Test do
+  use Beamlet.Storage.Format2Contract, backend: :sqlite
 end
 
-defmodule Beamlet.Storage.PostgresContractTest do
-  use Beamlet.Storage.ContractSuite, backend: :postgres
-
+defmodule Beamlet.Storage.PostgresFormat2Test do
+  use Beamlet.Storage.Format2Contract, backend: :postgres
   alias Beamlet.Storage.ContractFixture
 
-  test "a connection whose synchronous_commit was downgraded is rejected by the guard", %{
-    fixture: fixture
-  } do
-    assert {:raised, message} = ContractFixture.reject_downgraded(fixture)
+  test "a downgraded synchronous_commit connection is rejected", %{fixture: f} do
+    assert {:raised, message} = ContractFixture.reject_downgraded(f)
     assert message =~ "unsupported storage connection settings"
   end
 end

@@ -1,224 +1,167 @@
-# Storage foundation (stage A component)
+# Storage format 2
 
-This internal library adds no Application callback, Agent/Runtime dependency or
-host configuration. It does not activate durable business behavior. The record
-transaction facades (`AgentRecords`, `OperationRecords`, `ExecutorJournal`) are
-implemented below; do not expose raw Repos to UI code.
+`beamlet_storage` is an opt-in Ecto library. Loading it starts no Repo and performs
+no migration, network call, Handler invocation or filesystem business effect.
+Agent/Runtime integration is delivered separately; the storage APIs below replace
+the previous message-checkpoint model without compatibility shims.
 
-## Explicit installation and reopen
+## Installation and durability
 
-Create trusted local directories first. Use real files, not in-memory SQLite, for
-durable tests. `initialize` refuses an existing file; `open` refuses a missing or
-uninstalled dataset and never runs migrations. Both return `{:ok, repo_pid}` and
-leave a linked Repo running. An embedding supervisor may explicitly use
-`start: {Beamlet.Storage.Dataset, :open, [repo, options]}` in its child spec.
+`Dataset.initialize(repo, opts)` explicitly installs a **new** authority format 2
+(migration 2) or executor journal format 1 (migration 1). The only authority
+migration is `priv/authority_migrations/2_authority_v2.exs`; old authority datasets
+are refused with `schema_unsupported`. No automatic conversion, clearing or repair
+exists. `Dataset.open/2` refuses missing files, wrong dataset ID/role, unsupported
+format/migration and restored-backup markers. Save dataset IDs outside the VM.
 
-```elixir
-alias Beamlet.Storage.{Dataset, SQLiteAuthorityRepo, ExecutorJournalRepo}
-authority = [database: "/absolute/local/authority.db",
-  peer_database: "/absolute/local/journal.db", dataset_id: Ecto.UUID.generate()]
-journal = [database: authority[:peer_database],
-  peer_database: authority[:database], dataset_id: Ecto.UUID.generate()]
-{:ok, _} = Dataset.initialize(SQLiteAuthorityRepo, authority)
-{:ok, _} = Dataset.initialize(ExecutorJournalRepo, journal)
-SQLiteAuthorityRepo.stop()
-{:ok, _} = Dataset.open(SQLiteAuthorityRepo, authority)
-```
+SQLite options require absolute, symlink-free distinct `database` and
+`peer_database` paths and a canonical UUID `dataset_id`. SQLite uses WAL,
+synchronous FULL, FK ON, pool size 1, immediate writes and the 2000 ms interruptible
+Exqlite busy handler (`PRAGMA busy_timeout` reads 0). PostgreSQL takes trusted
+connection options and a dedicated, already-provisioned empty database; pool size
+4 and after-connect fsync/synchronous_commit guards remain mandatory. Query
+calls retain the 5000 ms budget. Only one authority adapter may run in a VM.
 
-Save the two dataset IDs outside the running VM; authority and executor IDs are
-separate stable identities. Never generate new expected IDs for reopen. Paths must
-be absolute, local and symlink-free; alias spelling and existing hardlinks are
-rejected. Directory ownership must prevent concurrent path replacement. This is
-not a filesystem race sandbox, cross-host fencing, or network-filesystem support.
-Only one authority adapter is selected per VM through Dataset startup.
+Authority tables are agents, events, checkpoints, operations, executions,
+execution_evidence, commands and artifacts, plus installation metadata and Ecto's
+schema_migrations. The executor has journal_attempts, metadata and migrations.
+Use consistent backups, never copy an active SQLite database file alone. A
+restored dataset remains blocked until an explicit operator resolution.
 
-Each dataset has one singleton `storage_metadata` installation row: `id=1`,
-`dataset_id`, `role` (`authority` or `journal`), `format_version=1`,
-`restored_backup=false`. This is **not** an additional business entity. Physical
-counts are authority **8 business + 1 installation metadata** tables, journal
-**1 attempt + 1 installation metadata** tables, plus each Repo's Ecto-owned
-`schema_migrations`. Identity/role mismatch, missing metadata, unsupported format
-or migration version, and a true backup marker all refuse reopen. There is no
-API that silently repairs identity or clears a backup marker. Operators must mark
-known backup restores before use; the marker cannot detect arbitrary rollback.
+## Agent writes
 
-Installation reserves the SQLite file exclusively, then atomically creates the
-metadata table and row, then explicitly runs the role's version-1 Ecto migration.
-Business DDL is transactional. Failed/interrupted installation leaves a reserved
-file or incomplete installation that cannot reopen; it is never silently retried
-as a new dataset. No business rows are admitted in that state. Future upgrades
-need an explicitly reviewed migration action; reopen cannot run them for you.
-Migration downgrade deliberately refuses destructive rollback.
+All parameter maps use atom keys at the facade boundary; persisted JSON uses
+string keys. Stable identities are canonical UUID strings; `step_id` and
+`tool_call_id` are bounded strings. Every command-bearing write hashes **all**
+parameters rather than trusting a caller-provided params digest. A repeated
+`command_id` within the Agent scope returns the exact committed response;
+different parameters conflict. Writes never retry automatically.
 
-For PostgreSQL use `PostgresAuthorityRepo` with `database`, `hostname` (or
-`socket_dir` + `port`), `username` and trusted connection options supplied directly
-(never persisted in records). Provision a dedicated empty database first; Dataset
-does not create a server or PostgreSQL database. PostgreSQL uses pool size 4, Read
-Committed defaults, ordinary tables, and checks fsync/synchronous_commit on every
-connection; a connection that fails the check is refused.
+A `position` is `%{agent_id: id, lock_version: version, generation: generation}`.
+Generation is checked before version. Successful transitions return string-keyed
+`agent_id`, `generation`, `lock_version`, `through_seq`, `history_seq` and `events`.
+Use the returned version for the next command. `history_seq == through_seq` counts
+committed Agent events only; there are no reserved acceptance positions.
 
-PostgreSQL is executed by the shared contract suite
-(`test/beamlet/storage/storage_contract_test.exs`) against an isolated cluster: point
-`BEAMLET_PG_SOCKET_DIR` (and `BEAMLET_PG_PORT`, default 5432) at a throwaway
-cluster; each test creates and drops its own `beamlet_contract_<n>` database. The
-suite asserts the same facts on both adapters. Without those variables the
-PostgreSQL module fails loudly instead of reporting a skip as a pass.
+- `AgentRecords.create_agent(repo, %{command_id: uuid, id: uuid, authority_id: dataset_id, definition: json, alias: optional_string})` creates an Agent and `agent.created` at seq 1, version/generation 0. No checkpoint is required.
+- `accept_input(repo, %{command_id: uuid, position: position, turn_id: uuid, input: %{"text" => text}})` records original input independently in `input.accepted` and advances one position. A turn cannot reuse an existing input identity.
+- `prepare_operations(repo, %{command_id: uuid, position: position, turn_id: uuid, operations: members, orchestration: control_json})` commits 1–8 requests, all attempts, and one Agent preparation event per member atomically. Each member is `%{operation: operation, attempt: attempt}`. See below. Only the active input turn and matching Agent owner are legal. IDs and ordinals within a batch must be unique. The response adds `operations`, each holding `operation_id`, `description_digest`, `attempt_id`, `attempt_version: 0`, `lock_version: 0`, `dispatch_state: "prepared"`. Dispatch must claim this same attempt after commit.
+- `consume_results(repo, %{command_id: uuid, position: position, turn_id: uuid, accepted_refs: refs, join: control_json})` validates owner, turn, preparation generation and accepted digest before appending `operation.result_consumed`. Each reference is exactly `%{"operation_id" => uuid, "accepted_digest" => sha256, "consumption_kind" => "model_result" | "tool_result" | "evidence_resolution"}`. Event payload is that reference plus `join`; it contains no Result body. Consumption dedupe is Agent+Operation+kind. A new command overlapping prior consumption conflicts; replay the original command for its original response. Reference order is explicit caller order.
+- `advance(repo, %{command_id: uuid, position: position, turn_id: uuid_or_nil, type: type, payload: control_json})` records `turn.interrupted`, `agent.continue_decided`, `agent.config_changed` or `context.selected`.
+- `restore(repo, %{command_id: uuid, position: position})` CAS-increments generation and version, clears the checkpoint pointer and appends `agent.activated` with interrupted continuation. It does not dispatch, replay, or resolve work.
+- `checkpoint(repo, %{command_id: uuid, position: position, id: uuid, through_seq: seq, reducer_version: positive_integer, projection: control_json, continuation: known_continuation, safe_to_fork: boolean})` writes an optional cache at the exact current high water, increments lock_version without allocating an event, and stores projection SHA-256, reducer_version and through_seq. Body-bearing keys (messages, assistant, request, reply, result, output, payload, content, text, arguments, prompt, tools, schema) are rejected recursively. Operation references must belong to the Agent and accepted digests must match.
 
-## Connection and transaction rules
+Operation references and accepted digests in preparation orchestration, consumption
+joins and ordinary control events receive the same transaction-local validation as
+checkpoints. Nested artifact references are verified at all these entries.
 
-SQLite has pool size 1, WAL, FULL, FK ON, query timeout 5000 ms, configured busy
-budget 2000 ms and deferred default transactions. Every physical connection,
-including reconnects, checks WAL/FULL/FK. **Resolved Exqlite 0.42.0 uses a custom
-interruptible busy handler, so `PRAGMA busy_timeout` reads 0.** It is checked as 0,
-not falsely reported as 2000. `Exqlite.Connection.set_busy_timeout/2` calls
-`Exqlite.Sqlite3.set_busy_timeout/2` (NIF) rather than overwriting that handler with
-a PRAGMA. Real separate-connection tests verify finite contention failure,
-success after lock release, and timeout/connection teardown while still blocked.
-These are scheduling-tolerant tests, not hard-real-time or physical power-loss
-claims. Do not set PRAGMA busy_timeout and accidentally replace the handler.
+## Operations and execution
 
-`Transaction.write(repo, Ecto.Multi | zero_arity_function)` applies immediate mode
-only to SQLite writes. Ordinary Repo reads and read transactions remain deferred.
-It does not retry. Driver/connection failures on writes conservatively return
-`storage_outcome_unknown`; re-read stable IDs before external work. `Transaction.read/1`
-normalizes driver failures to `storage_unavailable`. The record facades wrap
-`Transaction.write/2` once, map changesets/constraints into safe domain errors and
-enforce CAS/generation, command identity and business transition invariants. Do not
-perform network/handler/filesystem effects inside any transaction. A timeout is not
-proof of rollback or non-execution.
+An owned operation contains `id`, `owner_agent_id`, `turn_id`, `step_id`, `role`
+(`model`, `tool`, `summary`), `ordinal`, optional `tool_call_id`, `description` and
+`sources`. Description has `kind`, `protocol_version: 1`, complete logical request
+in `payload`, and optional `refs`, `budget`, `claims`, `safety`. Credentials remain
+transient and are rejected by the codec. Source metadata and requests are immutable.
+`owner_generation` and distinct Agent `prepared_seq` are assigned by Storage;
+Operation `history_seq` belongs to its own stream and changes on acceptance.
 
-## Record transactions
+Sources are an ordered list of up to 128 entries. Input sources are exactly
+`%{"type" => "input", "event_id" => uuid, "seq" => seq, "digest" => sha256}`;
+the digest covers the original event payload. Accepted output sources are exactly
+`%{"type" => "accepted_result", "reference" => accepted_ref}` and require an
+existing consumption event. References must be owned or explicitly inherited in
+the same dataset. Inherited sources are `inherited_input` (event identity/seq,
+source_agent_id, artifact_id, digest) or `inherited_result` (accepted reference,
+source_agent_id, description_digest, resolution). Exact entries must already be
+in this Agent's validated context.inherited manifest before request preparation.
+Inherited references authorize content only, never consumption of source work.
+Policy/version/cutoff/transformation metadata can be fixed in description `refs`;
+source selection is owned by the request, not copied into Agent events.
 
-`AgentRecords`, `OperationRecords` and `ExecutorJournal` are the only write
-entry points; each validates identity, strict JSON schema, stored owner/turn,
-version and generation itself instead of trusting the caller. Every mutation is
-one `Ecto.Multi`-equivalent transaction: any `{:error, reason}` rolls back the
-whole write set.
+An attempt is `%{attempt_id: uuid, executor_id: uuid, executor_boot_id: uuid,
+budget: json}`. Exactly one attempt is required for newly prepared work.
+`OperationRecords.prepare(repo, %{operation: operation, attempt: attempt})` is
+only for independent ownerless Operations with empty sources and no Agent role,
+turn, step, ordinal or tool-call metadata; owned work uses the atomic Agent API.
 
-```elixir
-{:ok, map} | {:error, :invalid_data | :limit | :conflict | :stale_generation |
-   :schema_unsupported | :artifact_missing | :unsafe_checkpoint |
-   :source_not_frozen | :storage_unavailable | :storage_outcome_unknown}
-```
+- `claim_dispatch(repo, %{operation_id: uuid, attempt_id: uuid, expected_version: 0})` CASes prepared to send_claimed once. An old owner's generation or an already accepted Result is refused. PostgreSQL holds Operation and Agent row locks through the claim transaction so acceptance/activation cannot invalidate checked facts before commit; SQLite uses its immediate transaction. This call never sends an admit.
+- `record_evidence(repo, %{id: uuid, operation_id: uuid, attempt_id: uuid, executor_id: uuid, evidence_id: uuid, content: json, resolution: optional_json})` verifies attempt/executor and dedupes receipt identity; changed content, binding or resolution conflicts. Late evidence may still be recorded after generation changes.
+- `accept_result(repo, %{operation_id: uuid, expected_version: version, result: json, evidence_id: optional_uuid, artifact_ids: optional_uuid_list})` is a NULL-to-accepted CAS. It returns `accepted_result`, `accepted_digest`, evidence ID and Operation version/seq. Identical retries replay; conflicting acceptance never overwrites. Acceptance events use **Operation scope**, never Agent version/seq. The authority retains the Result body and all required local artifacts.
+- `AgentRecords.command_response(repo, agent_id, command_id)` returns the original committed response by stable command identity after an unknown outcome (`conflict` when absent).
+- `fetch(repo, operation_id)` returns `operation` and `attempt`. `AgentRecords.fetch/2` returns the Agent independently of optional checkpoint health. Read the cache using `History.checkpoint_at/3`.
 
-- `AgentRecords.create_agent(repo, %{command: %{scope_id, command_id, params}, id, authority_id, alias, definition, generation: 0, forked_from_agent_id, forked_from_checkpoint_id, checkpoint: %{id, data, safe_to_fork: true}, event: %{id, type, payload}})` writes Agent, initial `await_input` checkpoint, first history event (`history_seq = 1`) and the command response together. Replaying the same command identity and params returns the stored response; different params is `conflict`.
-- `fork(repo, %{command: %{scope_id: source_agent_id, command_id, params}, id, new_checkpoint_id, authority_id, alias, source_agent_id, checkpoint_id, expected_version, source: %{freeze: :frozen | :idle, environment: :confirmed_stopped | :unconfirmed}, data, event})` copies one immutable checkpoint of the source into a new independent Agent in one transaction: the Agent row with `forked_from_*` provenance only, one `context.inherited` event per copied message (fresh event id, `source_agent_id`/`source_checkpoint_id` markers, seq 2..n+1), the new `await_input` checkpoint carrying the copied messages plus `fork`/`environment` metadata, the fork event at seq 1 and the command response. It reads the source (it writes no source Agent, checkpoint or event row; only the fork command receipt lives in the source's command namespace so a retry replays) and requires `lock_version == expected_version`, `safe_to_fork = true`, a complete boundary (`await_input`/`await_model_result`/`completed`, empty `pending`/`order`/`results`/`assistant`/`blocked`) and complete Tool-call/result pairing (`unsafe_checkpoint`), no undecided source Operation unless `freeze: :frozen` (`source_not_frozen`), verified artifact references, and a copied payload within 1 MiB / 128 messages (`limit`, never truncated). An unconfirmed stop or any accepted `uncertain`/`deadline`/`cancelled`/`unknown` Result records `environment.risk = "unconfirmed"` on the new Agent. A replayed command returns the stored new locator; different params is `conflict`.
-- `accept_input(repo, %{command, agent_id, expected_version, expected_generation, turn_id, checkpoint: %{id, data, continuation, safe_to_fork}, event})` starts a new turn: CAS on `lock_version`+`generation`, `history_seq + 1`, checkpoint and event in one transaction. Reusing the head checkpoint's turn is `conflict`; a stale generation is `stale_generation`.
-- `consume_result(repo, %{agent_id, expected_version, expected_generation, turn_id, operations: [%{operation_id, consumption_kind}], checkpoint})` verifies the head checkpoint's active turn, Operation owner Agent/turn and non-null accepted Result, then writes one `result.consumed` event per Operation in `ordinal` order plus the next checkpoint. Dedupe is `events(scope_id, dedupe_key)` with `dedupe_key = "consume:<operation_id>:<kind>"`; re-consuming the same batch replays the stored event ids, a partial overlap is `conflict`. A source/forked Agent's Operation is rejected by ownership.
-- `advance(repo, %{agent_id, expected_version, expected_generation, turn_id | nil, checkpoint, event, command?, adoption?})` advances the head checkpoint without consuming results; `turn_id` is optional for a decision at a no-turn boundary, and `adoption: %{operation_id, accepted_digest}` makes the transaction refuse to advance on an Operation this Agent does not own or on a stored accepted Result whose digest differs (`conflict`). The Operation row is never written.
-- `fetch(repo, agent_id)` returns `%{"agent" => map, "head_checkpoint" => map | nil}`; `history_page(repo, agent_id, after_seq: 0, limit: 100)` returns `%{"events" => [...], "next_cursor" => seq | nil}` with limit 1..500 and a 4 MiB page budget (`limit` error for one oversized event).
-- `OperationRecords.prepare(repo, %{operation: %{id, description, owner_agent_id?, turn_id?, tool_call_id?, ordinal?}, attempt: nil | %{attempt_id, executor_id, executor_boot_id, budget}, agent: nil | %{expected_version, expected_generation}, event})` writes the immutable Operation (description digest computed here), at most one `prepared` Execution and the history event (owned Operations share the Agent stream and require the Agent version). Replaying the same Operation id and description returns the stored response; another description or attempt is `conflict`.
-- `claim_dispatch(repo, %{operation_id, attempt_id, expected_version})` CASes `prepared -> send_claimed` and returns only committed data. It never sends anything; an already claimed or stale attempt is `conflict`, so a caller cannot mistake a replay for permission to send twice.
-- `record_evidence(repo, %{id, operation_id, attempt_id, executor_id, evidence_id, content, digest?, resolution?})` verifies the attempt/executor identity, computes the content digest and dedupes on `(executor_id, evidence_id)`: same digest replays, different digest is `conflict` and the original row stays.
-- `accept_result(repo, %{operation_id, expected_version, result, event, evidence_id?, artifact_ids?, agent?})` CASes `accepted_result IS NULL`; it never overwrites an accepted Result. Identical retries replay; different results are `conflict`. Evidence references must belong to the Operation and artifact references are verified in the same transaction (`artifact_missing`), otherwise nothing is accepted.
-- `fetch(repo, operation_id)` returns `%{"operation" => map, "attempt" => map | nil}`.
-- `ExecutorJournal.claim_start(repo, %{id, authority_id, operation_id, attempt_id, description_digest, executor_id, executor_boot_id})` is insert-once on `(authority_id, attempt_id)`: a duplicate returns the stored state (including `terminal`/`unknown_after_restart`) and never restarts a worker; changed identity is `conflict`.
-- `record_stop(repo, %{authority_id, attempt_id, stop_reason, expected_version})` writes only the first `deadline`/`cancelled` cause; competing triggers return the stored cause unchanged.
-- `record_terminal(repo, %{authority_id, attempt_id, expected_version, termination, terminal_result, terminal_artifacts, receipt_id, receipt_digest, receipt})` writes the terminal state, validated attachments and receipt atomically, and only from `start_intent`. `unknown_after_restart` can never become terminal; an identical duplicate replays, different content is `conflict`.
-- `acknowledge(repo, %{authority_id, attempt_id, expected_version})` records authority receipt acknowledgement only; it is idempotent and never implies the worker stopped.
-- `mark_unknown_after_restart(repo, %{authority_id, executor_id, keep_executor_boot_id})` moves other boots' `start_intent` rows to `unknown_after_restart` and returns `%{"marked" => n}`; nothing ever converts that state into "not executed".
-- `fetch(repo, authority_id, attempt_id)` returns the stored journal row; an unknown stable identity is `conflict`.
+## Same-authority reference fork
 
-`conflict` is also the plain-data answer for an unknown stable identity or a state
-that does not match the request; it never carries SQL, connection or secret
-detail. No facade retries a write transaction, runs unbounded work or performs
-network/handler/filesystem effects.
+`AgentRecords.fork(repo, %{command_id:, position:, id:, through_seq:, timeline:,
+inheritance:, resolutions:, risk:, fork_request:})` is the transaction entry used
+by `Beamlet.Agent.fork/4`. fork_request holds through_seq, expected_version and the
+normalized source confirmation; replay preserves the original response. It checks
+source position, timeline membership at the selected cutoff, inherited manifest
+and resolution evidence before creating the independent Agent, created/forked/
+context.inherited events and any missing shared input artifacts. PostgreSQL holds
+a shared source row lock; source rows are not updated. No Operation/Execution,
+pending/command/consumption state or message transcript is cloned. The higher
+Agent boundary validates complete safe control and fences local senders.
 
-## Data and artifacts
+`Inheritance` captures and verifies a flat, bounded content closure. Input artifacts
+are canonical original input payloads reused by digest; accepted refs check original
+Operation preparation and acceptance digests, without a parent event-log dependency
+when replaying the child. Nested artifact content remains authority-local and is
+verified. No automatic GC exists. See the Agent README for risk/continuation and
+read/export semantics; no legacy checkpoint-copy entry exists.
 
-`Codec.encode/2`, `decode/2`, `digest/2`, `hash/1`, `uuid?/1`, `limit/1` implement
-strict persisted JSON, sorted-key SHA-256 and canonical UUID checking. Only plain
-maps with string keys, proper arrays, valid UTF-8 strings, finite BEAM numbers,
-booleans and null are supported. Duplicate JSON keys, live objects, arbitrary
-structs, atom/tuple values and unknown schema columns are rejected, as are a fixed
-set of credential key names (`credentials`, `api_key`, `token`, `password`,
-`secret`, `authorization`, `private_key`, …) and keys with an underscore/dash-separated
-credential segment such as `client_secret` or `bearer_token`. This is a heuristic
-key check, not a secret scanner: `max_tokens` stays storable, and values inside
-ordinary text are never inspected. Decode checks recursion before tree allocation. Traversal bounds
-are depth 32 and 100000 nodes (keys included), with byte accounting before whole
-JSON construction. JSON size is **not** existing ETF wire size. No text/binary
-secret scanner is claimed; callers still own content policies and volume/backup
-permissions. Codec does not normalize numeric types or Unicode strings.
+## History, content and failure contracts
 
-Schemas live in `Beamlet.Storage.Schema.*`, with `changeset(record, attrs)`.
-The parameterized `JSON` Ecto type validates canonical encoding on cast/dump/load,
-including field-specific operation/command/result/checkpoint limits. Fixed column
-names, UUIDs, versions, scalar ranges and enums are validated; record facades must
-still validate each definition/description/result/event payload vocabulary and
-references, cross-row ownership, content digests and transition immutability.
-Provenance IDs do not become ancestor-loading dependencies. `tool_call_id` is a
-bounded provider string, not required to be a UUID.
+`Events` owns supported event types/version 1 and the control-body exclusion.
+`History.event_page/3` and `AgentRecords.history_page/3` are keyset pages with
+`after_seq`, fixed `through_seq`, row limit default 100/max 500 and byte budget
+max 4 MiB. History also provides event, turns, operations, operation, evidence and
+checkpoint pages. Owned Operation pagination uses immutable `prepared_seq`, so
+acceptance cannot reorder or skip requests. Turn pagination uses `after_first_seq`
+and returns the last complete group's `first_seq` as cursor; interleaved later
+facts do not duplicate a turn or skip the next one. `checkpoint_at/3` selects by
+`through_seq`, checks JSON/digest, and returns a nil cache for missing/corrupt data;
+raw events and request/Result content remain readable independently.
 
-`Artifacts.changeset/1`, `put/2`, `fetch/2`, `verify_references/2` handle authority
-binary content with SHA-256, media type and exact raw byte size (max 16 MiB).
-`put` and reference validation require an existing transaction. Use them from
-`Ecto.Multi.run`; content and referencing rows commit/roll back together.
-`fetch` verifies content integrity; absent data returns `artifact_missing`.
-There is no GC or external object store. Referencing JSON fields are not SQL FKs;
-the record facade must call reference validation in its transaction.
+Codec/JSON preserve strict string keys, UTF-8, duplicate-key refusal, sorted-key
+SHA-256, finite values, depth 32/node 100000, recursive structured credential-key
+refusal and field byte caps. Existing persisted codec caps remain Operation and
+command 1 MiB; event/checkpoint/Result 4 MiB. These are JSON storage budgets,
+**not permission to enlarge existing Actions/Runtime wire envelopes**.
 
-Journal `terminal_artifacts` is a nullable JSON column with a **24 MiB encoded**
-limit and a basic version-1 container check: `%{"version" => 1, "items" => %{}}`.
-`Beamlet.Storage.TerminalArtifacts` owns the full attachment protocol:
-`encode/1` requires the explicit container (empty items allowed), at most 64
-canonical UUID keys mapped to exactly `digest`, `media_type`, `size_bytes`,
-`content_base64`, strict canonical base64, per-item decoded <= **16 MiB** and
-aggregate decoded per attempt <= **16 MiB**, encoded container <= **24 MiB**,
-and verifies digest/size_bytes against the decoded bytes. `content/2` returns the
-decoded bytes and `artifact_missing` for an unknown id. `ExecutorJournal`
-additionally caps the four stored terminal fields at a **32 MiB** logical
-transaction total and treats a duplicate terminal with different receipt,
-result or attachment content as `conflict`. The journal cannot resolve authority
-artifact rows; authority reference integrity is enforced by
-`OperationRecords.accept_result/2` via `Artifacts.verify_references/2` in the
-authority transaction. Artifacts never bypass existing legal Result/wire limits.
-Authority attachment transfer is a different database transaction, not cross-DB
-atomicity.
+`Artifacts` retains verified binary content (max 16 MiB) in the authority
+transaction. `References` verifies nested `artifact_id`, `artifact_ids` and
+`artifact_refs` fields on definitions, requests, accepted Results and checkpoints;
+explicit acceptance artifact IDs are also verified. No GC exists.
 
-## Read-only history queries
+`ExecutorJournal` remains format 1 with unchanged APIs and semantics: insert-once
+start_intent; first stop cause; terminal/receipt/attachments atomic; restart
+unknown never restarts or becomes terminal; acknowledgement never proves stopping.
+Attachments retain 64 items, 16 MiB decoded total/per item, 24 MiB encoded and
+32 MiB terminal transaction budgets. Authority/journal commits are separate.
 
-`Beamlet.Storage.History` answers history questions from committed facts only; it
-never starts an Agent, coordinator or Runtime retention window. Pages are keyset
-paginated as one bounded statement each, with no enclosing read transaction. Event
-and checkpoint pages are bounded by rows plus a byte budget, the turn and operation
-views by rows only (`:limit` 1..500, `:max_bytes` 4096..4 MiB). A page never splits a record: a
-record larger than the byte budget is returned alone with `over_budget: true` and
-stays bounded by its own codec limit.
+Safe errors include invalid_data, limit, conflict, stale_generation,
+schema_unsupported, artifact_missing, storage_unavailable and
+storage_outcome_unknown. Connection failures conservatively mean unknown write
+outcome: reread stable command/Operation identity before any external work.
+Transactions contain no network, Handler or filesystem business effects.
 
-- `event_page(repo, scope_id, after_seq:, through_seq:, limit:, max_bytes:, type:, types:, turn_id:, operation_id:, origin:)` returns `%{"events", "next_cursor", "over_budget", "through_seq"}` with `origin` = `performed` | `inherited` per entry (an entry whose `source_agent_id` names another Agent is inherited, never this scope's work).
-- `event(repo, scope_id, seq)`, `checkpoint_at(repo, agent_id, seq)`, `checkpoint_page(repo, agent_id, after:, through_recorded_at:, limit:, max_bytes:)`.
-- `turns(repo, agent_id, after_first_seq:, limit:)`, `operations(repo, agent_id, after_history_seq:, limit:)`, `operation(repo, operation_id)`, `evidence(repo, operation_id)`.
+## Verification
 
-Checkpoints carry no history sequence. `checkpoint_at/3` therefore maps an event
-cursor to the newest checkpoint committed at or before that event and returns
-`derived_by: "commit_order"`; a checkpoint written in the same transaction as its
-event is visible at that sequence. Checkpoints are immutable, so later evidence
-never rewrites an earlier `as_of_seq` answer.
-
-## Focused checks
+From the umbrella root:
 
 ```sh
-mix deps.get
-mix compile --warnings-as-errors
-mix format --check-formatted
-mix credo
-# Requires an isolated cluster: BEAMLET_PG_SOCKET_DIR / BEAMLET_PG_PORT.
-# Without it the PostgreSQL contract module fails loudly (no silent skip).
-mix test apps/beamlet_storage/test
-BEAMLET_BACKEND_BUILD=1 mix compile --warnings-as-errors
-BEAMLET_BACKEND_BUILD=1 mix test apps/beamlet_storage/test
-```
-
-SQLite-only files can be run without PostgreSQL, for example
-`mix test apps/beamlet_storage/test/beamlet/storage/dataset_test.exs`.
-
-Tests create isolated files under the system temporary directory and remove their
-own directories. No existing databases or credentials are needed for this SQLite
-component suite when only SQLite is under test. The dual-adapter contract suite
-additionally needs an isolated PostgreSQL cluster:
-
-```sh
-BEAMLET_PG_SOCKET_DIR=/tmp/<cluster>/sock BEAMLET_PG_PORT=5439 \
+BEAMLET_PG_SOCKET_DIR=/absolute/isolated/cluster/socket BEAMLET_PG_PORT=55481 \
   mix test apps/beamlet_storage/test
+mix format --check-formatted
+mix compile --warnings-as-errors
+mix credo --strict --all
 ```
+
+The shared contract suite executes real SQLite files and fresh PostgreSQL test
+databases, including competing claims/control CAS, independent acceptance,
+preparation and consumption rollback, owner/turn/digest/generation refusal and
+checkpoint-independent reads. PostgreSQL needs a local throwaway cluster; each
+fixture creates/drops only its own database. Missing environment is a test failure.
+Agent/Runtime callers use these format2 contracts. Storage-only results still do
+not imply full umbrella, named-peer or release acceptance; record each gate.

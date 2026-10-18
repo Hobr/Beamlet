@@ -1,1359 +1,820 @@
 defmodule Beamlet.Storage.AgentRecords do
-  @moduledoc """
-  Atomic Agent transactions: creation with an initial checkpoint, accepted input,
-  exactly-once result consumption and bounded reads. Each write validates its own
-  identity, strict JSON schema, owning Agent/turn, current accepted Result, version
-  and generation inside the transaction; nothing is trusted from the caller.
-  `history_seq` and `lock_version` advance by CAS in the same transaction.
-  """
+  @moduledoc "Agent inputs and reference-only orchestration, atomically committed with prepared work."
   import Ecto.Query
-  alias Beamlet.Storage.{Artifacts, Codec, Records, Transaction}
-  alias Beamlet.Storage.Schema.{Agent, Checkpoint, Command, Event, Operation}
 
-  @continuations ~w(await_input model_prepared tool_batch_prepared await_model_result await_tool_results reply_recorded results_to_consume ready_for_next_step await_delegation await_peer interrupted blocked completed)
-  @consumption_kinds ~w(tool_result model_result evidence_resolution)
-  # A fork copies only a boundary where nothing of the source turn is still in
-  # flight: no reply awaiting a batch, no results waiting to be consumed.
-  # Checkpoints that carry a complete, copyable message boundary.
-  @fork_idle ~w(await_input await_model_result completed)
-  # ...of which only these are actually quiet: a mid-turn checkpoint may be copied
-  # for inspection, but forking it needs a frozen source.
-  @fork_quiet ~w(await_input completed)
-  @fork_source_freezes ~w(frozen idle)a
-  @fork_source_environments ~w(confirmed_stopped unconfirmed)a
-  @risk_states ~w(uncertain deadline cancelled unknown)
-  @max_messages 128
-  @max_fork_bytes 1_048_576
-  @fork_evidence_limit 256
-  @max_consumptions 128
-  @page_default 100
-  @page_max 500
-  @page_bytes 4_194_304
+  alias Beamlet.Storage.{
+    Codec,
+    Events,
+    History,
+    Inheritance,
+    OperationRecords,
+    Records,
+    References,
+    Transaction
+  }
+
+  alias Beamlet.Storage.Schema.{Agent, Checkpoint, Command, Event, Operation}
+  alias Ecto.Adapters.SQL
 
   def create_agent(repo, attrs) do
-    with {:ok, input} <- validate_create(attrs) do
-      Records.transact(repo, fn -> write_create(repo, input) end)
+    with {:ok, _} <-
+           Records.fields(attrs, [:command_id, :id, :authority_id, :definition], [:alias]),
+         {:ok, _} <- Records.uuid(attrs.command_id),
+         {:ok, _} <- Records.uuid(attrs.id),
+         {:ok, _} <- Records.uuid(attrs.authority_id),
+         {:ok, _} <- Records.optional_text(attrs[:alias], 255),
+         {:ok, _} <- Records.json(attrs.definition, :operation) do
+      command(repo, attrs.id, attrs.command_id, attrs, fn -> create(repo, attrs) end)
+    end
+  end
+
+  defp create(repo, attrs) do
+    with :ok <- authority(repo, attrs.authority_id),
+         :ok <- References.verify(repo, attrs.definition),
+         {:ok, agent} <-
+           Records.insert(
+             repo,
+             Agent.changeset(%Agent{}, %{
+               id: attrs.id,
+               authority_id: attrs.authority_id,
+               alias: attrs[:alias],
+               definition: attrs.definition,
+               generation: 0,
+               lock_version: 0,
+               history_seq: 1
+             })
+           ),
+         {:ok, event} <-
+           event(repo, agent.id, 1, "agent.created", %{"definition_version" => 1}, nil) do
+      {:ok, response(agent, 0, 1, [event])}
     end
   end
 
   def accept_input(repo, attrs) do
-    with {:ok, input} <- validate_input(attrs) do
-      Records.transact(repo, fn -> write_input(repo, input) end)
+    with {:ok, _} <- Records.fields(attrs, [:command_id, :position, :turn_id, :input], []),
+         :ok <- validate_position(attrs.position),
+         {:ok, _} <- Records.uuid(attrs.turn_id),
+         {:ok, input} <- Records.json(attrs.input, :event),
+         true <- is_map(input) and Map.keys(input) == ["text"] and is_binary(input["text"]),
+         true <- byte_size(input["text"]) <= 65_536 and String.valid?(input["text"]) do
+      transition(repo, attrs, fn agent -> input(repo, agent, attrs, input) end)
+    else
+      false -> {:error, :invalid_data}
+      error -> error
     end
   end
 
-  def consume_result(repo, attrs) do
-    with {:ok, input} <- validate_consume(attrs) do
-      Records.transact(repo, fn -> write_consume(repo, input) end)
+  defp input(repo, agent, attrs, input) do
+    case repo.one(
+           from(e in Event,
+             where:
+               e.scope_id == ^agent.id and e.turn_id == ^attrs.turn_id and
+                 e.type == "input.accepted"
+           ),
+           log: false
+         ) do
+      nil -> append(repo, agent, attrs.position, [{"input.accepted", input, attrs.turn_id}])
+      _ -> {:error, :conflict}
     end
   end
 
-  @doc """
-  Copies one immutable checkpoint of `source_agent_id` into a new independent Agent
-  in one authority transaction: the Agent row (with `forked_from_*` provenance
-  only), the inherited context records (fresh record ids plus source markers), the
-  new `await_input` checkpoint, the fork event and the command response.
-
-  Only a `safe_to_fork` checkpoint on a complete message boundary is accepted: no
-  pending/join state, no unconsumed model reply or Tool result, no blocked turn and
-  a complete Tool-call/result pairing. A source with undecided work in flight
-  requires `source.freeze == :frozen`; an unconfirmed stop is recorded on the new
-  Agent as `environment.risk == "unconfirmed"` so it may not execute until an
-  explicit acceptance. A copy larger than `@max_fork_bytes` is refused, never
-  truncated. Nothing of the source is read outside the transaction or referenced
-  by the new Agent afterwards.
-  """
-  def fork(repo, attrs) do
-    with {:ok, input} <- validate_fork(attrs) do
-      Records.transact(repo, fn -> write_fork(repo, input) end)
-    end
-  end
-
-  @doc """
-  Advances the active turn's checkpoint (model reply, decision, blocked state)
-  without consuming results or starting a turn. A supplied `command` makes the
-  advance idempotent: replaying the same command identity and params returns the
-  stored response and writes nothing.
-  """
-  def advance(repo, attrs) do
-    with {:ok, input} <- validate_advance(attrs) do
-      Records.transact(repo, fn -> write_advance(repo, input) end)
-    end
-  end
-
-  @doc """
-  Creates the paused instance's generation: CAS on `generation`+`lock_version`
-  bumps the Agent generation, moves the head to the restored checkpoint, records
-  the event and the restore command in one transaction. Concurrent restores and
-  late writes from a previous generation lose the CAS.
-  """
-  def restore(repo, attrs) do
-    with {:ok, input} <- validate_restore(attrs) do
-      Records.transact(repo, fn -> write_restore(repo, input) end)
-    end
-  end
-
-  @doc "Validates one next-checkpoint input for a batch transaction owned elsewhere."
-  def checkpoint(attrs), do: next_checkpoint(attrs)
-
-  @doc "Insert one checkpoint inside the caller's open transaction."
-  def insert_checkpoint(repo, checkpoint, agent_id, turn_id) do
-    Records.insert(repo, checkpoint_changeset(checkpoint, agent_id, turn_id))
-  end
-
-  def fetch(repo, agent_id) do
-    with {:ok, id} <- Records.uuid(agent_id) do
-      Transaction.read(fn -> read_agent(repo, id) end)
-    end
-  end
-
-  defp read_agent(repo, id) do
-    case repo.get(Agent, id, log: false) do
-      nil ->
-        {:error, :conflict}
-
-      agent ->
-        {:ok,
-         %{
-           "agent" => Records.plain(agent),
-           "head_checkpoint" => Records.plain(head_checkpoint(repo, agent))
-         }}
-    end
-  end
-
-  def history_page(repo, agent_id, opts \\ []) do
-    with {:ok, id} <- Records.uuid(agent_id),
-         {:ok, after_seq, limit} <- page_opts(opts) do
-      Transaction.read(fn -> read_page(repo, id, after_seq, limit) end)
-    end
-  end
-
-  ## Creation
-
-  defp validate_create(attrs) do
+  def prepare_operations(repo, attrs) do
     with {:ok, _} <-
            Records.fields(
              attrs,
-             [:command, :id, :authority_id, :definition, :generation, :checkpoint, :event],
-             [:alias, :forked_from_agent_id, :forked_from_checkpoint_id]
+             [:command_id, :position, :turn_id, :operations, :orchestration],
+             []
            ),
-         {:ok, command} <- command(attrs[:command]),
-         {:ok, id} <- Records.uuid(attrs[:id]),
-         {:ok, authority_id} <- Records.uuid(attrs[:authority_id]),
-         {:ok, alias_name} <- Records.optional_text(attrs[:alias], 255),
-         {:ok, definition} <- Records.json(attrs[:definition], :operation),
-         {:ok, 0} <- Records.count(attrs[:generation]),
-         {:ok, forked_agent} <- Records.optional_uuid(attrs[:forked_from_agent_id]),
-         {:ok, forked_checkpoint} <- Records.optional_uuid(attrs[:forked_from_checkpoint_id]),
-         {:ok, checkpoint} <- initial_checkpoint(attrs[:checkpoint]),
-         {:ok, event} <- Records.event_input(attrs[:event]) do
-      {:ok,
+         :ok <- validate_position(attrs.position),
+         {:ok, _} <- Records.uuid(attrs.turn_id),
+         :ok <- Events.control(attrs.orchestration),
+         {:ok, members} <- members(attrs.operations) do
+      transition(repo, attrs, fn agent -> prepare(repo, agent, attrs, members) end)
+    end
+  end
+
+  defp members(list) when is_list(list) and length(list) in 1..8 do
+    Enum.reduce_while(list, {:ok, []}, fn member, {:ok, acc} ->
+      with {:ok, _} <- Records.fields(member, [:operation, :attempt], []),
+           {:ok, op} <- OperationRecords.validate_operation(member.operation),
+           {:ok, attempt} <- OperationRecords.validate_attempt(member.attempt) do
+        {:cont, {:ok, acc ++ [%{operation: op, attempt: attempt}]}}
+      else
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp members(list) when is_list(list), do: {:error, :limit}
+  defp members(_), do: {:error, :invalid_data}
+
+  defp prepare(repo, agent, attrs, members) do
+    with :ok <- active_turn(repo, agent.id, attrs.turn_id),
+         :ok <- control_references(repo, agent, attrs.orchestration),
+         :ok <- unique_members(members),
+         {:ok, prepared} <- prepare_members(repo, agent, attrs, members),
+         specs = preparation_specs(members, attrs),
+         {:ok, response} <- append(repo, agent, attrs.position, specs) do
+      {:ok, Map.put(response, "operations", prepared)}
+    end
+  end
+
+  defp preparation_specs(members, attrs) do
+    Enum.map(members, fn %{operation: op} ->
+      type = if op.role == "tool", do: "tool.batch_prepared", else: "model.request_prepared"
+
+      {type,
        %{
-         command: command,
-         agent: %{
-           id: id,
-           authority_id: authority_id,
-           alias: alias_name,
-           definition: definition,
-           forked_from_agent_id: forked_agent,
-           forked_from_checkpoint_id: forked_checkpoint
-         },
-         checkpoint: checkpoint,
-         event: event
-       }}
+         "operation_id" => op.id,
+         "step_id" => op.step_id,
+         "ordinal" => op.ordinal,
+         "join" => attrs.orchestration
+       }, attrs.turn_id}
+    end)
+  end
+
+  defp unique_members(members) do
+    ids = Enum.map(members, & &1.operation.id)
+    ordinals = Enum.map(members, & &1.operation.ordinal)
+
+    if length(Enum.uniq(ids)) == length(ids) and length(Enum.uniq(ordinals)) == length(ordinals),
+      do: :ok,
+      else: {:error, :invalid_data}
+  end
+
+  defp prepare_members(repo, agent, attrs, members) do
+    members
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {%{operation: op, attempt: attempt}, index}, {:ok, acc} ->
+      with true <- op.owner_agent_id == agent.id and op.turn_id == attrs.turn_id,
+           :ok <- verify_sources(repo, agent, op.sources),
+           op =
+             Map.merge(op, %{
+               owner_generation: agent.generation,
+               prepared_seq: agent.history_seq + index + 1
+             }),
+           {:ok, prepared} <- OperationRecords.insert_prepared(repo, op, attempt) do
+        {:cont, {:ok, acc ++ [prepared]}}
+      else
+        false -> {:halt, {:error, :conflict}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  def consume_results(repo, attrs) do
+    with {:ok, _} <-
+           Records.fields(attrs, [:command_id, :position, :turn_id, :accepted_refs, :join], []),
+         :ok <- validate_position(attrs.position),
+         {:ok, _} <- Records.uuid(attrs.turn_id),
+         :ok <- Events.control(attrs.join),
+         {:ok, _} <- Records.json(attrs.accepted_refs, :event),
+         true <- is_list(attrs.accepted_refs) and length(attrs.accepted_refs) in 1..128 do
+      transition(repo, attrs, fn agent -> consume(repo, agent, attrs) end)
     else
-      {:ok, _generation} -> {:error, :invalid_data}
-      {:error, reason} -> {:error, reason}
+      false -> {:error, :invalid_data}
+      error -> error
     end
   end
 
-  defp write_create(repo, input) do
-    case replay(repo, input.command) do
-      {:ok, {:stored, response}} -> {:ok, response}
-      {:ok, :new} -> insert_create(repo, input)
-      {:error, reason} -> {:error, reason}
+  defp consume(repo, agent, attrs) do
+    with :ok <- active_turn(repo, agent.id, attrs.turn_id),
+         :ok <- control_references(repo, agent, attrs.join),
+         {:ok, refs} <- consumables(repo, agent, attrs),
+         :ok <- unconsumed(repo, agent.id, refs) do
+      specs =
+        Enum.map(refs, fn ref ->
+          {"operation.result_consumed", Map.put(ref, "join", attrs.join), attrs.turn_id}
+        end)
+
+      append(repo, agent, attrs.position, specs)
     end
   end
 
-  defp insert_create(repo, input) do
-    agent = input.agent
-    checkpoint = input.checkpoint
-    seq = 1
-
-    with {:ok, _agent} <- Records.insert(repo, agent_changeset(agent)),
-         {:ok, _checkpoint} <-
-           Records.insert(repo, checkpoint_changeset(checkpoint, agent.id, nil)),
-         {:ok, _} <- set_head(repo, agent.id, checkpoint.id),
-         {:ok, _event} <- Records.insert(repo, event_changeset(input.event, agent.id, seq, %{})),
-         response = %{
-           "agent_id" => agent.id,
-           "checkpoint_id" => checkpoint.id,
-           "command_id" => input.command.command_id,
-           "history_seq" => seq,
-           "lock_version" => 0
-         },
-         {:ok, _command} <- insert_command(repo, input.command, response) do
-      {:ok, response}
-    end
+  defp consumables(repo, agent, attrs) do
+    Enum.reduce_while(attrs.accepted_refs, {:ok, []}, fn ref, {:ok, acc} ->
+      with :ok <- accepted_reference(repo, agent, ref),
+           {:ok, op} <- Records.get(repo, Operation, ref["operation_id"]),
+           true <- op.turn_id == attrs.turn_id and op.owner_generation == agent.generation,
+           false <- Enum.any?(acc, &(&1["operation_id"] == ref["operation_id"])) do
+        {:cont, {:ok, acc ++ [ref]}}
+      else
+        _ -> {:halt, {:error, :conflict}}
+      end
+    end)
   end
 
-  defp agent_changeset(agent) do
-    Agent.changeset(%Agent{}, %{
-      id: agent.id,
-      authority_id: agent.authority_id,
-      alias: agent.alias,
-      definition: agent.definition,
-      generation: 0,
-      lock_version: 0,
-      history_seq: 1,
-      forked_from_agent_id: agent.forked_from_agent_id,
-      forked_from_checkpoint_id: agent.forked_from_checkpoint_id
-    })
-    |> Ecto.Changeset.unique_constraint([:authority_id, :alias],
-      name: :agents_authority_id_alias_index
-    )
-  end
+  defp unconsumed(repo, agent_id, refs) do
+    keys = Enum.map(refs, &consumption_key/1)
 
-  defp set_head(repo, agent_id, checkpoint_id) do
-    query =
-      from(a in Agent,
-        where: a.id == ^agent_id,
-        update: [set: [head_checkpoint_id: ^checkpoint_id]]
+    count =
+      repo.one(
+        from(e in Event,
+          where: e.scope_id == ^agent_id and e.dedupe_key in ^keys,
+          select: count(e.id)
+        ),
+        log: false
       )
 
-    case repo.update_all(query, [], log: false) do
-      {1, _} -> {:ok, checkpoint_id}
-      {0, _} -> {:error, :conflict}
+    if count == 0, do: :ok, else: {:error, :conflict}
+  end
+
+  defp consumption_key(ref),
+    do: "consume:" <> ref["operation_id"] <> ":" <> ref["consumption_kind"]
+
+  # Source records are explicit, typed, bounded and same-authority. Only consumed
+  # accepted Results can contribute to a later request.
+  defp verify_sources(repo, agent, sources) do
+    Enum.reduce_while(sources, :ok, fn source, :ok ->
+      case source(repo, agent, source) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp source(
+         repo,
+         agent,
+         %{"type" => "input", "event_id" => id, "seq" => seq, "digest" => digest} = ref
+       )
+       when map_size(ref) == 4 do
+    case repo.get(Event, id, log: false) do
+      %Event{scope_id: scope, seq: ^seq, type: "input.accepted", payload: payload}
+      when scope == agent.id and seq <= agent.history_seq ->
+        if Codec.digest(payload, :event) == {:ok, digest}, do: :ok, else: {:error, :conflict}
+
+      _ ->
+        {:error, :conflict}
     end
   end
 
-  ## Fork
+  defp source(repo, agent, %{"type" => "accepted_result", "reference" => ref} = source)
+       when map_size(source) == 2 do
+    with :ok <- accepted_reference(repo, agent, ref),
+         %Event{} <-
+           repo.one(
+             from(e in Event,
+               where: e.scope_id == ^agent.id and e.dedupe_key == ^consumption_key(ref)
+             ),
+             log: false
+           ) do
+      :ok
+    else
+      _ -> {:error, :conflict}
+    end
+  end
 
-  defp validate_fork(attrs) do
+  defp source(repo, agent, %{"type" => type} = ref)
+       when type in ~w(inherited_input inherited_result) do
+    if Inheritance.authorized?(repo, agent.id, ref, agent.history_seq),
+      do: :ok,
+      else: {:error, :conflict}
+  end
+
+  defp source(_, _, _), do: {:error, :invalid_data}
+
+  defp accepted_reference(repo, agent, ref) when is_map(ref) and not is_struct(ref) do
+    with true <- Enum.sort(Map.keys(ref)) == ~w(accepted_digest consumption_kind operation_id),
+         {:ok, id} <- Records.uuid(ref["operation_id"]),
+         {:ok, _} <- Records.digest(ref["accepted_digest"]),
+         {:ok, _} <-
+           Records.enum(ref["consumption_kind"], ~w(model_result tool_result evidence_resolution)),
+         {:ok, op} <- Records.get(repo, Operation, id),
+         true <- op.owner_agent_id == agent.id and not is_nil(op.accepted_result),
+         true <- consumption_role?(op.role, ref["consumption_kind"]),
+         {:ok, digest} <- Codec.digest(op.accepted_result, :result),
+         true <- digest == ref["accepted_digest"] do
+      :ok
+    else
+      _ -> {:error, :conflict}
+    end
+  end
+
+  defp accepted_reference(_, _, _), do: {:error, :invalid_data}
+
+  defp consumption_role?(_, "evidence_resolution"), do: true
+  defp consumption_role?("tool", "tool_result"), do: true
+  defp consumption_role?(role, "model_result") when role in ~w(model summary), do: true
+  defp consumption_role?(_, _), do: false
+
+  def checkpoint(repo, attrs) do
     with {:ok, _} <-
            Records.fields(
              attrs,
              [
-               :command,
+               :command_id,
+               :position,
                :id,
-               :authority_id,
-               :source_agent_id,
-               :checkpoint_id,
-               :expected_version,
-               :new_checkpoint_id,
-               :source,
-               :data,
-               :event
+               :through_seq,
+               :reducer_version,
+               :projection,
+               :continuation,
+               :safe_to_fork
              ],
-             [:alias]
+             []
            ),
-         {:ok, command} <- command(attrs[:command]),
-         {:ok, id} <- Records.uuid(attrs[:id]),
-         {:ok, new_checkpoint_id} <- Records.uuid(attrs[:new_checkpoint_id]),
-         {:ok, authority_id} <- Records.uuid(attrs[:authority_id]),
-         {:ok, alias_name} <- Records.optional_text(attrs[:alias], 255),
-         {:ok, source_agent_id} <- Records.uuid(attrs[:source_agent_id]),
-         {:ok, checkpoint_id} <- Records.uuid(attrs[:checkpoint_id]),
-         {:ok, version} <- Records.count(attrs[:expected_version]),
-         {:ok, source} <- fork_source(attrs[:source]),
-         {:ok, data} <- Records.json(attrs[:data], :checkpoint),
-         {:ok, event} <- Records.event_input(attrs[:event]) do
-      {:ok,
-       %{
-         command: command,
-         id: id,
-         new_checkpoint_id: new_checkpoint_id,
-         authority_id: authority_id,
-         alias: alias_name,
-         source_agent_id: source_agent_id,
-         checkpoint_id: checkpoint_id,
-         expected_version: version,
-         source: source,
-         data: data,
-         event: event
-       }}
-    end
-  end
-
-  defp fork_source(source) when is_map(source) and not is_struct(source) do
-    with {:ok, _} <- Records.fields(source, [:freeze, :environment], []),
-         true <- source[:freeze] in @fork_source_freezes,
-         true <- source[:environment] in @fork_source_environments do
-      {:ok, %{freeze: source[:freeze], environment: source[:environment]}}
+         :ok <- validate_position(attrs.position),
+         {:ok, _} <- Records.uuid(attrs.id),
+         {:ok, _} <- Records.count(attrs.through_seq),
+         true <- is_integer(attrs.reducer_version) and attrs.reducer_version > 0,
+         true <- is_boolean(attrs.safe_to_fork),
+         :ok <- Events.control(attrs.projection),
+         {:ok, digest} <- Codec.digest(attrs.projection, :checkpoint) do
+      transition(repo, attrs, fn agent -> write_checkpoint(repo, agent, attrs, digest) end)
     else
-      _ -> {:error, :invalid_data}
+      false -> {:error, :invalid_data}
+      error -> error
     end
   end
 
-  defp fork_source(_), do: {:error, :invalid_data}
-
-  defp write_fork(repo, input) do
-    case replay(repo, input.command) do
-      {:ok, {:stored, response}} -> {:ok, response}
-      {:ok, :new} -> insert_fork(repo, input)
-      {:error, reason} -> {:error, reason}
+  defp write_checkpoint(repo, agent, attrs, digest) do
+    with :ok <- control_references(repo, agent, attrs.projection) do
+      insert_checkpoint(repo, agent, attrs, digest)
     end
   end
 
-  defp insert_fork(repo, input) do
-    with {:ok, source} <- Records.get(repo, Agent, input.source_agent_id),
-         :ok <- same_authority(source, input.authority_id),
-         :ok <- source_version(source, input.expected_version),
-         {:ok, checkpoint} <- fork_checkpoint(repo, input),
-         {:ok, messages} <- fork_messages(checkpoint["data"]),
-         :ok <- fork_freeze(repo, source, checkpoint, input.source),
-         {:ok, risk} <- fork_risk(repo, source, input.source),
-         {:ok, definition} <- fork_definition(repo, source),
-         :ok <- fork_size(messages, definition),
-         seq = length(messages) + 1,
-         {:ok, _agent} <- Records.insert(repo, fork_agent_changeset(input, definition, seq)),
-         data = fork_data(input, checkpoint, messages, risk),
-         {:ok, checkpoint_digest} <- digest_of(data, :checkpoint),
-         {:ok, _checkpoint} <-
-           Records.insert(
-             repo,
-             checkpoint_changeset(
-               %{
-                 id: input.new_checkpoint_id,
-                 data: data,
-                 continuation: "await_input",
-                 digest: checkpoint_digest,
-                 safe_to_fork: true
-               },
-               input.id,
-               nil
-             )
-           ),
-         {:ok, _} <- set_head(repo, input.id, input.new_checkpoint_id),
-         {:ok, _event} <- Records.insert(repo, fork_event_changeset(input, source, risk)),
-         {:ok, inherited} <- insert_inherited(repo, input, messages),
-         response = fork_response(input, risk, seq, messages, inherited),
-         {:ok, _command} <- insert_command(repo, input.command, response) do
-      {:ok, response}
-    end
-  end
+  defp insert_checkpoint(repo, agent, attrs, digest) do
+    if attrs.through_seq == agent.history_seq do
+      cs =
+        Checkpoint.changeset(%Checkpoint{}, %{
+          id: attrs.id,
+          agent_id: agent.id,
+          through_seq: attrs.through_seq,
+          reducer_version: attrs.reducer_version,
+          data: attrs.projection,
+          digest: digest,
+          continuation: attrs.continuation,
+          safe_to_fork: attrs.safe_to_fork,
+          schema_version: 1,
+          recorded_at: DateTime.utc_now()
+        })
 
-  defp same_authority(source, authority_id) do
-    if source.authority_id == authority_id, do: :ok, else: {:error, :invalid_data}
-  end
-
-  # The expected version is the caller's proof it saw the source state it is
-  # branching from; a fork never writes to the source, so it is a check, not a CAS.
-  defp source_version(source, expected) do
-    if source.lock_version == expected, do: :ok, else: {:error, :conflict}
-  end
-
-  defp fork_checkpoint(repo, input) do
-    with {:ok, %Checkpoint{} = checkpoint} <- Records.get(repo, Checkpoint, input.checkpoint_id),
-         true <- checkpoint.agent_id == input.source_agent_id,
-         true <- checkpoint.safe_to_fork == true,
-         true <- checkpoint.continuation in @fork_idle do
-      {:ok, Records.plain(checkpoint)}
+      with {:ok, _} <- Records.insert(repo, cs),
+           {:ok, version} <-
+             Records.cas_agent(
+               repo,
+               agent,
+               attrs.position.lock_version,
+               attrs.position.generation,
+               head_checkpoint_id: attrs.id
+             ) do
+        {:ok, response(agent, version, agent.history_seq, [])}
+      end
     else
-      _ -> {:error, :unsafe_checkpoint}
+      {:error, :conflict}
     end
   end
 
-  defp fork_messages(%{"messages" => messages} = data) do
-    with true <- is_list(messages),
-         :ok <- fork_message_count(messages),
-         :ok <- fork_boundary(data),
-         :ok <- complete_pairing(messages) do
-      {:ok, messages}
-    else
-      {:error, :limit} = error -> error
-      _ -> {:error, :unsafe_checkpoint}
+  defp control_references(repo, agent, map) when is_map(map) do
+    with :ok <- control_operation(repo, agent, map),
+         :ok <- References.verify(repo, map) do
+      verify_control_children(repo, agent, Map.values(map))
     end
   end
 
-  defp fork_messages(_), do: {:error, :unsafe_checkpoint}
+  defp control_references(repo, agent, list) when is_list(list),
+    do: verify_control_children(repo, agent, list)
 
-  defp fork_message_count(messages) when length(messages) <= @max_messages, do: :ok
-  defp fork_message_count(_messages), do: {:error, :limit}
+  defp control_references(_, _, _), do: :ok
 
-  defp fork_boundary(data) do
-    cond do
-      Map.get(data, "pending") != [] -> {:error, :unsafe_checkpoint}
-      Map.get(data, "order") != [] -> {:error, :unsafe_checkpoint}
-      Map.get(data, "results") != %{} -> {:error, :unsafe_checkpoint}
-      Map.get(data, "assistant") != nil -> {:error, :unsafe_checkpoint}
-      Map.get(data, "blocked") != nil -> {:error, :unsafe_checkpoint}
-      true -> :ok
-    end
-  end
-
-  # Every Tool call is answered exactly once, in call order, and no Tool message
-  # answers an unknown call: a copied context is therefore model-valid.
-  defp complete_pairing(messages) do
-    Enum.reduce_while(messages, {:ok, []}, fn message, {:ok, pending} ->
-      case pairing_step(message, pending) do
-        {:ok, next} -> {:cont, {:ok, next}}
-        :error -> {:halt, :error}
+  defp verify_control_children(repo, agent, values) do
+    Enum.reduce_while(values, :ok, fn value, :ok ->
+      case control_references(repo, agent, value) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
       end
     end)
-    |> case do
-      {:ok, []} -> :ok
-      _ -> {:error, :unsafe_checkpoint}
+  end
+
+  defp control_operation(repo, agent, %{"operation_id" => id} = ref) do
+    with {:ok, _} <- Records.uuid(id),
+         {:ok, op} <- Records.get(repo, Operation, id),
+         true <- op.owner_agent_id == agent.id or inherited_operation?(repo, agent, id) do
+      control_digest(op, ref)
+    else
+      _ -> {:error, :conflict}
     end
   end
 
-  defp pairing_step(%{"role" => "tool", "call_id" => call_id}, [call_id | rest]), do: {:ok, rest}
+  defp control_operation(_, _, _), do: :ok
 
-  defp pairing_step(%{"role" => "assistant", "calls" => calls}, []) when is_list(calls) do
-    ids =
-      Enum.map(calls, fn
-        %{"id" => id} when is_binary(id) -> id
-        _ -> nil
-      end)
-
-    if Enum.all?(ids) and length(Enum.uniq(ids)) == length(ids),
-      do: {:ok, ids},
-      else: :error
-  end
-
-  defp pairing_step(%{"role" => role}, []) when role in ~w(system user assistant), do: {:ok, []}
-  defp pairing_step(_, _), do: :error
-
-  defp fork_freeze(repo, source, checkpoint, source_input) do
-    working? =
-      Map.get(checkpoint, "continuation") not in @fork_quiet or
-        undecided_turn?(repo, source.id, checkpoint)
-
-    if working? and source_input.freeze != :frozen,
-      do: {:error, :source_not_frozen},
-      else: :ok
-  end
-
-  # Only Operations of the head checkpoint's own turn can be in flight. An Operation
-  # an explicit decision already abandoned keeps a NULL accepted_result forever and
-  # must not make every later fork of an otherwise idle Agent fail.
-  defp undecided_turn?(repo, source_agent_id, checkpoint) do
-    case Map.get(checkpoint, "turn_id") do
-      turn_id when is_binary(turn_id) ->
-        query =
-          from(o in Operation,
-            where:
-              o.owner_agent_id == ^source_agent_id and o.turn_id == ^turn_id and
-                is_nil(o.accepted_result),
-            select: count(o.id)
-          )
-
-        repo.one(query, log: false) > 0
+  defp inherited_operation?(repo, agent, id) do
+    case repo.one(
+           from(e in Event, where: e.scope_id == ^agent.id and e.type == "context.inherited"),
+           log: false
+         ) do
+      %Event{payload: manifest} ->
+        Enum.any?(
+          manifest["closure"],
+          &(&1["type"] == "inherited_result" and &1["reference"]["operation_id"] == id)
+        ) and
+          Inheritance.verify(repo, manifest) == :ok
 
       _ ->
         false
     end
   end
 
-  # An unconfirmed stop is a risk, and so is any accepted Result the source never
-  # resolved: either way the copied context does not prove the shared environment
-  # stopped changing.
-  defp fork_risk(repo, source, source_input) do
-    if source_input.environment == :unconfirmed or risky_result?(repo, source.id),
-      do: {:ok, "unconfirmed"},
-      else: {:ok, nil}
+  defp control_digest(op, %{"accepted_digest" => digest}) do
+    if not is_nil(op.accepted_result) and
+         Codec.digest(op.accepted_result, :result) == {:ok, digest},
+       do: :ok,
+       else: {:error, :conflict}
   end
 
-  # A scan that cannot see every accepted Result must assume risk: the safe
-  # direction for an unverified shared environment is "unconfirmed".
-  defp risky_result?(repo, source_agent_id) do
-    total =
-      from(o in Operation,
-        where: o.owner_agent_id == ^source_agent_id and not is_nil(o.accepted_result),
-        select: count(o.id)
-      )
-      |> repo.one(log: false)
+  defp control_digest(_, _), do: :ok
 
-    if total > @fork_evidence_limit do
-      true
+  def advance(repo, attrs) do
+    with {:ok, _} <-
+           Records.fields(attrs, [:command_id, :position, :turn_id, :type, :payload], []),
+         :ok <- validate_position(attrs.position),
+         {:ok, _} <- Records.optional_uuid(attrs.turn_id),
+         true <-
+           attrs.type in ~w(turn.interrupted agent.continue_decided agent.config_changed context.selected),
+         :ok <- Events.control(attrs.payload) do
+      transition(repo, attrs, &advance_control(repo, &1, attrs))
     else
-      from(o in Operation,
-        where: o.owner_agent_id == ^source_agent_id and not is_nil(o.accepted_result),
-        order_by: [desc: o.history_seq],
-        select: o.accepted_result
-      )
-      |> repo.all(log: false)
-      |> Enum.any?(fn result ->
-        String.Chars.to_string(get_in(result, ["status"])) in @risk_states
-      end)
+      false -> {:error, :invalid_data}
+      error -> error
     end
   end
 
-  defp fork_definition(repo, %Agent{definition: definition}) when is_map(definition) do
-    with :ok <- Artifacts.verify_references(repo, artifact_ids(definition)) do
-      {:ok, definition}
+  defp advance_control(repo, agent, attrs) do
+    with :ok <- control_references(repo, agent, attrs.payload),
+         :ok <- resume_operations(repo, agent, attrs) do
+      append(repo, agent, attrs.position, [{attrs.type, attrs.payload, attrs.turn_id}])
     end
   end
 
-  defp artifact_ids(definition) do
-    definition
-    |> Map.get("tools", %{})
-    |> Enum.flat_map(fn
-      {_name, reference} when is_map(reference) -> Map.get(reference, "artifact_refs", [])
-      _ -> []
-    end)
-    |> Enum.uniq()
-  end
+  # Only an explicit continuation transaction may authorize a prior generation's
+  # still-prepared work or its accepted output. Claimed unresolved work stays fenced.
+  defp resume_operations(_repo, _agent, %{
+         type: "agent.continue_decided",
+         payload: %{"resume_operations" => []}
+       }),
+       do: :ok
 
-  defp fork_size(messages, definition) do
-    case Codec.encode(%{"messages" => messages, "definition" => definition}, :checkpoint) do
-      {:ok, bytes} when byte_size(bytes) <= @max_fork_bytes -> :ok
-      {:ok, _bytes} -> {:error, :limit}
-      {:error, :limit} -> {:error, :limit}
-      {:error, _reason} -> {:error, :invalid_data}
+  defp resume_operations(repo, agent, %{
+         type: "agent.continue_decided",
+         payload: %{"resume_operations" => ids},
+         turn_id: turn
+       })
+       when is_list(ids) and length(ids) <= 8 do
+    with :ok <- active_turn(repo, agent.id, turn) do
+      resume_members(repo, agent, turn, ids)
     end
   end
 
-  defp fork_agent_changeset(input, definition, seq) do
-    Agent.changeset(%Agent{}, %{
-      id: input.id,
-      authority_id: input.authority_id,
-      alias: input.alias,
-      definition: definition,
-      generation: 0,
-      lock_version: 0,
-      history_seq: seq,
-      forked_from_agent_id: input.source_agent_id,
-      forked_from_checkpoint_id: input.checkpoint_id
-    })
-    |> Ecto.Changeset.unique_constraint([:authority_id, :alias],
-      name: :agents_authority_id_alias_index
-    )
-  end
+  defp resume_operations(_, _, %{
+         type: "agent.continue_decided",
+         payload: %{"resume_operations" => _}
+       }),
+       do: {:error, :invalid_data}
 
-  defp fork_data(input, checkpoint, messages, risk) do
-    Map.merge(input.data, %{
-      "messages" => messages,
-      "continuation" => "await_input",
-      "turn_id" => nil,
-      "step" => 0,
-      "pending" => [],
-      "order" => [],
-      "results" => %{},
-      "assistant" => nil,
-      "blocked" => nil,
-      "consumed" => [],
-      "request_digest" => nil,
-      "fork" => %{
-        "source_agent_id" => input.source_agent_id,
-        "source_checkpoint_id" => checkpoint["id"],
-        "source_version" => input.expected_version,
-        "inherited_messages" => length(messages)
-      },
-      "environment" => %{
-        "source_agent_id" => input.source_agent_id,
-        "source_checkpoint_id" => checkpoint["id"],
-        "freeze" => Atom.to_string(input.source.freeze),
-        "environment" => Atom.to_string(input.source.environment),
-        "risk" => risk
-      }
-    })
-  end
+  defp resume_operations(_, _, _), do: :ok
 
-  defp fork_event_changeset(input, source, risk) do
-    payload = %{
-      "source_agent_id" => source.id,
-      "source_checkpoint_id" => input.checkpoint_id,
-      "source_version" => input.expected_version,
-      "freeze" => Atom.to_string(input.source.freeze),
-      "environment" => Atom.to_string(input.source.environment),
-      "risk" => risk
-    }
-
-    event_changeset(input.event, input.id, 1, %{})
-    |> Ecto.Changeset.change(payload: payload)
-  end
-
-  defp insert_inherited(repo, input, messages) do
-    messages
-    |> Enum.with_index()
-    |> Enum.reduce_while({:ok, []}, fn {message, index}, {:ok, acc} ->
-      attrs = %{
-        "index" => index,
-        "role" => Map.get(message, "role"),
-        "source_agent_id" => input.source_agent_id,
-        "source_checkpoint_id" => input.checkpoint_id
-      }
-
-      case Records.insert(repo, inherited_changeset(input, index, attrs)) do
-        {:ok, event} -> {:cont, {:ok, [event.id | acc]}}
+  defp resume_members(repo, agent, turn, ids) do
+    Enum.reduce_while(ids, :ok, fn id, :ok ->
+      case resume_operation(repo, agent, turn, id) do
+        :ok -> {:cont, :ok}
         error -> {:halt, error}
       end
     end)
-    |> case do
-      {:ok, ids} -> {:ok, Enum.reverse(ids)}
-      error -> error
+  end
+
+  defp resume_operation(repo, agent, turn, id) do
+    with {:ok, op} <- Records.get(repo, Operation, id),
+         true <- op.owner_agent_id == agent.id and op.turn_id == turn,
+         {:ok, %{"attempt" => attempt}} <- OperationRecords.fetch(repo, id),
+         true <- not is_nil(op.accepted_result) or attempt["dispatch_state"] == "prepared" do
+      repo.update_all(
+        from(o in Operation, where: o.id == ^id),
+        [set: [owner_generation: agent.generation]],
+        log: false
+      )
+
+      :ok
+    else
+      _ -> {:error, :unresolved_execution}
     end
   end
 
-  defp inherited_changeset(input, index, payload) do
-    Records.event_changeset(%{
-      id: Ecto.UUID.generate(),
-      scope_id: input.id,
-      seq: index + 2,
-      type: "context.inherited",
-      schema_version: 1,
-      payload: payload,
-      source_agent_id: input.source_agent_id,
-      recorded_at: DateTime.utc_now()
-    })
-  end
-
-  defp fork_response(input, risk, seq, messages, inherited) do
-    %{
-      "agent_id" => input.id,
-      "checkpoint_id" => input.new_checkpoint_id,
-      "source_agent_id" => input.source_agent_id,
-      "source_checkpoint_id" => input.checkpoint_id,
-      "command_id" => input.command.command_id,
-      "lock_version" => 0,
-      "history_seq" => seq,
-      "risk" => risk,
-      "copied" => %{"messages" => length(messages), "records" => length(inherited)}
-    }
-  end
-
-  ## Input acceptance
-
-  defp validate_input(attrs) do
+  @doc "Atomically materialize a same-authority reference manifest; source rows are never mutated."
+  def fork(repo, attrs) do
     with {:ok, _} <-
            Records.fields(
              attrs,
              [
-               :command,
-               :agent_id,
-               :expected_version,
-               :expected_generation,
-               :turn_id,
-               :checkpoint,
-               :event
+               :command_id,
+               :position,
+               :id,
+               :through_seq,
+               :timeline,
+               :inheritance,
+               :resolutions,
+               :fork_request,
+               :risk
              ],
              []
            ),
-         {:ok, command} <- command(attrs[:command]),
-         {:ok, agent_id} <- Records.uuid(attrs[:agent_id]),
-         {:ok, version} <- Records.count(attrs[:expected_version]),
-         {:ok, generation} <- Records.count(attrs[:expected_generation]),
-         {:ok, turn_id} <- Records.uuid(attrs[:turn_id]),
-         {:ok, checkpoint} <- next_checkpoint(attrs[:checkpoint]),
-         {:ok, event} <- Records.event_input(attrs[:event]) do
-      {:ok,
-       %{
-         command: command,
-         agent_id: agent_id,
-         expected_version: version,
-         expected_generation: generation,
-         turn_id: turn_id,
-         checkpoint: checkpoint,
-         event: event
-       }}
-    end
-  end
-
-  defp write_input(repo, input) do
-    case replay(repo, input.command) do
-      {:ok, {:stored, response}} ->
-        {:ok, response}
-
-      {:ok, :new} ->
-        with {:ok, agent} <- Records.get(repo, Agent, input.agent_id),
-             :ok <- current_generation(agent, input.expected_generation),
-             :ok <- fresh_turn(repo, agent, input.turn_id),
-             seq = agent.history_seq + 1,
-             {:ok, _checkpoint} <-
-               Records.insert(
-                 repo,
-                 checkpoint_changeset(input.checkpoint, agent.id, input.turn_id)
-               ),
-             {:ok, version} <-
-               Records.cas_agent(
-                 repo,
-                 agent,
-                 input.expected_version,
-                 input.expected_generation,
-                 head_checkpoint_id: input.checkpoint.id,
-                 history_seq: seq
-               ),
-             {:ok, _event} <-
-               Records.insert(
-                 repo,
-                 event_changeset(input.event, agent.id, seq, %{turn_id: input.turn_id})
-               ),
-             response = %{
-               "agent_id" => agent.id,
-               "checkpoint_id" => input.checkpoint.id,
-               "turn_id" => input.turn_id,
-               "command_id" => input.command.command_id,
-               "history_seq" => seq,
-               "lock_version" => version
-             },
-             {:ok, _command} <- insert_command(repo, input.command, response) do
-          {:ok, response}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp fresh_turn(repo, agent, turn_id) do
-    case head_checkpoint(repo, agent) do
-      nil -> :ok
-      %Checkpoint{turn_id: ^turn_id} -> {:error, :conflict}
-      %Checkpoint{} -> :ok
-    end
-  end
-
-  ## Result consumption
-
-  defp validate_consume(attrs) do
-    with {:ok, _} <-
-           Records.fields(
-             attrs,
-             [
-               :agent_id,
-               :expected_version,
-               :expected_generation,
-               :turn_id,
-               :operations,
-               :checkpoint
-             ],
-             []
-           ),
-         {:ok, agent_id} <- Records.uuid(attrs[:agent_id]),
-         {:ok, version} <- Records.count(attrs[:expected_version]),
-         {:ok, generation} <- Records.count(attrs[:expected_generation]),
-         {:ok, turn_id} <- Records.uuid(attrs[:turn_id]),
-         {:ok, operations} <- consumptions(attrs[:operations]),
-         {:ok, checkpoint} <- next_checkpoint(attrs[:checkpoint]) do
-      {:ok,
-       %{
-         agent_id: agent_id,
-         expected_version: version,
-         expected_generation: generation,
-         turn_id: turn_id,
-         operations: operations,
-         checkpoint: checkpoint
-       }}
-    end
-  end
-
-  defp consumptions(list) when is_list(list) and length(list) in 1..@max_consumptions do
-    Enum.reduce_while(list, {:ok, []}, fn requested, {:ok, acc} ->
-      with {:ok, _} <- Records.fields(requested, [:operation_id, :consumption_kind], []),
-           {:ok, operation_id} <- Records.uuid(requested[:operation_id]),
-           {:ok, kind} <- Records.enum(requested[:consumption_kind], @consumption_kinds),
-           false <- Enum.any?(acc, &(&1.operation_id == operation_id)) do
-        {:cont, {:ok, [%{operation_id: operation_id, kind: kind} | acc]}}
-      else
-        true -> {:halt, {:error, :invalid_data}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+         :ok <- validate_position(attrs.position),
+         {:ok, _} <- Records.uuid(attrs.id),
+         {:ok, _} <- Records.count(attrs.through_seq),
+         true <- attrs.risk in [nil, "unconfirmed"],
+         true <-
+           is_map(attrs.fork_request) and is_map(attrs.resolutions) and is_map(attrs.inheritance),
+         true <- is_list(attrs.timeline) and length(attrs.timeline) <= 128,
+         true <-
+           attrs.fork_request["through_seq"] == attrs.through_seq and
+             attrs.fork_request["expected_version"] == attrs.position.lock_version,
+         {:ok, _} <- Records.json(Records.plain(attrs), :command) do
+      transition(repo, attrs, &fork_records(repo, &1, attrs))
+    else
+      false -> {:error, :invalid_data}
       error -> error
     end
   end
 
-  defp consumptions(list) when is_list(list), do: {:error, :limit}
-  defp consumptions(_), do: {:error, :invalid_data}
-
-  defp write_consume(repo, input) do
-    with {:ok, agent} <- Records.get(repo, Agent, input.agent_id),
-         :ok <- current_generation(agent, input.expected_generation),
-         {:ok, _head} <- active_turn(repo, agent, input.turn_id),
-         {:ok, operations} <- load_consumables(repo, input) do
-      existing = existing_consumptions(repo, agent.id, operations)
-
-      cond do
-        map_size(existing) == length(operations) ->
-          {:ok, replay_consumption(agent, operations, existing)}
-
-        map_size(existing) == 0 ->
-          consume(repo, input, agent, operations)
-
-        true ->
-          {:error, :conflict}
-      end
-    end
-  end
-
-  defp active_turn(repo, agent, turn_id) do
-    case head_checkpoint(repo, agent) do
-      %Checkpoint{turn_id: ^turn_id} -> {:ok, turn_id}
-      _ -> {:error, :conflict}
-    end
-  end
-
-  defp load_consumables(repo, input) do
-    Enum.reduce_while(input.operations, {:ok, []}, fn requested, {:ok, acc} ->
-      case consumable(repo, requested, input) do
-        {:ok, loaded} -> {:cont, {:ok, [loaded | acc]}}
-        error -> {:halt, error}
-      end
-    end)
-    |> case do
-      {:ok, loaded} ->
-        {:ok,
-         Enum.sort_by(loaded, fn op ->
-           {op.operation.ordinal || 1_000_000_000, op.operation.id}
-         end)}
-
-      error ->
-        error
-    end
-  end
-
-  defp consumable(repo, requested, input) do
-    with {:ok, operation} <- Records.get(repo, Operation, requested.operation_id),
-         :ok <- owned_by(operation, input),
-         :ok <- accepted(operation) do
-      {:ok, %{operation: operation, kind: requested.kind}}
-    end
-  end
-
-  # A forked Agent must never consume the source Agent's work: ownership is the
-  # durable boundary, not a caller promise.
-  defp owned_by(operation, input) do
-    if operation.owner_agent_id == input.agent_id and operation.turn_id == input.turn_id,
-      do: :ok,
-      else: {:error, :conflict}
-  end
-
-  defp accepted(%Operation{accepted_result: nil}), do: {:error, :conflict}
-  defp accepted(%Operation{}), do: :ok
-
-  defp existing_consumptions(repo, agent_id, operations) do
-    keys = Enum.map(operations, &consumption_key(&1.operation.id, &1.kind))
-
-    from(e in Event, where: e.scope_id == ^agent_id and e.dedupe_key in ^keys)
-    |> repo.all(log: false)
-    |> Map.new(fn event -> {event.dedupe_key, event} end)
-  end
-
-  defp consume(repo, input, agent, operations) do
-    count = length(operations)
-    seq = agent.history_seq
-
-    with {:ok, _checkpoint} <-
-           Records.insert(repo, checkpoint_changeset(input.checkpoint, agent.id, input.turn_id)),
-         {:ok, version} <-
-           Records.cas_agent(
+  defp fork_records(repo, agent, attrs) do
+    with {:ok, agent} <- lock_fork_source(repo, agent.id, attrs.position),
+         true <- attrs.through_seq <= agent.history_seq,
+         :ok <- Inheritance.source_position(repo, agent.id, attrs),
+         :ok <- References.verify(repo, agent.definition),
+         {:ok, manifest} <-
+           Inheritance.build(repo, agent.id, attrs.timeline, attrs.inheritance, attrs.resolutions),
+         {:ok, child} <-
+           Records.insert(
              repo,
-             agent,
-             input.expected_version,
-             input.expected_generation,
-             head_checkpoint_id: input.checkpoint.id,
-             history_seq: seq + count
+             Agent.changeset(%Agent{}, %{
+               id: attrs.id,
+               authority_id: agent.authority_id,
+               definition: agent.definition,
+               generation: 0,
+               lock_version: 0,
+               history_seq: 3,
+               forked_from_agent_id: agent.id
+             })
            ),
-         {:ok, consumed} <-
-           insert_consumptions(repo, agent.id, input.turn_id, operations, seq + 1) do
+         {:ok, created} <-
+           event(repo, child.id, 1, "agent.created", %{"definition_version" => 1}, nil),
+         {:ok, forked} <-
+           event(
+             repo,
+             child.id,
+             2,
+             "agent.forked",
+             %{
+               "source_agent_id" => agent.id,
+               "through_seq" => attrs.through_seq,
+               "risk" => attrs.risk
+             },
+             nil
+           ),
+         {:ok, inherited} <- inherited_event(repo, child.id, agent.id, manifest) do
       {:ok,
-       %{
-         "agent_id" => agent.id,
-         "checkpoint_id" => input.checkpoint.id,
-         "consumed" => consumed,
-         "history_seq" => seq + count,
-         "lock_version" => version
-       }}
-    end
-  end
-
-  defp insert_consumptions(repo, agent_id, turn_id, operations, first_seq) do
-    Enum.reduce_while(Enum.with_index(operations), {:ok, []}, fn {operation, index}, {:ok, acc} ->
-      seq = first_seq + index
-
-      attrs = %{
-        "operation_id" => operation.operation.id,
-        "tool_call_id" => operation.operation.tool_call_id,
-        "ordinal" => operation.operation.ordinal,
-        "consumption_kind" => operation.kind,
-        "result" => operation.operation.accepted_result,
-        "evidence_id" => operation.operation.accepted_evidence_id
-      }
-
-      event = %{
-        id: Ecto.UUID.generate(),
-        type: "result.consumed",
-        payload: attrs,
-        causation_id: nil
-      }
-
-      extra = %{
-        turn_id: turn_id,
-        operation_id: operation.operation.id,
-        dedupe_key: consumption_key(operation.operation.id, operation.kind)
-      }
-
-      case Records.insert(repo, event_changeset(event, agent_id, seq, extra)) do
-        {:ok, stored} ->
-          consumed = %{
-            "operation_id" => operation.operation.id,
-            "consumption_kind" => operation.kind,
-            "event_id" => stored.id,
-            "seq" => seq
-          }
-
-          {:cont, {:ok, [consumed | acc]}}
-
-        {:error, reason} ->
-          {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, consumed} -> {:ok, Enum.reverse(consumed)}
+       Map.put(
+         response(child, 0, 3, [created, forked, inherited]),
+         "fork_request",
+         attrs.fork_request
+       )}
+    else
+      false -> {:error, :conflict}
       error -> error
     end
   end
 
-  defp replay_consumption(agent, operations, existing) do
-    consumed =
-      Enum.map(operations, fn operation ->
-        event = Map.fetch!(existing, consumption_key(operation.operation.id, operation.kind))
+  defp lock_fork_source(repo, id, pos) do
+    query = from(a in Agent, where: a.id == ^id)
 
-        %{
-          "operation_id" => operation.operation.id,
-          "consumption_kind" => operation.kind,
-          "event_id" => event.id,
-          "seq" => event.seq
-        }
-      end)
-
-    %{
-      "agent_id" => agent.id,
-      "checkpoint_id" => agent.head_checkpoint_id,
-      "consumed" => consumed,
-      "history_seq" => agent.history_seq,
-      "lock_version" => agent.lock_version
-    }
-  end
-
-  defp consumption_key(operation_id, kind), do: "consume:" <> operation_id <> ":" <> kind
-
-  ## Shared validation
-
-  defp command(command) do
-    with {:ok, _} <- Records.fields(command, [:scope_id, :command_id, :params], []),
-         {:ok, scope_id} <- Records.uuid(command[:scope_id]),
-         {:ok, command_id} <- Records.uuid(command[:command_id]),
-         {:ok, params} <- Records.json(command[:params], :command),
-         {:ok, digest} <- digest_of(params, :command) do
-      {:ok, %{scope_id: scope_id, command_id: command_id, request_digest: digest, params: params}}
-    end
-  end
-
-  defp initial_checkpoint(checkpoint) do
-    with {:ok, _} <- Records.fields(checkpoint, [:id, :data, :safe_to_fork], []),
-         {:ok, id} <- Records.uuid(checkpoint[:id]),
-         {:ok, data} <- Records.json(checkpoint[:data], :checkpoint),
-         true <- checkpoint[:safe_to_fork] == true,
-         {:ok, digest} <- digest_of(data, :checkpoint) do
-      {:ok,
-       %{id: id, data: data, digest: digest, safe_to_fork: true, continuation: "await_input"}}
-    else
-      false -> {:error, :invalid_data}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp next_checkpoint(checkpoint) do
-    with {:ok, _} <-
-           Records.fields(checkpoint, [:id, :data, :continuation, :safe_to_fork], []),
-         {:ok, id} <- Records.uuid(checkpoint[:id]),
-         {:ok, data} <- Records.json(checkpoint[:data], :checkpoint),
-         {:ok, continuation} <- Records.enum(checkpoint[:continuation], @continuations),
-         true <- is_boolean(checkpoint[:safe_to_fork]),
-         {:ok, digest} <- digest_of(data, :checkpoint) do
-      {:ok,
-       %{
-         id: id,
-         data: data,
-         digest: digest,
-         safe_to_fork: checkpoint[:safe_to_fork],
-         continuation: continuation
-       }}
-    else
-      false -> {:error, :invalid_data}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp digest_of(value, kind) do
-    case Codec.digest(value, kind) do
-      {:ok, digest} -> {:ok, digest}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp validate_advance(attrs) do
-    with {:ok, _} <-
-           Records.fields(
-             attrs,
-             [:agent_id, :expected_version, :expected_generation, :turn_id, :checkpoint, :event],
-             [:command, :adoption]
-           ),
-         {:ok, agent_id} <- Records.uuid(attrs[:agent_id]),
-         {:ok, version} <- Records.count(attrs[:expected_version]),
-         {:ok, generation} <- Records.count(attrs[:expected_generation]),
-         # A decision taken at a no-turn boundary (`await_input`) has no active
-         # turn; a reply/batch advance always supplies one.
-         {:ok, turn_id} <- Records.optional_uuid(attrs[:turn_id]),
-         {:ok, checkpoint} <- next_checkpoint(attrs[:checkpoint]),
-         {:ok, event} <- Records.event_input(attrs[:event]),
-         {:ok, command} <- optional_command(attrs[:command]),
-         {:ok, adoption} <- optional_adoption(attrs[:adoption]) do
-      {:ok,
-       %{
-         agent_id: agent_id,
-         expected_version: version,
-         expected_generation: generation,
-         turn_id: turn_id,
-         checkpoint: checkpoint,
-         event: event,
-         command: command,
-         adoption: adoption
-       }}
-    end
-  end
-
-  defp optional_command(nil), do: {:ok, nil}
-  defp optional_command(command), do: command(command)
-
-  # A decision that adopts a stored accepted Result names that Result by digest,
-  # so the transaction refuses to advance on a Result it did not read.
-  defp optional_adoption(nil), do: {:ok, nil}
-
-  defp optional_adoption(adoption) when is_map(adoption) and not is_struct(adoption) do
-    with {:ok, _} <- Records.fields(adoption, [:operation_id, :accepted_digest], []),
-         {:ok, operation_id} <- Records.uuid(adoption[:operation_id]),
-         {:ok, digest} <- Records.digest(adoption[:accepted_digest]) do
-      {:ok, %{operation_id: operation_id, accepted_digest: digest}}
-    end
-  end
-
-  defp optional_adoption(_), do: {:error, :invalid_data}
-
-  defp write_advance(repo, %{command: nil} = input), do: insert_advance(repo, input, nil)
-
-  defp write_advance(repo, input) do
-    case replay(repo, input.command) do
-      {:ok, {:stored, response}} -> {:ok, response}
-      {:ok, :new} -> insert_advance(repo, input, input.command)
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp insert_advance(repo, input, command) do
-    with {:ok, agent} <- Records.get(repo, Agent, input.agent_id),
-         :ok <- current_generation(agent, input.expected_generation),
-         :ok <- adoption_owner(repo, agent, input.adoption),
-         :ok <- turn_binding(repo, agent, input.turn_id),
-         seq = agent.history_seq + 1,
-         {:ok, _checkpoint} <-
-           Records.insert(
-             repo,
-             checkpoint_changeset(input.checkpoint, agent.id, input.turn_id)
-           ),
-         {:ok, version} <-
-           Records.cas_agent(
-             repo,
-             agent,
-             input.expected_version,
-             input.expected_generation,
-             head_checkpoint_id: input.checkpoint.id,
-             history_seq: seq
-           ),
-         {:ok, _event} <-
-           Records.insert(
-             repo,
-             event_changeset(input.event, agent.id, seq, %{turn_id: input.turn_id})
-           ) do
-      response = %{
-        "agent_id" => agent.id,
-        "checkpoint_id" => input.checkpoint.id,
-        "turn_id" => input.turn_id,
-        "history_seq" => seq,
-        "lock_version" => version
-      }
-
-      with {:ok, _command} <- insert_command(repo, command, response), do: {:ok, response}
-    end
-  end
-
-  # Only an idle head may advance without a turn; a live turn keeps its binding so a
-  # caller cannot drop the turn identity from an in-flight checkpoint.
-  defp turn_binding(repo, agent, nil) do
-    case head_checkpoint(repo, agent) do
-      %Checkpoint{turn_id: nil} -> :ok
-      _ -> {:error, :invalid_data}
-    end
-  end
-
-  defp turn_binding(_repo, _agent, _turn_id), do: :ok
-
-  defp adoption_owner(_repo, _agent, nil), do: :ok
-
-  defp adoption_owner(repo, agent, adoption) do
-    case Records.get(repo, Operation, adoption.operation_id) do
-      {:ok, operation} -> adoption_owner_check(operation, agent, adoption)
-      {:error, :conflict} -> {:error, :conflict}
-    end
-  end
-
-  defp adoption_owner_check(operation, agent, adoption) do
-    if operation.owner_agent_id == agent.id and not is_nil(operation.accepted_result) do
-      adopted_digest(operation, adoption)
-    else
-      {:error, :conflict}
-    end
-  end
-
-  defp adopted_digest(operation, adoption) do
-    case Codec.digest(operation.accepted_result, :result) do
-      {:ok, digest} when digest == adoption.accepted_digest -> :ok
-      _ -> {:error, :conflict}
-    end
-  end
-
-  defp validate_restore(attrs) do
-    with {:ok, _} <-
-           Records.fields(
-             attrs,
-             [
-               :command,
-               :agent_id,
-               :expected_version,
-               :expected_generation,
-               :checkpoint,
-               :event
-             ],
-             [:turn_id]
-           ),
-         {:ok, command} <- command(attrs[:command]),
-         {:ok, agent_id} <- Records.uuid(attrs[:agent_id]),
-         {:ok, version} <- Records.count(attrs[:expected_version]),
-         {:ok, generation} <- Records.count(attrs[:expected_generation]),
-         {:ok, turn_id} <- Records.optional_uuid(attrs[:turn_id]),
-         {:ok, checkpoint} <- next_checkpoint(attrs[:checkpoint]),
-         {:ok, event} <- Records.event_input(attrs[:event]) do
-      {:ok,
-       %{
-         command: command,
-         agent_id: agent_id,
-         expected_version: version,
-         expected_generation: generation,
-         turn_id: turn_id,
-         checkpoint: checkpoint,
-         event: event
-       }}
-    end
-  end
-
-  defp write_restore(repo, input) do
-    case replay(repo, input.command) do
-      {:ok, {:stored, response}} ->
-        {:ok, response}
-
-      {:ok, :new} ->
-        with {:ok, agent} <- Records.get(repo, Agent, input.agent_id),
-             :ok <- current_generation(agent, input.expected_generation),
-             seq = agent.history_seq + 1,
-             {:ok, _checkpoint} <-
-               insert_checkpoint(repo, input.checkpoint, agent.id, input.turn_id),
-             {:ok, version} <-
-               bump_generation(
-                 repo,
-                 agent,
-                 input.expected_version,
-                 input.expected_generation,
-                 input.checkpoint.id,
-                 seq
-               ),
-             {:ok, _event} <-
-               Records.insert(repo, event_changeset(input.event, agent.id, seq, %{})),
-             response = %{
-               "agent_id" => agent.id,
-               "checkpoint_id" => input.checkpoint.id,
-               "generation" => input.expected_generation + 1,
-               "history_seq" => seq,
-               "lock_version" => version
-             },
-             {:ok, _command} <- insert_command(repo, input.command, response) do
-          {:ok, response}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # The generation bump is the cross-request serializer: a second restore and any
-  # late write from the previous generation fail the same CAS and write nothing.
-  defp bump_generation(repo, agent, expected_version, expected_generation, checkpoint_id, seq) do
     query =
-      from(a in Agent,
-        where:
-          a.id == ^agent.id and a.generation == ^expected_generation and
-            a.lock_version == ^expected_version,
-        update: [
-          set: [
-            generation: ^(expected_generation + 1),
-            lock_version: ^(expected_version + 1),
-            head_checkpoint_id: ^checkpoint_id,
-            history_seq: ^seq
-          ]
-        ]
-      )
+      if repo.__adapter__() == Ecto.Adapters.Postgres,
+        do: from(a in query, lock: "FOR SHARE"),
+        else: query
 
-    case repo.update_all(query, [], log: false) do
-      {1, _} -> {:ok, expected_version + 1}
-      {0, _} -> {:error, :conflict}
+    with %Agent{} = agent <- repo.one(query, log: false),
+         :ok <- position(agent, pos),
+         do: {:ok, agent}
+  end
+
+  defp inherited_event(repo, child, source, manifest) do
+    with {:ok, stored} <-
+           Records.insert(
+             repo,
+             Records.event_changeset(%{
+               id: Ecto.UUID.generate(),
+               scope_id: child,
+               seq: 3,
+               type: "context.inherited",
+               payload: manifest,
+               source_agent_id: source,
+               schema_version: Events.version(),
+               recorded_at: DateTime.utc_now()
+             })
+           ),
+         do: {:ok, Records.plain(stored)}
+  end
+
+  def restore(repo, attrs) do
+    with {:ok, _} <- Records.fields(attrs, [:command_id, :position], []),
+         :ok <- validate_position(attrs.position) do
+      transition(repo, attrs, fn agent -> activate(repo, agent, attrs) end)
     end
   end
 
-  defp current_generation(agent, expected) do
-    if agent.generation == expected, do: :ok, else: {:error, :stale_generation}
-  end
+  defp activate(repo, agent, attrs) do
+    seq = agent.history_seq + 1
 
-  defp checkout_changeset(attrs) do
-    Checkpoint.changeset(%Checkpoint{}, attrs)
-    |> Ecto.Changeset.unique_constraint(:id, name: :checkpoints_pkey)
-  end
-
-  defp checkpoint_changeset(checkpoint, agent_id, turn_id) do
-    checkout_changeset(%{
-      id: checkpoint.id,
-      agent_id: agent_id,
-      turn_id: turn_id,
-      data: checkpoint.data,
-      continuation: checkpoint.continuation,
-      schema_version: 1,
-      digest: checkpoint.digest,
-      safe_to_fork: checkpoint.safe_to_fork,
-      recorded_at: DateTime.utc_now()
-    })
-  end
-
-  defp event_changeset(event, scope_id, seq, extra) do
-    Records.event_changeset(
-      Map.merge(
-        %{
-          id: event.id,
-          scope_id: scope_id,
-          seq: seq,
-          type: event.type,
-          schema_version: 1,
-          payload: event.payload,
-          causation_id: event.causation_id,
-          recorded_at: DateTime.utc_now()
-        },
-        extra
-      )
-    )
-  end
-
-  defp replay(repo, command) do
-    case Records.command_lookup(repo, command.scope_id, command.command_id) do
-      nil ->
-        {:ok, :new}
-
-      %Command{request_digest: digest, response: response} ->
-        if digest == command.request_digest,
-          do: {:ok, {:stored, response}},
-          else: {:error, :conflict}
+    with {:ok, version} <-
+           Records.cas_agent(
+             repo,
+             agent,
+             attrs.position.lock_version,
+             attrs.position.generation,
+             generation: agent.generation + 1,
+             history_seq: seq,
+             head_checkpoint_id: nil
+           ),
+         {:ok, event} <-
+           event(
+             repo,
+             agent.id,
+             seq,
+             "agent.activated",
+             %{"generation" => agent.generation + 1, "continuation" => "interrupted"},
+             nil
+           ) do
+      {:ok, response(%{agent | generation: agent.generation + 1}, version, seq, [event])}
     end
   end
 
-  defp insert_command(_repo, nil, _response), do: {:ok, nil}
+  defp transition(repo, attrs, fun) do
+    with {:ok, _} <- Records.uuid(attrs.command_id) do
+      command(repo, attrs.position.agent_id, attrs.command_id, attrs, fn ->
+        load_transition(repo, attrs.position, fun)
+      end)
+    end
+  end
 
-  defp insert_command(repo, command, response) do
-    Records.insert(
-      repo,
-      Records.command_changeset(%{
+  defp load_transition(repo, pos, fun) do
+    with {:ok, agent} <- Records.get(repo, Agent, pos.agent_id),
+         :ok <- position(agent, pos),
+         do: fun.(agent)
+  end
+
+  defp validate_position(pos) do
+    with {:ok, _} <- Records.fields(pos, [:agent_id, :lock_version, :generation], []),
+         {:ok, _} <- Records.uuid(pos.agent_id),
+         {:ok, _} <- Records.count(pos.lock_version),
+         {:ok, _} <- Records.count(pos.generation),
+         do: :ok
+  end
+
+  defp position(agent, pos) do
+    cond do
+      agent.generation != pos.generation -> {:error, :stale_generation}
+      agent.lock_version != pos.lock_version -> {:error, :conflict}
+      true -> :ok
+    end
+  end
+
+  defp authority(repo, id) do
+    case SQL.query!(
+           repo,
+           "SELECT dataset_id FROM storage_metadata WHERE id = 1",
+           [],
+           log: false
+         ).rows do
+      [[^id]] -> :ok
+      _ -> {:error, :conflict}
+    end
+  end
+
+  defp active_turn(repo, agent_id, turn_id) do
+    latest =
+      repo.one(
+        from(e in Event,
+          where: e.scope_id == ^agent_id and e.type == "input.accepted",
+          order_by: [desc: e.seq],
+          limit: 1
+        ),
+        log: false
+      )
+
+    if latest && latest.turn_id == turn_id, do: :ok, else: {:error, :conflict}
+  end
+
+  defp append(repo, agent, pos, specs) do
+    with {:ok, version} <-
+           Records.cas_agent(repo, agent, pos.lock_version, pos.generation,
+             history_seq: agent.history_seq + length(specs)
+           ),
+         {:ok, events} <- append_events(repo, agent, specs) do
+      {:ok, response(agent, version, agent.history_seq + length(specs), events)}
+    end
+  end
+
+  defp append_events(repo, agent, specs) do
+    specs
+    |> Enum.with_index(1)
+    |> Enum.reduce_while({:ok, []}, fn {{type, payload, turn}, index}, {:ok, acc} ->
+      case event(repo, agent.id, agent.history_seq + index, type, payload, turn) do
+        {:ok, event} -> {:cont, {:ok, acc ++ [event]}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp event(repo, scope, seq, type, payload, turn) do
+    dedupe = if type == "operation.result_consumed", do: consumption_key(payload)
+
+    cs =
+      Records.event_changeset(%{
         id: Ecto.UUID.generate(),
-        scope_id: command.scope_id,
-        command_id: command.command_id,
-        request_digest: command.request_digest,
-        response: response,
+        scope_id: scope,
+        seq: seq,
+        type: type,
+        payload: payload,
+        turn_id: turn,
+        operation_id: payload["operation_id"],
+        dedupe_key: dedupe,
+        schema_version: Events.version(),
         recorded_at: DateTime.utc_now()
       })
-    )
+
+    with {:ok, stored} <- Records.insert(repo, cs), do: {:ok, Records.plain(stored)}
   end
 
-  defp head_checkpoint(_repo, %Agent{head_checkpoint_id: nil}), do: nil
-
-  defp head_checkpoint(repo, %Agent{head_checkpoint_id: id}) do
-    repo.get(Checkpoint, id, log: false)
+  defp response(agent, version, seq, events) do
+    %{
+      "agent_id" => agent.id,
+      "generation" => agent.generation,
+      "lock_version" => version,
+      "through_seq" => seq,
+      "history_seq" => seq,
+      "events" => events
+    }
   end
 
-  ## Bounded reads
-
-  defp page_opts(opts) do
-    cond do
-      not is_list(opts) or not Keyword.keyword?(opts) ->
-        {:error, :invalid_data}
-
-      Enum.any?(Keyword.keys(opts), &(&1 not in [:after_seq, :limit])) ->
-        {:error, :invalid_data}
-
-      true ->
-        page_bounds(Keyword.get(opts, :after_seq, 0), Keyword.get(opts, :limit, @page_default))
+  defp command(repo, scope, id, attrs, fun) do
+    with {:ok, digest} <- Codec.digest(Records.plain(attrs), :command) do
+      Records.transact(repo, fn -> replay_command(repo, scope, id, digest, fun) end)
     end
   end
 
-  defp page_bounds(after_seq, limit)
-       when is_integer(after_seq) and after_seq >= 0 and is_integer(limit) and
-              limit in 1..@page_max,
-       do: {:ok, after_seq, limit}
+  defp replay_command(repo, scope, id, digest, fun) do
+    case Records.command_lookup(repo, scope, id) do
+      %Command{request_digest: ^digest, response: response} ->
+        {:ok, response}
 
-  defp page_bounds(after_seq, limit)
-       when is_integer(after_seq) and after_seq >= 0 and is_integer(limit) and limit > @page_max,
-       do: {:error, :limit}
+      %Command{} ->
+        {:error, :conflict}
 
-  defp page_bounds(_, _), do: {:error, :invalid_data}
-
-  defp read_page(repo, agent_id, after_seq, limit) do
-    query =
-      from(e in Event,
-        where: e.scope_id == ^agent_id and e.seq > ^after_seq,
-        order_by: [asc: e.seq],
-        limit: ^limit,
-        select: %{event: e, raw: fragment("CAST(? AS TEXT)", e.payload)}
-      )
-
-    rows = repo.all(query, log: false)
-
-    case take_page(rows, 0, [], limit) do
-      {:ok, events, cursor} ->
-        {:ok, %{"events" => Enum.map(events, &Records.plain/1), "next_cursor" => cursor}}
-
-      {:error, reason} ->
-        {:error, reason}
+      nil ->
+        with {:ok, response} <- fun.(),
+             {:ok, _} <-
+               Records.insert(
+                 repo,
+                 Records.command_changeset(%{
+                   id: Ecto.UUID.generate(),
+                   scope_id: scope,
+                   command_id: id,
+                   request_digest: digest,
+                   response: response,
+                   recorded_at: DateTime.utc_now()
+                 })
+               ) do
+          {:ok, response}
+        end
     end
   end
 
-  defp take_page([], _bytes, events, _limit), do: {:ok, Enum.reverse(events), nil}
-
-  defp take_page([row | rest], bytes, events, limit) do
-    # `length()` counts characters in both adapters; the page budget is bytes, so
-    # the canonical JSON text is measured in Elixir instead.
-    size = byte_size(row.raw)
-
-    cond do
-      bytes + size > @page_bytes and events == [] ->
-        {:error, :limit}
-
-      bytes + size > @page_bytes ->
-        {:ok, Enum.reverse(events), hd(events).seq}
-
-      rest == [] ->
-        acc = [row.event | events]
-        cursor = if length(acc) == limit, do: row.event.seq, else: nil
-        {:ok, Enum.reverse(acc), cursor}
-
-      true ->
-        take_page(rest, bytes + size, [row.event | events], limit)
+  def fetch(repo, id) do
+    with {:ok, id} <- Records.uuid(id) do
+      Transaction.read(fn -> read_agent(repo, id) end)
     end
   end
+
+  defp read_agent(repo, id) do
+    with {:ok, agent} <- Records.get(repo, Agent, id) do
+      {:ok, %{"agent" => Records.plain(agent), "head_checkpoint" => nil}}
+    end
+  end
+
+  @doc "Read a stable committed command response after an unknown write outcome."
+  def command_response(repo, agent_id, command_id) do
+    with {:ok, _} <- Records.uuid(agent_id),
+         {:ok, _} <- Records.uuid(command_id) do
+      Transaction.read(fn -> read_command(repo, agent_id, command_id) end)
+    end
+  end
+
+  defp read_command(repo, agent_id, command_id) do
+    case Records.command_lookup(repo, agent_id, command_id) do
+      nil -> {:error, :conflict}
+      command -> {:ok, command.response}
+    end
+  end
+
+  def history_page(repo, id, opts \\ []), do: History.event_page(repo, id, opts)
 end

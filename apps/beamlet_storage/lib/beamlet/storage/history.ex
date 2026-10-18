@@ -7,12 +7,11 @@ defmodule Beamlet.Storage.History do
   Pages are keyset-paginated as one bounded statement each, with no enclosing read transaction and bounded by
   a row count plus a byte budget. A page never splits a record: a record larger
   than the byte budget is returned alone with `over_budget: true` and stays
-  bounded by its own codec limit. Checkpoints carry no history sequence, so
-  `checkpoint_at/3` maps an event cursor to the newest checkpoint committed at or
-  before it and reports that derivation explicitly.
+  bounded by its own codec limit. Checkpoints bind an explicit `through_seq`;
+  `checkpoint_at/3` verifies the optional cache and returns nil for corrupt data.
   """
   import Ecto.Query
-  alias Beamlet.Storage.{Records, Transaction}
+  alias Beamlet.Storage.{Codec, Events, Records, Transaction}
   alias Beamlet.Storage.Schema.{Checkpoint, Event, Execution, ExecutionEvidence, Operation}
 
   @page_default 100
@@ -55,9 +54,9 @@ defmodule Beamlet.Storage.History do
   end
 
   @doc """
-  The effective context as of `seq`: the newest checkpoint committed at or before
-  that event. Later events never rewrite the returned checkpoint, because
-  checkpoints are immutable. `nil` returns the current head checkpoint.
+  The optional control cache as of `seq`, selected by explicit `through_seq`.
+  Missing or corrupt caches return nil so a loader can reduce raw history.
+  `nil` selects the newest cache.
   """
   def checkpoint_at(repo, agent_id, seq) do
     with {:ok, id} <- Records.uuid(agent_id),
@@ -66,53 +65,43 @@ defmodule Beamlet.Storage.History do
     end
   end
 
-  defp read_checkpoint_at(repo, agent_id, nil) do
-    case repo.one(head_query(agent_id), log: false) do
-      nil -> {:error, :conflict}
-      checkpoint -> {:ok, %{"as_of_seq" => nil, "checkpoint" => Records.plain(checkpoint)}}
-    end
-  end
-
   defp read_checkpoint_at(repo, agent_id, seq) do
-    target =
-      from(e in Event, where: e.scope_id == ^agent_id and e.seq == ^seq, select: e.recorded_at)
-      |> repo.one(log: false)
+    query =
+      from(c in Checkpoint,
+        where: c.agent_id == ^agent_id,
+        order_by: [desc: c.through_seq, desc: c.recorded_at, desc: c.id],
+        limit: 1,
+        select: %{
+          id: c.id,
+          agent_id: c.agent_id,
+          turn_id: c.turn_id,
+          through_seq: c.through_seq,
+          reducer_version: c.reducer_version,
+          digest: c.digest,
+          continuation: c.continuation,
+          safe_to_fork: c.safe_to_fork,
+          schema_version: c.schema_version,
+          recorded_at: c.recorded_at,
+          raw: fragment("CAST(? AS TEXT)", c.data)
+        }
+      )
 
-    case target do
-      nil ->
-        {:error, :conflict}
-
-      recorded_at ->
-        query =
-          from(c in Checkpoint,
-            where: c.agent_id == ^agent_id and c.recorded_at <= ^recorded_at,
-            order_by: [desc: c.recorded_at, desc: c.id],
-            limit: 1
-          )
-
-        case repo.one(query, log: false) do
-          nil ->
-            {:error, :conflict}
-
-          checkpoint ->
-            {:ok,
-             %{
-               "as_of_seq" => seq,
-               "checkpoint" => Records.plain(checkpoint),
-               "derived_by" => "commit_order"
-             }}
-        end
-    end
+    query = if is_nil(seq), do: query, else: from(c in query, where: c.through_seq <= ^seq)
+    checkpoint = repo.one(query, log: false) |> valid_checkpoint()
+    {:ok, %{"as_of_seq" => seq, "checkpoint" => checkpoint, "derived_by" => "through_seq"}}
   end
 
-  # A checkpoint and its event commit in one transaction, so a checkpoint stamped
-  # at or before the target event is the newest context that event could see.
-  defp head_query(agent_id) do
-    from(c in Checkpoint,
-      where: c.agent_id == ^agent_id,
-      order_by: [desc: c.recorded_at, desc: c.id],
-      limit: 1
-    )
+  defp valid_checkpoint(nil), do: nil
+
+  defp valid_checkpoint(checkpoint) do
+    with {:ok, data} <- Codec.decode(checkpoint.raw, :checkpoint),
+         :ok <- Events.control(data),
+         {:ok, digest} <- Codec.digest(data, :checkpoint),
+         true <- digest == checkpoint.digest do
+      checkpoint |> Map.delete(:raw) |> Map.put(:data, data) |> Records.plain()
+    else
+      _ -> nil
+    end
   end
 
   @doc """
@@ -129,12 +118,14 @@ defmodule Beamlet.Storage.History do
   @doc "Turn summaries ordered by first recorded sequence, keyset on that sequence."
   def turns(repo, agent_id, opts \\ []) do
     with {:ok, id} <- Records.uuid(agent_id),
-         {:ok, after_seq, limit} <- list_bounds(opts, :after_first_seq) do
-      Transaction.read(fn -> read_turns(repo, id, after_seq, limit) end)
+         {:ok, through} <- optional_seq(Keyword.get(opts, :through_seq)),
+         {:ok, after_seq, limit} <-
+           list_bounds(Keyword.delete(opts, :through_seq), :after_first_seq) do
+      Transaction.read(fn -> read_turns(repo, id, after_seq, limit, through) end)
     end
   end
 
-  @doc "Owned Operation rows in recorded history order, keyset on `history_seq`."
+  @doc "Owned Operation rows ordered by immutable Agent prepared_seq (cursor after_history_seq)."
   def operations(repo, agent_id, opts \\ []) do
     with {:ok, id} <- Records.uuid(agent_id),
          {:ok, after_seq, limit} <- list_bounds(opts, :after_history_seq) do
@@ -169,8 +160,13 @@ defmodule Beamlet.Storage.History do
   @doc "Receipt evidence rows for one Operation, newest first, bounded."
   def evidence(repo, operation_id) do
     with {:ok, id} <- Records.uuid(operation_id) do
-      Transaction.read(fn -> {:ok, %{"evidence" => evidence_rows(repo, id)}} end)
+      Transaction.read(fn -> bounded_evidence(repo, id) end)
     end
+  end
+
+  defp bounded_evidence(repo, id) do
+    rows = evidence_rows(repo, id, 33)
+    if length(rows) <= 32, do: {:ok, %{"evidence" => rows}}, else: {:error, :limit}
   end
 
   ## Filters
@@ -414,11 +410,12 @@ defmodule Beamlet.Storage.History do
     from(c in query, where: c.recorded_at > ^at or (c.recorded_at == ^at and c.id > ^id))
   end
 
-  defp read_turns(repo, agent_id, after_seq, limit) do
+  defp read_turns(repo, agent_id, after_seq, limit, through) do
     query =
       from(e in Event,
-        where: e.scope_id == ^agent_id and not is_nil(e.turn_id) and e.seq > ^after_seq,
+        where: e.scope_id == ^agent_id and not is_nil(e.turn_id),
         group_by: e.turn_id,
+        having: min(e.seq) > ^after_seq,
         order_by: [asc: min(e.seq)],
         limit: ^limit,
         select: %{
@@ -428,6 +425,8 @@ defmodule Beamlet.Storage.History do
           events: count(e.id)
         }
       )
+
+    query = filter_through(query, through)
 
     turns =
       Enum.map(repo.all(query, log: false), fn turn ->
@@ -450,17 +449,17 @@ defmodule Beamlet.Storage.History do
         }
       end)
 
-    next = if length(turns) == limit, do: List.last(turns)["last_seq"], else: nil
+    next = if length(turns) == limit, do: List.last(turns)["first_seq"], else: nil
     {:ok, %{"turns" => turns, "next_cursor" => next}}
   end
 
-  # Ordered by (history_seq, id); owned Operations get a distinct position today, so
-  # the seq cursor cannot skip a row. Revisit if a writer ever shares a position.
+  # Preparation allocates a distinct committed Agent event per member. Acceptance
+  # changes only Operation history_seq, never this immutable pagination position.
   defp read_operations(repo, agent_id, after_seq, limit) do
     query =
       from(o in Operation,
-        where: o.owner_agent_id == ^agent_id and o.history_seq > ^after_seq,
-        order_by: [asc: o.history_seq, asc: o.id],
+        where: o.owner_agent_id == ^agent_id and o.prepared_seq > ^after_seq,
+        order_by: [asc: o.prepared_seq, asc: o.id],
         limit: ^limit
       )
 
@@ -468,7 +467,7 @@ defmodule Beamlet.Storage.History do
       Enum.map(repo.all(query, log: false), fn operation ->
         %{
           "operation_id" => operation.id,
-          "history_seq" => operation.history_seq,
+          "history_seq" => operation.prepared_seq,
           "turn_id" => operation.turn_id,
           "tool_call_id" => operation.tool_call_id,
           "ordinal" => operation.ordinal,
@@ -490,11 +489,11 @@ defmodule Beamlet.Storage.History do
     |> repo.one(log: false)
   end
 
-  defp evidence_rows(repo, operation_id) do
+  defp evidence_rows(repo, operation_id, limit \\ 32) do
     from(e in ExecutionEvidence,
       where: e.operation_id == ^operation_id,
       order_by: [desc: e.recorded_at, asc: e.id],
-      limit: 32
+      limit: ^limit
     )
     |> repo.all(log: false)
     |> Enum.map(&Records.plain/1)
