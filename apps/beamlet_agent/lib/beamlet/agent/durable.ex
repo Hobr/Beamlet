@@ -1,11 +1,14 @@
 defmodule Beamlet.Agent.Durable do
-  @moduledoc "Agent-owned input and reference orchestration over authority format 2."
+  @moduledoc "Agent-owned input and reference orchestration over Agent authority format 3."
   import Kernel, except: [inspect: 1, inspect: 2]
-  alias Beamlet.Agent.{ContextBuilder, Loader, Reducer, Resources}
+  alias Beamlet.Agent.ContextBuilder
   alias Beamlet.Agent.Core.Decision
+  alias Beamlet.Agent.Loader
+  alias Beamlet.Agent.Reducer
+  alias Beamlet.Agent.Resources
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.Storage.Codec
   alias Beamlet.Runtime.Persistence
-  alias Beamlet.Storage.{AgentRecords, Codec}
-
   @enforce_keys [:repo, :authority_id, :agent_id]
   defstruct [
     :repo,
@@ -32,7 +35,7 @@ defmodule Beamlet.Agent.Durable do
        else: {:error, :invalid_data}
   end
 
-  def persistence(d, _prepared) do
+  def persistence(d, prepared) do
     with {:ok, r} <- runtime(d) do
       {:ok,
        %Persistence{
@@ -40,7 +43,9 @@ defmodule Beamlet.Agent.Durable do
          journal_repo: r.journal_repo,
          authority_id: d.authority_id,
          executor_id: r.executor_id,
-         executor_boot_id: r.executor_boot_id
+         executor_boot_id: r.executor_boot_id,
+         dispatch_scope_id: prepared["dispatch_scope_id"],
+         dispatch_epoch: prepared["dispatch_epoch"]
        }}
     end
   end

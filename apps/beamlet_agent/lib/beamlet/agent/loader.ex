@@ -1,8 +1,12 @@
 defmodule Beamlet.Agent.Loader do
   @moduledoc "Bounded fixed-high-water history reconstruction. Reads never activate or dispatch."
   alias Beamlet.Agent.Reducer
-  alias Beamlet.Storage.{AgentRecords, Codec, History, Inheritance, OperationRecords, References}
-
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.History
+  alias Beamlet.Agent.Storage.Inheritance
+  alias Beamlet.Agent.Storage.OperationRecords
+  alias Beamlet.Storage.References
   @max_events 100_000
   @max_bytes 33_554_432
 
@@ -135,7 +139,7 @@ defmodule Beamlet.Agent.Loader do
          :ok <- Reducer.decode(event),
          true <- event["type"] == type and event["turn_id"] == op["turn_id"],
          true <- Map.take(event["payload"], ~w(operation_id step_id ordinal)) == member,
-         {:ok, prepared} <- History.event(repo, op["id"], 1),
+         {:ok, prepared} <- History.operation_event(repo, op["id"], 1),
          true <- prepared["type"] == "operation.prepared" and prepared["schema_version"] == 1,
          true <- prepared["payload"]["description_digest"] == op["description_digest"] do
       :ok
@@ -207,7 +211,7 @@ defmodule Beamlet.Agent.Loader do
     with %{"status" => status} <- op["accepted_result"],
          true <- status in ~w(ok error uncertain cancelled deadline unknown),
          {:ok, digest} <- Codec.digest(op["accepted_result"], :result),
-         {:ok, event} <- History.event(repo, op["id"], 2),
+         {:ok, event} <- History.operation_event(repo, op["id"], 2),
          true <- event["type"] == "operation.result_accepted" and event["schema_version"] == 1,
          true <- digest == event["payload"]["accepted_digest"],
          true <- Map.get(ref, "accepted_digest", digest) == digest do

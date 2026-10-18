@@ -1,8 +1,9 @@
 defmodule Beamlet.Agent.Integration.Caller do
   @moduledoc "Construct bounded model invocations and opaque Tool Operations."
   alias Beamlet.Actions.Operation
-  alias Beamlet.Runtime.{Directory, Persistence}
-  alias Beamlet.Storage.Codec
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Runtime.Directory
+  alias Beamlet.Runtime.Persistence
 
   def profile?(p) when is_map(p) do
     Map.keys(p) -- [:id, :capability, :environment, :claims, :allowed_nodes] == [] and

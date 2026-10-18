@@ -3,12 +3,20 @@ Code.require_file("../support/reference_fixture.ex", __DIR__)
 defmodule Beamlet.Agent.ForkTest do
   use ExUnit.Case, async: false
   import Ecto.Query
+  alias Beamlet.Actions.Storage.OperationRecords, as: ActionsOperations
   alias Beamlet.Agent
-  alias Beamlet.Agent.{ContextBuilder, Durable, Loader, ReferenceFixture, TraceExport}
+  alias Beamlet.Agent.ContextBuilder
+  alias Beamlet.Agent.Durable
   alias Beamlet.Agent.Integration.Caller
-  alias Beamlet.Storage.{AgentRecords, OperationRecords, Records}
-  alias Beamlet.Storage.Schema.Agent, as: AgentRow
-  alias Beamlet.Storage.Schema.{Command, Event, Operation}
+  alias Beamlet.Agent.Loader
+  alias Beamlet.Agent.ReferenceFixture
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.Storage.Records
+  alias Beamlet.Agent.Storage.Schema.Agent, as: AgentRow
+  alias Beamlet.Agent.Storage.Schema.Command
+  alias Beamlet.Agent.Storage.Schema.Event
+  alias Beamlet.Agent.Storage.Schema.Operation
+  alias Beamlet.Agent.TraceExport
 
   setup do
     ctx = ReferenceFixture.open()
@@ -207,7 +215,7 @@ defmodule Beamlet.Agent.ForkTest do
     {:ok, before} = Durable.inspect(fork.locator)
 
     assert {:error, :conflict} =
-             OperationRecords.accept_result(d.repo, %{
+             ActionsOperations.accept_result(d.repo, %{
                operation_id: member["operation_id"],
                expected_version: 1,
                result: %{

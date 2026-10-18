@@ -3,12 +3,19 @@ Code.require_file("../support/reference_fixture.ex", __DIR__)
 defmodule Beamlet.Agent.HistoryExportTest do
   use ExUnit.Case, async: false
   import Ecto.Query
+  alias Beamlet.Actions.Storage.OperationRecords, as: ActionsOperations
   alias Beamlet.Agent
-  alias Beamlet.Agent.{Durable, ReferenceFixture, TraceExport}
+  alias Beamlet.Agent.Durable
   alias Beamlet.Agent.Integration.Caller
-  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, OperationRecords, Records}
-  alias Beamlet.Storage.Schema.Agent, as: AgentRow
-  alias Beamlet.Storage.Schema.{Artifact, Event, Operation}
+  alias Beamlet.Agent.ReferenceFixture
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.Records
+  alias Beamlet.Agent.Storage.Schema.Agent, as: AgentRow
+  alias Beamlet.Agent.Storage.Schema.Event
+  alias Beamlet.Agent.TraceExport
+  alias Beamlet.Storage.Artifacts
+  alias Beamlet.Storage.Schema.Artifact
 
   setup do
     ctx = ReferenceFixture.open()
@@ -277,7 +284,8 @@ defmodule Beamlet.Agent.HistoryExportTest do
   } do
     {d, [member | _]} = ReferenceFixture.complete(d)
 
-    d.repo.update_all(from(o in Operation, where: o.id == ^member["operation_id"]),
+    d.repo.update_all(
+      from(o in Beamlet.Actions.Storage.Schema.Operation, where: o.id == ^member["operation_id"]),
       set: [accepted_result: %{"status" => "error"}]
     )
 
@@ -456,7 +464,7 @@ defmodule Beamlet.Agent.HistoryExportTest do
 
   defp put_evidence(d, member, content) do
     {:ok, evidence} =
-      OperationRecords.record_evidence(d.repo, %{
+      ActionsOperations.record_evidence(d.repo, %{
         id: ReferenceFixture.uuid(),
         operation_id: member["operation_id"],
         attempt_id: member["attempt_id"],

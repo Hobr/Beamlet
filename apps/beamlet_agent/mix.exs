@@ -25,6 +25,10 @@ defmodule Beamlet.Agent.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:beamlet_agent_storage, in_umbrella: true},
+      {:beamlet_storage, in_umbrella: true},
+      {:ecto, "== 3.14.0"},
+      {:jason, "== 1.4.5"},
       {:beamlet_agent_core, in_umbrella: true},
       {:beamlet_actions, in_umbrella: true},
       {:beamlet_runtime, in_umbrella: true},

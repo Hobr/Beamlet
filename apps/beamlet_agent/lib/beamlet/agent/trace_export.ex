@@ -1,8 +1,11 @@
 defmodule Beamlet.Agent.TraceExport do
   @moduledoc "Format-2, bounded offline trace packages. Begin captures fixed Agent/Operation high waters before writing pages."
-  alias Beamlet.Agent.{Reducer, TraceSnapshot, TraceVerifier}
-  alias Beamlet.Storage.{Codec, Records, References}
-
+  alias Beamlet.Agent.Reducer
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.Records
+  alias Beamlet.Agent.TraceSnapshot
+  alias Beamlet.Agent.TraceVerifier
+  alias Beamlet.Storage.References
   @version 2
   @files ~w(events inputs operations definition)
   @max_bytes 33_554_432

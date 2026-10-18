@@ -1,14 +1,24 @@
 defmodule Beamlet.Agent.Server do
-  alias Beamlet.Agent.{ContextBuilder, Display, Durable, Loader, ModelBinding}
+  alias Beamlet.Agent.ContextBuilder
+  alias Beamlet.Agent.Display
+  alias Beamlet.Agent.Durable
+  alias Beamlet.Agent.Loader
+  alias Beamlet.Agent.ModelBinding
   @moduledoc false
   use GenServer, restart: :temporary
-  alias Beamlet.Actions.{Operation, Result}
+  alias Beamlet.Actions.Operation
+  alias Beamlet.Actions.Result
   alias Beamlet.Agent.Core.Decision
-  alias Beamlet.Agent.{Delegation, Integration.Caller, OperationOwner, Ref}
-  alias Beamlet.Harness.{Catalogue, Context}
+  alias Beamlet.Agent.Delegation
+  alias Beamlet.Agent.Integration.Caller
+  alias Beamlet.Agent.OperationOwner
+  alias Beamlet.Agent.Ref
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Harness.Catalogue
+  alias Beamlet.Harness.Context
   alias Beamlet.Harness.Model
-  alias Beamlet.Runtime.{Directory, Persistence}
-  alias Beamlet.Storage.AgentRecords
+  alias Beamlet.Runtime.Directory
+  alias Beamlet.Runtime.Persistence
 
   def start_link(opts) do
     if valid_options?(opts) do
@@ -1343,7 +1353,9 @@ defmodule Beamlet.Agent.Server do
         "attempt_id" => attempt["attempt_id"],
         "description_digest" => op["description_digest"],
         "attempt_version" => attempt["lock_version"],
-        "lock_version" => op["lock_version"]
+        "lock_version" => op["lock_version"],
+        "dispatch_scope_id" => op["dispatch_scope_id"],
+        "dispatch_epoch" => op["dispatch_epoch"]
       }
 
       start_operation(s, operation, key, prepared)

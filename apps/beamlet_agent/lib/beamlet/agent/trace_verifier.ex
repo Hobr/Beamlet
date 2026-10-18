@@ -1,6 +1,6 @@
 defmodule Beamlet.Agent.TraceVerifier do
   @moduledoc false
-  alias Beamlet.Storage.Codec
+  alias Beamlet.Agent.Storage.Codec
 
   def closure(control, files, artifacts, missing) do
     state = %{

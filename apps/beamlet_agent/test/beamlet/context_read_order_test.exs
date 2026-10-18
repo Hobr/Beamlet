@@ -27,8 +27,10 @@ end
 
 defmodule Beamlet.Agent.ContextReadOrderTest do
   use ExUnit.Case, async: true
-  alias Beamlet.Agent.{ContextBuilder, ContextReadOrderRepo, Reducer}
-  alias Beamlet.Storage.Codec
+  alias Beamlet.Agent.ContextBuilder
+  alias Beamlet.Agent.ContextReadOrderRepo
+  alias Beamlet.Agent.Reducer
+  alias Beamlet.Agent.Storage.Codec
   @id "12345678-1234-1234-1234-123456789abc"
   @op "12345678-1234-1234-1234-123456789abd"
 

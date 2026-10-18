@@ -1,4 +1,4 @@
-Code.require_file("../../../beamlet_storage/test/support/contract_fixture.ex", __DIR__)
+Code.require_file("../../../beamlet_agent_storage/test/support/contract_fixture.ex", __DIR__)
 
 defmodule Beamlet.Agent.DurableTestModel do
   @moduledoc false
@@ -50,24 +50,27 @@ defmodule Beamlet.Agent.DurableAgentTest do
   use ExUnit.Case, async: false
   import Kernel, except: [binding: 0, binding: 1]
   alias Beamlet.Actions.Result
+  alias Beamlet.Actions.Storage.ExecutorJournalRepo
+  alias Beamlet.Actions.Storage.OperationRecords, as: ActionsOperations
+  alias Beamlet.Actions.Storage.Profiles, as: ActionsProfiles
   alias Beamlet.Agent
-  alias Beamlet.Agent.{ContextBuilder, Durable, Loader, Reducer}
+  alias Beamlet.Agent.ContextBuilder
+  alias Beamlet.Agent.Durable
   alias Beamlet.Agent.Integration.Caller
-  alias Beamlet.Harness.{Catalogue, Model}
+  alias Beamlet.Agent.Loader
+  alias Beamlet.Agent.Reducer
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.ContractFixture
+  alias Beamlet.Agent.Storage.Events
+  alias Beamlet.Agent.Storage.OperationRecords
+  alias Beamlet.Harness.Catalogue
+  alias Beamlet.Harness.Model
   alias Beamlet.Harness.Tools.Deterministic
-  alias Beamlet.Runtime.{Directory, Persistence}
-
-  alias Beamlet.Storage.{
-    AgentRecords,
-    Codec,
-    ContractFixture,
-    Dataset,
-    Events,
-    ExecutorJournalRepo,
-    OperationRecords,
-    Transaction
-  }
-
+  alias Beamlet.Runtime.Directory
+  alias Beamlet.Runtime.Persistence
+  alias Beamlet.Storage.Dataset
+  alias Beamlet.Storage.Transaction
   alias Ecto.Adapters.SQL
 
   setup do
@@ -83,6 +86,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
 
     {:ok, _} =
       Dataset.initialize(ExecutorJournalRepo,
+        descriptor: ActionsProfiles.journal(),
         database: Path.join(dir, "j.db"),
         peer_database: Path.join(dir, "a.db"),
         dataset_id: Ecto.UUID.generate()
@@ -200,7 +204,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
   end
 
   defp accept(d, member) do
-    OperationRecords.accept_result(d.repo, %{
+    ActionsOperations.accept_result(d.repo, %{
       operation_id: member["operation_id"],
       expected_version: 0,
       result: %{
@@ -258,10 +262,14 @@ defmodule Beamlet.Agent.DurableAgentTest do
     {d, _, member} = prepare(d)
     assert {:ok, _} = accept(d, member)
 
-    SQL.query!(d.repo, "UPDATE events SET payload = $1 WHERE scope_id = $2 AND seq = 2", [
-      Jason.encode!(%{"accepted_digest" => String.duplicate("0", 64)}),
-      member["operation_id"]
-    ])
+    SQL.query!(
+      d.repo,
+      "UPDATE operation_events SET payload = $1 WHERE operation_id = $2 AND seq = 2",
+      [
+        Jason.encode!(%{"accepted_digest" => String.duplicate("0", 64)}),
+        member["operation_id"]
+      ]
+    )
 
     assert {:error, :invalid_reference} = Durable.inspect(locator(d))
 
@@ -334,7 +342,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
     result = %{"status" => "uncertain", "reason" => "lost", "value" => nil}
 
     assert {:ok, _} =
-             OperationRecords.accept_result(d.repo, %{
+             ActionsOperations.accept_result(d.repo, %{
                operation_id: member["operation_id"],
                expected_version: 0,
                result: result
@@ -395,7 +403,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
     {d, _, member} = prepare(d)
 
     assert {:ok, _} =
-             OperationRecords.claim_dispatch(d.repo, %{
+             ActionsOperations.claim_dispatch(d.repo, %{
                operation_id: member["operation_id"],
                attempt_id: member["attempt_id"],
                expected_version: 0
@@ -532,7 +540,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
     {:ok, d, [member]} = Durable.prepare(d, [%{operation: operation}], "model", built.sources)
 
     assert {:ok, _} =
-             OperationRecords.accept_result(d.repo, %{
+             ActionsOperations.accept_result(d.repo, %{
                operation_id: member["operation_id"],
                expected_version: 0,
                result: %{"status" => "ok", "value" => tool_reply(), "reason" => nil}
@@ -571,7 +579,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
 
     for member <- Enum.reverse(members) do
       assert {:ok, _} =
-               OperationRecords.accept_result(d.repo, %{
+               ActionsOperations.accept_result(d.repo, %{
                  operation_id: member["operation_id"],
                  expected_version: 0,
                  result: %{
@@ -688,7 +696,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
 
     for member <- [first, second] do
       assert {:ok, _} =
-               OperationRecords.accept_result(d.repo, %{
+               ActionsOperations.accept_result(d.repo, %{
                  operation_id: member["operation_id"],
                  expected_version: 0,
                  result: %{
@@ -736,7 +744,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
     {d, _, member} = prepare(d)
 
     assert {:ok, _} =
-             OperationRecords.accept_result(d.repo, %{
+             ActionsOperations.accept_result(d.repo, %{
                operation_id: member["operation_id"],
                expected_version: 0,
                result: %{"status" => "error", "reason" => "provider_failure", "value" => nil}
@@ -770,7 +778,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
 
     for member <- members do
       assert {:ok, _} =
-               OperationRecords.accept_result(d.repo, %{
+               ActionsOperations.accept_result(d.repo, %{
                  operation_id: member["operation_id"],
                  expected_version: 0,
                  result: %{"status" => "uncertain", "reason" => "lost", "value" => nil}
@@ -1060,7 +1068,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
                safe_to_fork: false
              })
 
-    SQL.query!(d.repo, "DELETE FROM events WHERE scope_id = $1 AND seq = 2", [d.agent_id])
+    SQL.query!(d.repo, "DELETE FROM agent_events WHERE scope_id = $1 AND seq = 2", [d.agent_id])
     assert {:error, :history_limit_or_gap} = Durable.inspect(locator(d))
 
     assert {:error, :history_limit_or_gap} =
@@ -1108,7 +1116,7 @@ defmodule Beamlet.Agent.DurableAgentTest do
   test "malformed stored JSON blocks read-only reconstruction rather than raising", %{durable: d} do
     {:ok, d} = input(d)
 
-    SQL.query!(d.repo, "UPDATE events SET payload = $1 WHERE scope_id = $2 AND seq = 2", [
+    SQL.query!(d.repo, "UPDATE agent_events SET payload = $1 WHERE scope_id = $2 AND seq = 2", [
       "{bad",
       d.agent_id
     ])

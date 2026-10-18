@@ -1,8 +1,11 @@
 defmodule Beamlet.Agent.History do
   @moduledoc "Read-only fixed-high-water facts and reference-derived context, independent of live providers."
-  alias Beamlet.Agent.{ContextBuilder, Loader}
-  alias Beamlet.Storage.{AgentRecords, History, OperationRecords, Records}
-
+  alias Beamlet.Agent.ContextBuilder
+  alias Beamlet.Agent.Loader
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.Storage.History
+  alias Beamlet.Agent.Storage.OperationRecords
+  alias Beamlet.Agent.Storage.Records
   @views ~w(turns facts context steps tools evidence decisions provenance)
 
   def query(locator, filters \\ %{}, cursor \\ nil)

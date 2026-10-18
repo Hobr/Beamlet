@@ -1,11 +1,11 @@
 # Agent persistence and reference reads
 
-Agent format-2 persistence uses `Reducer` (pure control), `Loader` (bounded,
+Agent authority format-3 persistence uses `Reducer` (pure control), `Loader` (bounded,
 fixed-sequence validation) and `ContextBuilder` (disposable native messages).
-Original inputs belong to Agent events; complete model/Tool requests and source
-manifests belong to Operations; business outputs belong to immutable authority
+Original inputs belong to Agent events; complete model/Tool requests belong to neutral Actions Operations; ordered source
+manifests and orchestration associations belong to Agent Storage; business outputs belong to immutable authority
 accepted Results. Neither events nor checkpoints contain a second transcript.
-See [Storage](../beamlet_storage/README.md) and [Runtime](../beamlet_runtime/README.md)
+See [Agent Storage](../beamlet_agent_storage/README.md) and [Runtime](../beamlet_runtime/README.md)
 for transactional preparation, execution claims and evidence.
 
 ## Explicit creation and activation

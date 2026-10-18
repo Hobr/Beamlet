@@ -1,8 +1,12 @@
 defmodule Beamlet.Agent.TraceSnapshot do
   @moduledoc false
   alias Beamlet.Agent.Reducer
-  alias Beamlet.Storage.{AgentRecords, Artifacts, Codec, History, OperationRecords, References}
-
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.History
+  alias Beamlet.Agent.Storage.OperationRecords
+  alias Beamlet.Storage.Artifacts
+  alias Beamlet.Storage.References
   @max_bytes 33_554_432
   @max_records 100_000
 
@@ -86,9 +90,11 @@ defmodule Beamlet.Agent.TraceSnapshot do
          {:ok, %{"evidence" => evidence}} <- History.evidence(repo, id),
          rows = Map.put(rows, "evidence", evidence),
          :ok <- valid_evidence(rows),
-         {:ok, prepared} <- History.event(repo, id, 1) do
+         {:ok, prepared} <- History.operation_event(repo, id, 1) do
       op = rows["operation"]
-      accepted = if op["accepted_result"], do: History.event(repo, id, 2), else: {:ok, nil}
+
+      accepted =
+        if op["accepted_result"], do: History.operation_event(repo, id, 2), else: {:ok, nil}
 
       with {:ok, accepted} <- accepted,
            :ok <- valid_operation(op, prepared, accepted),

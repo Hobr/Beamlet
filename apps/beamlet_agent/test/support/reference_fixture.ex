@@ -1,14 +1,19 @@
-Code.require_file("../../../beamlet_storage/test/support/contract_fixture.ex", __DIR__)
+Code.require_file("../../../beamlet_agent_storage/test/support/contract_fixture.ex", __DIR__)
 
 defmodule Beamlet.Agent.ReferenceFixture do
   @moduledoc false
   import Kernel, except: [binding: 0]
   import ExUnit.Assertions
-  alias Beamlet.Agent.{ContextBuilder, Durable}
+  alias Beamlet.Actions.Storage.ExecutorJournalRepo
+  alias Beamlet.Actions.Storage.OperationRecords, as: ActionsOperations
+  alias Beamlet.Actions.Storage.Profiles, as: ActionsProfiles
+  alias Beamlet.Agent.ContextBuilder
+  alias Beamlet.Agent.Durable
   alias Beamlet.Agent.Integration.Caller
+  alias Beamlet.Agent.Storage.ContractFixture
   alias Beamlet.Harness.Catalogue
   alias Beamlet.Harness.Tools.Deterministic
-  alias Beamlet.Storage.{ContractFixture, Dataset, ExecutorJournalRepo, OperationRecords}
+  alias Beamlet.Storage.Dataset
 
   def open do
     adapter =
@@ -20,6 +25,7 @@ defmodule Beamlet.Agent.ReferenceFixture do
 
     {:ok, _} =
       Dataset.initialize(ExecutorJournalRepo,
+        descriptor: ActionsProfiles.journal(),
         database: Path.join(dir, "j.db"),
         peer_database: Path.join(dir, "a.db"),
         dataset_id: uuid()
@@ -97,7 +103,7 @@ defmodule Beamlet.Agent.ReferenceFixture do
   end
 
   def accept(d, member, status, value) do
-    OperationRecords.accept_result(d.repo, %{
+    ActionsOperations.accept_result(d.repo, %{
       operation_id: member["operation_id"],
       expected_version: 0,
       result: %{"status" => status, "value" => value, "reason" => nil}

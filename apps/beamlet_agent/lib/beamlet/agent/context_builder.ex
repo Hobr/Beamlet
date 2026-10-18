@@ -2,8 +2,10 @@ defmodule Beamlet.Agent.ContextBuilder do
   @moduledoc "Loads and verifies context sources before applying the pure conversation policy."
   alias Beamlet.Agent.Core.Context
   alias Beamlet.Agent.Loader
-  alias Beamlet.Storage.{Codec, History, Inheritance, OperationRecords}
-
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.History
+  alias Beamlet.Agent.Storage.Inheritance
+  alias Beamlet.Agent.Storage.OperationRecords
   defdelegate complete_boundary(messages), to: Context
   defdelegate observation(result, resolution), to: Context
   defdelegate reply(value), to: Context

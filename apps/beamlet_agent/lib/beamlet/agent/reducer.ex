@@ -1,8 +1,8 @@
 defmodule Beamlet.Agent.Reducer do
   @moduledoc "Storage envelope adapter for the pure Agent reducer."
   alias Beamlet.Agent.Core.Reducer, as: Core
-  alias Beamlet.Storage.{Codec, Events}
-
+  alias Beamlet.Agent.Storage.Codec
+  alias Beamlet.Agent.Storage.Events
   defdelegate version(), to: Core
   defdelegate new(id), to: Core
   defdelegate decisions(payload), to: Core

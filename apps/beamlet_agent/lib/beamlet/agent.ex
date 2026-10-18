@@ -1,7 +1,11 @@
 defmodule Beamlet.Agent do
   @moduledoc "Explicit authority, bounded asynchronous Agents and opt-in paused durable recovery."
-  alias Beamlet.Agent.{Durable, History, Ref, Server, TraceExport}
-  alias Beamlet.Storage.AgentRecords
+  alias Beamlet.Agent.Durable
+  alias Beamlet.Agent.History
+  alias Beamlet.Agent.Ref
+  alias Beamlet.Agent.Server
+  alias Beamlet.Agent.Storage.AgentRecords
+  alias Beamlet.Agent.TraceExport
 
   def start(authority, opts) when is_atom(authority) do
     if authority == node(), do: start_local(opts), else: remote_start(authority, opts)

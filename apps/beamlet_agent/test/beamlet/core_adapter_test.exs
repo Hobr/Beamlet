@@ -3,7 +3,7 @@ defmodule Beamlet.Agent.CoreAdapterTest do
   alias Beamlet.Agent.Core.Data
   alias Beamlet.Agent.Core.Reducer, as: Core
   alias Beamlet.Agent.Reducer
-  alias Beamlet.Storage.Codec
+  alias Beamlet.Agent.Storage.Codec
 
   test "normalized UUID spelling matches the unchanged storage authority" do
     id = Ecto.UUID.generate()
