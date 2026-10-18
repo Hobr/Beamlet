@@ -1,6 +1,6 @@
 # 技术设计与跨子任务契约
 
-依据：[主设计](../../../docs/architecture/agent-operation-persistence.md)。本文件将目标映射到实施边界；签名为待实现契约，不能解释为现有 API。
+依据：[主设计](../../../../../docs/architecture/agent-operation-persistence.md)。本文件将目标映射到实施边界；签名为待实现契约，不能解释为现有 API。
 
 ## 1. 内容与控制
 

@@ -2,7 +2,7 @@
 
 ## 契约来源
 
-[父技术设计](../10-18-durable-rebuild/design.md)和[目标设计](../../../docs/architecture/agent-operation-persistence.md)共同约束本任务；目标不是已有 API。无前置实现子任务，先于 B/C/D 执行。
+[父技术设计](../10-18-durable-rebuild/design.md)和[目标设计](../../../../../docs/architecture/agent-operation-persistence.md)共同约束本任务；目标不是已有 API。无前置实现子任务，先于 B/C/D 执行。
 
 ## Owning Paths
 

@@ -2,7 +2,7 @@
 
 ## Goal
 
-按已确认的 [目标设计](../../../docs/architecture/agent-operation-persistence.md)完成新 durable 模型的代码交付：正文归 Operation/accepted Result，Agent 以事件和引用编排、按策略构建上下文，通过纯归约恢复。彻底移除旧消息检查点作为权威模型的路径，不要求旧 API/数据格式兼容。
+按已确认的 [目标设计](../../../../../docs/architecture/agent-operation-persistence.md)完成新 durable 模型的代码交付：正文归 Operation/accepted Result，Agent 以事件和引用编排、按策略构建上下文，通过纯归约恢复。彻底移除旧消息检查点作为权威模型的路径，不要求旧 API/数据格式兼容。
 
 ## Background
 

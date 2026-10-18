@@ -2,7 +2,7 @@
 
 ## 契约来源
 
-[父技术设计](../10-18-durable-rebuild/design.md)和[目标设计](../../../docs/architecture/agent-operation-persistence.md)共同约束本任务；目标不是已有 API。必须等待 A 的新格式与事务契约验收；C 依赖本任务。
+[父技术设计](../10-18-durable-rebuild/design.md)和[目标设计](../../../../../docs/architecture/agent-operation-persistence.md)共同约束本任务；目标不是已有 API。必须等待 A 的新格式与事务契约验收；C 依赖本任务。
 
 ## Owning Paths
 
