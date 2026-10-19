@@ -517,3 +517,51 @@ Completed format3 generic Storage plus independent Actions and Agent persistence
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: Complete umbrella typespec contracts and compact delivery
+<!-- trellis-session: v=2 fp=332b1f3ef9134d4a -->
+
+**Date**: 2026-10-19
+**Task**: Complete umbrella typespec contracts and compact delivery
+**Branch**: `feat/typespec-contracts`
+
+### Summary
+
+Completed all public/private contracts across13 apps (1345/1345), enhanced Dialyzer and local coverage gates. Verified552 ordinary,35 named distributed,40 scanner tests, durable E2E and fresh project PLT. Removed116 intermediate artifacts and task-owned fresh build; split delivery into18 work commits, archived task, no push. LSP:1 clean/147 timeouts; no workspace-clean claim.
+
+### Main Changes
+
+- Accurate domain/callback/private contracts; preserved behavior, protocols, schemas and existing assertions.
+- Retained compact final verification and per-warning reasoning; removed duplicate logs, generated detail and temporary probes.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `609a7e52c90e1e9dd7e0309dc392150420bcc2b2` | refactor(actions): define public and private contracts |
+| `adc4a32db66635b7cd59465d19fc6a0209802d29` | refactor(harness): define public and private contracts |
+| `de4b8394152343179ca7c4eba5147a63cb5c2145` | refactor(storage): define public and private contracts |
+| `62a23c0e5456fda8b1c2c99ea4f79deb1c044a9e` | refactor(actions-storage): define public and private contracts |
+| `9c6b8434e9fa9e0274ccba38102eef30c5a72c4e` | refactor(agent-storage): define public and private contracts |
+| `5ea86c5af9f12026018fe7862bc85743d5920588` | refactor(agent-core): define public and private contracts |
+| `382141f7c7a8d16a00406735bd227ca74e4377dc` | refactor(runtime): define public and private contracts |
+| `d6d16713ff6330c2b1bfb5d6fa7395569064b34d` | refactor(agent): define public and private contracts |
+| `ccb421334829171f6af80d2930384affd59f7a55` | refactor(node): define public and private contracts |
+| `d85a2bae9de84d1330da3dc6e01a4e1841b35b0b` | refactor(server): define public and private contracts |
+| `19c77b269e628c7686f39fea899a14108cc402be` | refactor(i18n): define public and private contracts |
+| `23d72ebc1687c10dc90d7453fcf2a9f571012840` | refactor(cli): define public and private contracts |
+| `d797ee7461588815c946a44cfdb0424e43a3a4ed` | refactor(web): define host and liveview contracts |
+| `623a03857543368366a13a945bca2ba13510fea6` | chore(web): refresh catalogue source references |
+| `e8aaaff13d2d495fdfcfb6ec9a5b11353f64cae2` | feat(quality): add AST contract coverage checker |
+| `e161a8815a2dd9534b98f07ce8aa880ea418bd93` | test(quality): verify contract coverage boundaries |
+| `bbd8c980a7c6358f685753b3be711bcbb9b802c6` | chore(quality): enforce contract and dialyzer gates |
+| `7716de762e756aed4dcdac8b01df3a46aac7f7dc` | docs(typespec): record compact plan and verification |
+
+### Testing
+
+- [OK] Final acceptance: format, warning-fatal compile, strict Credo, enhanced Dialyzer, catalogue, Sobelow, hooks and semantic parity passed; cleanup recheck40/40 checker tests and1345/1345 coverage passed.
+
+### Status
+
+[OK] **Completed**
