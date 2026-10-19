@@ -11,52 +11,52 @@ msgstr ""
 "Language: en\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: lib/beamlet_web/components/core_components.ex:376
-#: lib/beamlet_web/components/core_components.ex:376
+#: lib/beamlet_web/components/core_components.ex:406
+#: lib/beamlet_web/components/core_components.ex:406
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr ""
 
-#: lib/beamlet_web/components/layouts.ex:102
-#: lib/beamlet_web/components/layouts.ex:102
-#: lib/beamlet_web/components/layouts.ex:117
-#: lib/beamlet_web/components/layouts.ex:117
+#: lib/beamlet_web/components/layouts.ex:109
+#: lib/beamlet_web/components/layouts.ex:109
+#: lib/beamlet_web/components/layouts.ex:124
+#: lib/beamlet_web/components/layouts.ex:124
 #, elixir-autogen, elixir-format
 msgid "Attempting to reconnect"
 msgstr ""
 
-#: lib/beamlet_web/components/layouts.ex:109
-#: lib/beamlet_web/components/layouts.ex:109
+#: lib/beamlet_web/components/layouts.ex:116
+#: lib/beamlet_web/components/layouts.ex:116
 #, elixir-autogen, elixir-format
 msgid "Something went wrong!"
 msgstr ""
 
-#: lib/beamlet_web/components/layouts.ex:94
-#: lib/beamlet_web/components/layouts.ex:94
+#: lib/beamlet_web/components/layouts.ex:101
+#: lib/beamlet_web/components/layouts.ex:101
 #, elixir-autogen, elixir-format
 msgid "We can't find the internet"
 msgstr ""
 
-#: lib/beamlet_web/components/core_components.ex:82
-#: lib/beamlet_web/components/core_components.ex:82
+#: lib/beamlet_web/components/core_components.ex:88
+#: lib/beamlet_web/components/core_components.ex:88
 #, elixir-autogen, elixir-format
 msgid "close"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:323
-#: lib/beamlet_web/live/management_live.ex:323
+#: lib/beamlet_web/live/management_live.ex:339
+#: lib/beamlet_web/live/management_live.ex:339
 #, elixir-autogen, elixir-format
 msgid "%{node} · Report: %{report} · Source receipt age: %{age}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:292
-#: lib/beamlet_web/live/management_live.ex:292
+#: lib/beamlet_web/live/management_live.ex:304
+#: lib/beamlet_web/live/management_live.ex:304
 #, elixir-autogen, elixir-format
 msgid "%{target} observed facts"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:439
-#: lib/beamlet_web/live/management_live.ex:439
+#: lib/beamlet_web/live/management_live.ex:472
+#: lib/beamlet_web/live/management_live.ex:472
 #, elixir-autogen, elixir-format
 msgid "%{value} ms"
 msgstr ""
@@ -67,20 +67,20 @@ msgstr ""
 msgid "Active / unknown state: draft stays here and is never queued."
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:51
-#: lib/beamlet_web/components/observation_components.ex:51
+#: lib/beamlet_web/components/observation_components.ex:57
+#: lib/beamlet_web/components/observation_components.ex:57
 #, elixir-autogen, elixir-format
 msgid "Activity content omitted / truncated"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:205
-#: lib/beamlet_web/live/management_live.ex:205
+#: lib/beamlet_web/live/management_live.ex:215
+#: lib/beamlet_web/live/management_live.ex:215
 #, elixir-autogen, elixir-format
 msgid "Activity identity stale / unknown; no historical reconstruction."
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:30
-#: lib/beamlet_web/components/observation_components.ex:30
+#: lib/beamlet_web/components/observation_components.ex:36
+#: lib/beamlet_web/components/observation_components.ex:36
 #, elixir-autogen, elixir-format
 msgid "Activity identity: %{id}"
 msgstr ""
@@ -103,8 +103,8 @@ msgstr ""
 msgid "Agent workspace"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:195
-#: lib/beamlet_web/live/management_live.ex:195
+#: lib/beamlet_web/live/management_live.ex:205
+#: lib/beamlet_web/live/management_live.ex:205
 #, elixir-autogen, elixir-format
 msgid "Agent: %{id} · %{authority}"
 msgstr ""
@@ -115,58 +115,58 @@ msgstr ""
 msgid "Authority"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:160
-#: lib/beamlet_web/live/workbench_live.ex:160
+#: lib/beamlet_web/live/workbench_live.ex:174
+#: lib/beamlet_web/live/workbench_live.ex:174
 #, elixir-autogen, elixir-format
 msgid "Available"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:342
-#: lib/beamlet_web/live/management_live.ex:342
+#: lib/beamlet_web/live/management_live.ex:358
+#: lib/beamlet_web/live/management_live.ex:358
 #, elixir-autogen, elixir-format
 msgid "Available %{pool}: %{quantity}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:344
-#: lib/beamlet_web/live/management_live.ex:344
+#: lib/beamlet_web/live/management_live.ex:360
+#: lib/beamlet_web/live/management_live.ex:360
 #, elixir-autogen, elixir-format
 msgid "Available capacity unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:209
-#: lib/beamlet_web/live/management_live.ex:209
+#: lib/beamlet_web/live/management_live.ex:219
+#: lib/beamlet_web/live/management_live.ex:219
 #: lib/beamlet_web/live/workbench_live.html.heex:188
 #: lib/beamlet_web/live/workbench_live.html.heex:188
 #, elixir-autogen, elixir-format
 msgid "Business state: %{state}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:336
-#: lib/beamlet_web/live/management_live.ex:336
+#: lib/beamlet_web/live/management_live.ex:352
+#: lib/beamlet_web/live/management_live.ex:352
 #, elixir-autogen, elixir-format
 msgid "Capabilities: %{capabilities} · Environments: %{environments}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:419
-#: lib/beamlet_web/live/management_live.ex:419
+#: lib/beamlet_web/live/management_live.ex:449
+#: lib/beamlet_web/live/management_live.ex:449
 #, elixir-autogen, elixir-format
 msgid "Catalogue read unavailable: %{reason}. Last observation retained; current facts unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:285
-#: lib/beamlet_web/live/workbench_live.ex:285
+#: lib/beamlet_web/live/workbench_live.ex:300
+#: lib/beamlet_web/live/workbench_live.ex:300
 #, elixir-autogen, elixir-format
 msgid "Child identity no longer available"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:61
-#: lib/beamlet_web/components/observation_components.ex:61
+#: lib/beamlet_web/components/observation_components.ex:67
+#: lib/beamlet_web/components/observation_components.ex:67
 #, elixir-autogen, elixir-format
 msgid "Child identity observed; observe-only. No command is sent to the child."
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:269
-#: lib/beamlet_web/live/workbench_live.ex:269
+#: lib/beamlet_web/live/workbench_live.ex:284
+#: lib/beamlet_web/live/workbench_live.ex:284
 #, elixir-autogen, elixir-format
 msgid "Child inspector is observe-only"
 msgstr ""
@@ -195,44 +195,44 @@ msgstr ""
 msgid "Close this Agent instance? Leaving this page only unsubscribes."
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:384
-#: lib/beamlet_web/live/workbench_live.ex:384
+#: lib/beamlet_web/live/workbench_live.ex:408
+#: lib/beamlet_web/live/workbench_live.ex:408
 #, elixir-autogen, elixir-format
 msgid "Command pending; no duplicate dispatch"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:384
-#: lib/beamlet_web/live/management_live.ex:384
+#: lib/beamlet_web/live/management_live.ex:402
+#: lib/beamlet_web/live/management_live.ex:402
 #, elixir-autogen, elixir-format
 msgid "Compatible environment references: %{environments}. Empty means no environment required."
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:234
-#: lib/beamlet_web/live/workbench_live.ex:234
+#: lib/beamlet_web/live/workbench_live.ex:248
+#: lib/beamlet_web/live/workbench_live.ex:248
 #, elixir-autogen, elixir-format
 msgid "Configuration or exact identity unavailable / stale"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:359
-#: lib/beamlet_web/live/management_live.ex:359
+#: lib/beamlet_web/live/management_live.ex:377
+#: lib/beamlet_web/live/management_live.ex:377
 #, elixir-autogen, elixir-format
 msgid "Configuration source category: trusted startup catalogue. Same public descriptors as creation. No provider probes; online availability unknown."
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:409
-#: lib/beamlet_web/live/workbench_live.ex:409
+#: lib/beamlet_web/live/workbench_live.ex:436
+#: lib/beamlet_web/live/workbench_live.ex:436
 #, elixir-autogen, elixir-format
 msgid "Configuration unavailable before creation dispatch"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:294
-#: lib/beamlet_web/live/management_live.ex:294
+#: lib/beamlet_web/live/management_live.ex:306
+#: lib/beamlet_web/live/management_live.ex:306
 #, elixir-autogen, elixir-format
 msgid "Configured roles: %{roles}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:293
-#: lib/beamlet_web/live/management_live.ex:293
+#: lib/beamlet_web/live/management_live.ex:305
+#: lib/beamlet_web/live/management_live.ex:305
 #, elixir-autogen, elixir-format
 msgid "Configured: %{configured}"
 msgstr ""
@@ -243,26 +243,26 @@ msgstr ""
 msgid "Confirm close instance"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:192
-#: lib/beamlet_web/live/workbench_live.ex:192
+#: lib/beamlet_web/live/workbench_live.ex:206
+#: lib/beamlet_web/live/workbench_live.ex:206
 #, elixir-autogen, elixir-format
 msgid "Confirmed instance retained here; navigation unavailable"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:28
-#: lib/beamlet_web/live/workbench_live.ex:28
+#: lib/beamlet_web/live/workbench_live.ex:39
+#: lib/beamlet_web/live/workbench_live.ex:39
 #, elixir-autogen, elixir-format
 msgid "Connecting"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:261
-#: lib/beamlet_web/live/management_live.ex:261
+#: lib/beamlet_web/live/management_live.ex:273
+#: lib/beamlet_web/live/management_live.ex:273
 #, elixir-autogen, elixir-format
 msgid "Connection: %{connection}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:213
-#: lib/beamlet_web/live/management_live.ex:213
+#: lib/beamlet_web/live/management_live.ex:223
+#: lib/beamlet_web/live/management_live.ex:223
 #, elixir-autogen, elixir-format
 msgid "Coverage: %{coverage}"
 msgstr ""
@@ -273,14 +273,14 @@ msgstr ""
 msgid "Create and send task"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:142
-#: lib/beamlet_web/live/workbench_live.ex:142
+#: lib/beamlet_web/live/workbench_live.ex:156
+#: lib/beamlet_web/live/workbench_live.ex:156
 #, elixir-autogen, elixir-format
 msgid "Created instance confirmed"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:161
-#: lib/beamlet_web/live/workbench_live.ex:161
+#: lib/beamlet_web/live/workbench_live.ex:175
+#: lib/beamlet_web/live/workbench_live.ex:175
 #, elixir-autogen, elixir-format
 msgid "Created. Initial input: %{input}"
 msgstr ""
@@ -291,8 +291,8 @@ msgstr ""
 msgid "Creation disabled: no configured public presets. Enable a trusted Web host catalogue."
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:138
-#: lib/beamlet_web/live/workbench_live.ex:138
+#: lib/beamlet_web/live/workbench_live.ex:152
+#: lib/beamlet_web/live/workbench_live.ex:152
 #, elixir-autogen, elixir-format
 msgid "Creation dispatched; outcome not yet known"
 msgstr ""
@@ -309,10 +309,10 @@ msgstr ""
 msgid "Current Agent diagnostics"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:14
-#: lib/beamlet_web/components/observation_components.ex:14
-#: lib/beamlet_web/components/observation_components.ex:15
-#: lib/beamlet_web/components/observation_components.ex:15
+#: lib/beamlet_web/components/observation_components.ex:20
+#: lib/beamlet_web/components/observation_components.ex:20
+#: lib/beamlet_web/components/observation_components.ex:21
+#: lib/beamlet_web/components/observation_components.ex:21
 #, elixir-autogen, elixir-format
 msgid "Current concurrent activity"
 msgstr ""
@@ -329,26 +329,26 @@ msgstr ""
 msgid "Current live context only. Earlier history may be missing; updates can coalesce. No token stream or reasoning trace."
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:207
-#: lib/beamlet_web/live/management_live.ex:207
+#: lib/beamlet_web/live/management_live.ex:217
+#: lib/beamlet_web/live/management_live.ex:217
 #, elixir-autogen, elixir-format
 msgid "Current turn: %{turn}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:364
-#: lib/beamlet_web/live/management_live.ex:364
+#: lib/beamlet_web/live/management_live.ex:382
+#: lib/beamlet_web/live/management_live.ex:382
 #, elixir-autogen, elixir-format
 msgid "Default authority reference: %{authority}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:376
-#: lib/beamlet_web/live/management_live.ex:376
+#: lib/beamlet_web/live/management_live.ex:394
+#: lib/beamlet_web/live/management_live.ex:394
 #, elixir-autogen, elixir-format
 msgid "Default model reference: %{model} · Tools: %{tools} · Environment: %{environment}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:165
-#: lib/beamlet_web/live/management_live.ex:165
+#: lib/beamlet_web/live/management_live.ex:175
+#: lib/beamlet_web/live/management_live.ex:175
 #: lib/beamlet_web/live/workbench_live.html.heex:8
 #: lib/beamlet_web/live/workbench_live.html.heex:8
 #, elixir-autogen, elixir-format
@@ -361,20 +361,20 @@ msgstr ""
 msgid "Discover now"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:126
-#: lib/beamlet_web/live/workbench_live.ex:126
+#: lib/beamlet_web/live/workbench_live.ex:140
+#: lib/beamlet_web/live/workbench_live.ex:140
 #, elixir-autogen, elixir-format
 msgid "Discovery unavailable"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:145
-#: lib/beamlet_web/live/workbench_live.ex:145
+#: lib/beamlet_web/live/workbench_live.ex:159
+#: lib/beamlet_web/live/workbench_live.ex:159
 #, elixir-autogen, elixir-format
 msgid "Dispatched; acknowledgement unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:200
-#: lib/beamlet_web/live/management_live.ex:200
+#: lib/beamlet_web/live/management_live.ex:210
+#: lib/beamlet_web/live/management_live.ex:210
 #, elixir-autogen, elixir-format
 msgid "Display absent / omitted"
 msgstr ""
@@ -403,14 +403,14 @@ msgstr ""
 msgid "Environment (must match selected tools)"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:183
-#: lib/beamlet_web/live/workbench_live.ex:183
+#: lib/beamlet_web/live/workbench_live.ex:197
+#: lib/beamlet_web/live/workbench_live.ex:197
 #, elixir-autogen, elixir-format
 msgid "Exact discovered identity: %{reason}. Refresh discovery explicitly."
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:97
-#: lib/beamlet_web/live/management_live.ex:97
+#: lib/beamlet_web/live/management_live.ex:105
+#: lib/beamlet_web/live/management_live.ex:105
 #, elixir-autogen, elixir-format
 msgid "Exact handle resolved; awaiting live context"
 msgstr ""
@@ -421,20 +421,20 @@ msgstr ""
 msgid "Initial input: %{input} · Navigation: %{navigation}"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:396
-#: lib/beamlet_web/live/workbench_live.ex:396
+#: lib/beamlet_web/live/workbench_live.ex:423
+#: lib/beamlet_web/live/workbench_live.ex:423
 #, elixir-autogen, elixir-format
 msgid "Input accepted"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:42
-#: lib/beamlet_web/components/observation_components.ex:42
+#: lib/beamlet_web/components/observation_components.ex:48
+#: lib/beamlet_web/components/observation_components.ex:48
 #, elixir-autogen, elixir-format
 msgid "Inspect activity diagnostics"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:59
-#: lib/beamlet_web/components/observation_components.ex:59
+#: lib/beamlet_web/components/observation_components.ex:65
+#: lib/beamlet_web/components/observation_components.ex:65
 #, elixir-autogen, elixir-format
 msgid "Inspect child (observe only)"
 msgstr ""
@@ -445,8 +445,8 @@ msgstr ""
 msgid "Instance public configuration"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:412
-#: lib/beamlet_web/live/workbench_live.ex:412
+#: lib/beamlet_web/live/workbench_live.ex:439
+#: lib/beamlet_web/live/workbench_live.ex:439
 #, elixir-autogen, elixir-format
 msgid "Invalid selection or missing configuration; nothing dispatched"
 msgstr ""
@@ -457,20 +457,20 @@ msgstr ""
 msgid "Keep instance"
 msgstr ""
 
-#: lib/beamlet_web/components/layouts.ex:135
-#: lib/beamlet_web/components/layouts.ex:135
+#: lib/beamlet_web/components/layouts.ex:146
+#: lib/beamlet_web/components/layouts.ex:146
 #, elixir-autogen, elixir-format
 msgid "Language"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:174
-#: lib/beamlet_web/live/management_live.ex:174
+#: lib/beamlet_web/live/management_live.ex:184
+#: lib/beamlet_web/live/management_live.ex:184
 #, elixir-autogen, elixir-format
 msgid "Last observation (Web receipt): %{at}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:108
-#: lib/beamlet_web/live/management_live.ex:108
+#: lib/beamlet_web/live/management_live.ex:116
+#: lib/beamlet_web/live/management_live.ex:116
 #, elixir-autogen, elixir-format
 msgid "Last observation received"
 msgstr ""
@@ -487,8 +487,8 @@ msgstr ""
 msgid "Live Agents"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:161
-#: lib/beamlet_web/live/management_live.ex:161
+#: lib/beamlet_web/live/management_live.ex:171
+#: lib/beamlet_web/live/management_live.ex:171
 #, elixir-autogen, elixir-format
 msgid "Management"
 msgstr ""
@@ -517,8 +517,8 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:172
-#: lib/beamlet_web/live/management_live.ex:172
+#: lib/beamlet_web/live/management_live.ex:182
+#: lib/beamlet_web/live/management_live.ex:182
 #, elixir-autogen, elixir-format
 msgid "Navigation is not authorization. Trusted deployment controls apply."
 msgstr ""
@@ -541,104 +541,104 @@ msgstr ""
 msgid "Next task draft"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:190
-#: lib/beamlet_web/live/management_live.ex:190
+#: lib/beamlet_web/live/management_live.ex:200
+#: lib/beamlet_web/live/management_live.ex:200
 #, elixir-autogen, elixir-format
 msgid "No exact live handle resolved. Open diagnostics from an existing Agent workspace."
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:320
-#: lib/beamlet_web/live/management_live.ex:320
+#: lib/beamlet_web/live/management_live.ex:336
+#: lib/beamlet_web/live/management_live.ex:336
 #, elixir-autogen, elixir-format
 msgid "No reports; capacity unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:412
-#: lib/beamlet_web/live/management_live.ex:412
+#: lib/beamlet_web/live/management_live.ex:442
+#: lib/beamlet_web/live/management_live.ex:442
 #, elixir-autogen, elixir-format
 msgid "Node scope read unavailable: %{reason}. Last observation retained; current facts unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:163
-#: lib/beamlet_web/live/management_live.ex:163
+#: lib/beamlet_web/live/management_live.ex:173
+#: lib/beamlet_web/live/management_live.ex:173
 #: lib/beamlet_web/live/workbench_live.html.heex:6
 #: lib/beamlet_web/live/workbench_live.html.heex:6
 #, elixir-autogen, elixir-format
 msgid "Nodes"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:371
-#: lib/beamlet_web/live/management_live.ex:371
+#: lib/beamlet_web/live/management_live.ex:389
+#: lib/beamlet_web/live/management_live.ex:389
 #, elixir-autogen, elixir-format
 msgid "None configured; availability unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:32
-#: lib/beamlet_web/live/workbench_live.ex:32
-#: lib/beamlet_web/live/workbench_live.ex:325
-#: lib/beamlet_web/live/workbench_live.ex:325
+#: lib/beamlet_web/live/workbench_live.ex:43
+#: lib/beamlet_web/live/workbench_live.ex:43
+#: lib/beamlet_web/live/workbench_live.ex:341
+#: lib/beamlet_web/live/workbench_live.ex:341
 #, elixir-autogen, elixir-format
 msgid "Not requested"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:31
-#: lib/beamlet_web/live/workbench_live.ex:31
+#: lib/beamlet_web/live/workbench_live.ex:42
+#: lib/beamlet_web/live/workbench_live.ex:42
 #, elixir-autogen, elixir-format
 msgid "Not submitted"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:225
-#: lib/beamlet_web/live/workbench_live.ex:225
+#: lib/beamlet_web/live/workbench_live.ex:239
+#: lib/beamlet_web/live/workbench_live.ex:239
 #, elixir-autogen, elixir-format
 msgid "Observation unavailable; instance outcome unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:143
-#: lib/beamlet_web/live/management_live.ex:143
+#: lib/beamlet_web/live/management_live.ex:151
+#: lib/beamlet_web/live/management_live.ex:151
 #, elixir-autogen, elixir-format
 msgid "Observation unavailable; last observation retained, current facts unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:182
-#: lib/beamlet_web/live/management_live.ex:182
+#: lib/beamlet_web/live/management_live.ex:192
+#: lib/beamlet_web/live/management_live.ex:192
 #, elixir-autogen, elixir-format
 msgid "Observe only. Current context, not a complete timeline. Placement unknown unless observed."
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:132
-#: lib/beamlet_web/live/management_live.ex:132
+#: lib/beamlet_web/live/management_live.ex:140
+#: lib/beamlet_web/live/management_live.ex:140
 #, elixir-autogen, elixir-format
 msgid "Observing current live context"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:214
-#: lib/beamlet_web/live/workbench_live.ex:214
+#: lib/beamlet_web/live/workbench_live.ex:228
+#: lib/beamlet_web/live/workbench_live.ex:228
 #, elixir-autogen, elixir-format
 msgid "Observing live context"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:215
-#: lib/beamlet_web/live/management_live.ex:215
+#: lib/beamlet_web/live/management_live.ex:225
+#: lib/beamlet_web/live/management_live.ex:225
 #: lib/beamlet_web/live/workbench_live.html.heex:201
 #: lib/beamlet_web/live/workbench_live.html.heex:201
 #, elixir-autogen, elixir-format
 msgid "Omitted entries: %{entries}; activities: %{activities}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:187
-#: lib/beamlet_web/live/management_live.ex:187
+#: lib/beamlet_web/live/management_live.ex:197
+#: lib/beamlet_web/live/management_live.ex:197
 #, elixir-autogen, elixir-format
 msgid "Open observe-only workbench"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:32
-#: lib/beamlet_web/components/observation_components.ex:32
+#: lib/beamlet_web/components/observation_components.ex:38
+#: lib/beamlet_web/components/observation_components.ex:38
 #, elixir-autogen, elixir-format
 msgid "Operation identity: %{operation} · Attempt identity: %{attempt}"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:416
-#: lib/beamlet_web/live/workbench_live.ex:416
+#: lib/beamlet_web/live/workbench_live.ex:443
+#: lib/beamlet_web/live/workbench_live.ex:443
 #, elixir-autogen, elixir-format
 msgid "Outcome unknown / unavailable. No automatic retry. Discover the displayed identity explicitly."
 msgstr ""
@@ -649,14 +649,14 @@ msgstr ""
 msgid "Partial / unknown discovery. Empty results do not prove absence."
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:17
-#: lib/beamlet_web/components/observation_components.ex:17
+#: lib/beamlet_web/components/observation_components.ex:23
+#: lib/beamlet_web/components/observation_components.ex:23
 #, elixir-autogen, elixir-format
 msgid "Placement unknown unless observed. Cards are current facts; completed activities may disappear."
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:43
-#: lib/beamlet_web/components/observation_components.ex:43
+#: lib/beamlet_web/components/observation_components.ex:49
+#: lib/beamlet_web/components/observation_components.ex:49
 #, elixir-autogen, elixir-format
 msgid "Placement: %{placement}"
 msgstr ""
@@ -667,88 +667,88 @@ msgstr ""
 msgid "Preset"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:164
-#: lib/beamlet_web/live/management_live.ex:164
+#: lib/beamlet_web/live/management_live.ex:174
+#: lib/beamlet_web/live/management_live.ex:174
 #: lib/beamlet_web/live/workbench_live.html.heex:7
 #: lib/beamlet_web/live/workbench_live.html.heex:7
 #, elixir-autogen, elixir-format
 msgid "Presets"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:249
-#: lib/beamlet_web/live/management_live.ex:249
+#: lib/beamlet_web/live/management_live.ex:261
+#: lib/beamlet_web/live/management_live.ex:261
 #, elixir-autogen, elixir-format
 msgid "Public read bounds: 32 targets per call, 8 workers, 5 seconds, 1 MiB. Page deadline: 12 seconds. Available is advisory; totals and utilization unknown."
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:280
-#: lib/beamlet_web/live/management_live.ex:280
+#: lib/beamlet_web/live/management_live.ex:292
+#: lib/beamlet_web/live/management_live.ex:292
 #, elixir-autogen, elixir-format
 msgid "Read completeness: %{completeness}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:299
-#: lib/beamlet_web/live/management_live.ex:299
+#: lib/beamlet_web/live/management_live.ex:311
+#: lib/beamlet_web/live/management_live.ex:311
 #, elixir-autogen, elixir-format
 msgid "Read unavailable; facts unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:170
-#: lib/beamlet_web/live/management_live.ex:170
+#: lib/beamlet_web/live/management_live.ex:180
+#: lib/beamlet_web/live/management_live.ex:180
 #, elixir-autogen, elixir-format
 msgid "Read-only %{section}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:75
-#: lib/beamlet_web/live/management_live.ex:75
+#: lib/beamlet_web/live/management_live.ex:81
+#: lib/beamlet_web/live/management_live.ex:81
 #, elixir-autogen, elixir-format
 msgid "Reading; previous observation retained"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:83
-#: lib/beamlet_web/live/workbench_live.ex:83
+#: lib/beamlet_web/live/workbench_live.ex:97
+#: lib/beamlet_web/live/workbench_live.ex:97
 #, elixir-autogen, elixir-format
 msgid "Ready"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:330
-#: lib/beamlet_web/live/management_live.ex:330
+#: lib/beamlet_web/live/management_live.ex:346
+#: lib/beamlet_web/live/management_live.ex:346
 #, elixir-autogen, elixir-format
 msgid "Ready: %{ready} · Execution ready: %{execution_ready}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:176
-#: lib/beamlet_web/live/management_live.ex:176
+#: lib/beamlet_web/live/management_live.ex:186
+#: lib/beamlet_web/live/management_live.ex:186
 #, elixir-autogen, elixir-format
 msgid "Refresh observation"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:254
-#: lib/beamlet_web/live/management_live.ex:254
+#: lib/beamlet_web/live/management_live.ex:266
+#: lib/beamlet_web/live/management_live.ex:266
 #, elixir-autogen, elixir-format
 msgid "Registered readiness is not provider health. Missing or stale reports do not prove death."
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:295
-#: lib/beamlet_web/live/management_live.ex:295
+#: lib/beamlet_web/live/management_live.ex:307
+#: lib/beamlet_web/live/management_live.ex:307
 #, elixir-autogen, elixir-format
 msgid "Registered services: %{services}"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:399
-#: lib/beamlet_web/live/workbench_live.ex:399
+#: lib/beamlet_web/live/workbench_live.ex:426
+#: lib/beamlet_web/live/workbench_live.ex:426
 #, elixir-autogen, elixir-format
 msgid "Rejected: %{reason}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:311
-#: lib/beamlet_web/live/management_live.ex:311
+#: lib/beamlet_web/live/management_live.ex:327
+#: lib/beamlet_web/live/management_live.ex:327
 #, elixir-autogen, elixir-format
 msgid "Report source: %{source} · coverage: %{coverage}"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:403
-#: lib/beamlet_web/live/workbench_live.ex:403
+#: lib/beamlet_web/live/workbench_live.ex:430
+#: lib/beamlet_web/live/workbench_live.ex:430
 #, elixir-autogen, elixir-format
 msgid "Request acknowledged; observe actual state. Stop does not undo external effects."
 msgstr ""
@@ -759,28 +759,28 @@ msgstr ""
 msgid "Reset to preset defaults"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:211
-#: lib/beamlet_web/live/management_live.ex:211
-#: lib/beamlet_web/live/management_live.ex:212
-#: lib/beamlet_web/live/management_live.ex:212
+#: lib/beamlet_web/live/management_live.ex:221
+#: lib/beamlet_web/live/management_live.ex:221
+#: lib/beamlet_web/live/management_live.ex:222
+#: lib/beamlet_web/live/management_live.ex:222
 #, elixir-autogen, elixir-format
 msgid "Retained live context"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:348
-#: lib/beamlet_web/live/management_live.ex:348
+#: lib/beamlet_web/live/management_live.ex:364
+#: lib/beamlet_web/live/management_live.ex:364
 #, elixir-autogen, elixir-format
 msgid "Runtime reports unavailable / not configured; capacity unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:272
-#: lib/beamlet_web/live/management_live.ex:272
+#: lib/beamlet_web/live/management_live.ex:284
+#: lib/beamlet_web/live/management_live.ex:284
 #, elixir-autogen, elixir-format
 msgid "Scope partial: %{target} not read (32-target limit including explicit local). Facts unknown."
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:239
-#: lib/beamlet_web/live/management_live.ex:239
+#: lib/beamlet_web/live/management_live.ex:251
+#: lib/beamlet_web/live/management_live.ex:251
 #, elixir-autogen, elixir-format
 msgid "Scope: explicit local VM and configured trusted targets. Distribution: %{distribution}."
 msgstr ""
@@ -803,14 +803,14 @@ msgstr ""
 msgid "Source field truncated"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:202
-#: lib/beamlet_web/live/management_live.ex:202
+#: lib/beamlet_web/live/management_live.ex:212
+#: lib/beamlet_web/live/management_live.ex:212
 #, elixir-autogen, elixir-format
 msgid "Source omissions/truncation may apply; context replaces prior display."
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:306
-#: lib/beamlet_web/live/workbench_live.ex:306
+#: lib/beamlet_web/live/workbench_live.ex:321
+#: lib/beamlet_web/live/workbench_live.ex:321
 #, elixir-autogen, elixir-format
 msgid "Stale discovery; refresh explicitly"
 msgstr ""
@@ -845,52 +845,52 @@ msgstr ""
 msgid "Tools (configured capabilities only)"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:76
-#: lib/beamlet_web/components/observation_components.ex:76
+#: lib/beamlet_web/components/observation_components.ex:84
+#: lib/beamlet_web/components/observation_components.ex:84
 #, elixir-autogen, elixir-format
 msgid "Turn %{id}"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:72
-#: lib/beamlet_web/components/observation_components.ex:72
+#: lib/beamlet_web/components/observation_components.ex:80
+#: lib/beamlet_web/components/observation_components.ex:80
 #, elixir-autogen, elixir-format
 msgid "Turn unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:191
-#: lib/beamlet_web/live/workbench_live.ex:191
+#: lib/beamlet_web/live/workbench_live.ex:205
+#: lib/beamlet_web/live/workbench_live.ex:205
 #, elixir-autogen, elixir-format
 msgid "Unavailable"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:406
-#: lib/beamlet_web/live/workbench_live.ex:406
+#: lib/beamlet_web/live/workbench_live.ex:433
+#: lib/beamlet_web/live/workbench_live.ex:433
 #, elixir-autogen, elixir-format
 msgid "Unavailable / rejected: %{reason}"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:426
-#: lib/beamlet_web/live/management_live.ex:426
+#: lib/beamlet_web/live/management_live.ex:456
+#: lib/beamlet_web/live/management_live.ex:456
 #, elixir-autogen, elixir-format
 msgid "Unavailable / stale identity: %{reason}. Last observation retained; current facts unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:174
-#: lib/beamlet_web/live/management_live.ex:174
-#: lib/beamlet_web/live/management_live.ex:405
-#: lib/beamlet_web/live/management_live.ex:405
+#: lib/beamlet_web/live/management_live.ex:184
+#: lib/beamlet_web/live/management_live.ex:184
 #: lib/beamlet_web/live/management_live.ex:433
 #: lib/beamlet_web/live/management_live.ex:433
-#: lib/beamlet_web/live/management_live.ex:440
-#: lib/beamlet_web/live/management_live.ex:440
+#: lib/beamlet_web/live/management_live.ex:464
+#: lib/beamlet_web/live/management_live.ex:464
+#: lib/beamlet_web/live/management_live.ex:473
+#: lib/beamlet_web/live/management_live.ex:473
 #: lib/beamlet_web/live/workbench_live.html.heex:211
 #: lib/beamlet_web/live/workbench_live.html.heex:211
 #, elixir-autogen, elixir-format
 msgid "Unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/workbench_live.ex:324
-#: lib/beamlet_web/live/workbench_live.ex:324
+#: lib/beamlet_web/live/workbench_live.ex:340
+#: lib/beamlet_web/live/workbench_live.ex:340
 #, elixir-autogen, elixir-format
 msgid "Unknown (attached instance)"
 msgstr ""
@@ -901,22 +901,22 @@ msgstr ""
 msgid "Unknown (external Agent)"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:18
-#: lib/beamlet_web/live/management_live.ex:18
-#: lib/beamlet_web/live/management_live.ex:46
-#: lib/beamlet_web/live/management_live.ex:46
+#: lib/beamlet_web/live/management_live.ex:22
+#: lib/beamlet_web/live/management_live.ex:22
+#: lib/beamlet_web/live/management_live.ex:51
+#: lib/beamlet_web/live/management_live.ex:51
 #, elixir-autogen, elixir-format
 msgid "Unknown / not observed"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:68
-#: lib/beamlet_web/components/observation_components.ex:68
+#: lib/beamlet_web/components/observation_components.ex:75
+#: lib/beamlet_web/components/observation_components.ex:75
 #, elixir-autogen, elixir-format
 msgid "Unknown / omitted"
 msgstr ""
 
-#: lib/beamlet_web/components/observation_components.ex:71
-#: lib/beamlet_web/components/observation_components.ex:71
+#: lib/beamlet_web/components/observation_components.ex:78
+#: lib/beamlet_web/components/observation_components.ex:78
 #, elixir-autogen, elixir-format
 msgid "Unsupported content omitted"
 msgstr ""
@@ -927,46 +927,46 @@ msgstr ""
 msgid "What would you like to do?"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:162
-#: lib/beamlet_web/live/management_live.ex:162
+#: lib/beamlet_web/live/management_live.ex:172
+#: lib/beamlet_web/live/management_live.ex:172
 #: lib/beamlet_web/live/workbench_live.html.heex:5
 #: lib/beamlet_web/live/workbench_live.html.heex:5
 #, elixir-autogen, elixir-format
 msgid "Workbench"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:401
-#: lib/beamlet_web/live/management_live.ex:401
+#: lib/beamlet_web/live/management_live.ex:428
+#: lib/beamlet_web/live/management_live.ex:428
 #, elixir-autogen, elixir-format
 msgid "authorities"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:265
-#: lib/beamlet_web/live/management_live.ex:265
+#: lib/beamlet_web/live/management_live.ex:277
+#: lib/beamlet_web/live/management_live.ex:277
 #, elixir-autogen, elixir-format
 msgid "connected at read entry"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:397
-#: lib/beamlet_web/live/management_live.ex:397
+#: lib/beamlet_web/live/management_live.ex:424
+#: lib/beamlet_web/live/management_live.ex:424
 #, elixir-autogen, elixir-format
 msgid "diagnostics"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:244
-#: lib/beamlet_web/live/management_live.ex:244
+#: lib/beamlet_web/live/management_live.ex:256
+#: lib/beamlet_web/live/management_live.ex:256
 #, elixir-autogen, elixir-format
 msgid "disabled; local path supported"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:400
-#: lib/beamlet_web/live/management_live.ex:400
+#: lib/beamlet_web/live/management_live.ex:427
+#: lib/beamlet_web/live/management_live.ex:427
 #, elixir-autogen, elixir-format
 msgid "environments"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:264
-#: lib/beamlet_web/live/management_live.ex:264
+#: lib/beamlet_web/live/management_live.ex:276
+#: lib/beamlet_web/live/management_live.ex:276
 #, elixir-autogen, elixir-format
 msgid "local (no distribution required)"
 msgstr ""
@@ -977,52 +977,52 @@ msgstr ""
 msgid "missing"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:398
-#: lib/beamlet_web/live/management_live.ex:398
+#: lib/beamlet_web/live/management_live.ex:425
+#: lib/beamlet_web/live/management_live.ex:425
 #, elixir-autogen, elixir-format
 msgid "models"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:395
-#: lib/beamlet_web/live/management_live.ex:395
+#: lib/beamlet_web/live/management_live.ex:422
+#: lib/beamlet_web/live/management_live.ex:422
 #, elixir-autogen, elixir-format
 msgid "nodes"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:403
-#: lib/beamlet_web/live/management_live.ex:403
+#: lib/beamlet_web/live/management_live.ex:431
+#: lib/beamlet_web/live/management_live.ex:431
 #, elixir-autogen, elixir-format
 msgid "none"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:365
-#: lib/beamlet_web/live/management_live.ex:365
+#: lib/beamlet_web/live/management_live.ex:383
+#: lib/beamlet_web/live/management_live.ex:383
 #, elixir-autogen, elixir-format
 msgid "none configured"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:407
-#: lib/beamlet_web/live/management_live.ex:407
+#: lib/beamlet_web/live/management_live.ex:436
+#: lib/beamlet_web/live/management_live.ex:436
 #: lib/beamlet_web/live/workbench_live.html.heex:170
 #: lib/beamlet_web/live/workbench_live.html.heex:170
 #, elixir-autogen, elixir-format
 msgid "not required"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:284
-#: lib/beamlet_web/live/management_live.ex:284
+#: lib/beamlet_web/live/management_live.ex:296
+#: lib/beamlet_web/live/management_live.ex:296
 #, elixir-autogen, elixir-format
 msgid "partial / unknown"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:396
-#: lib/beamlet_web/live/management_live.ex:396
+#: lib/beamlet_web/live/management_live.ex:423
+#: lib/beamlet_web/live/management_live.ex:423
 #, elixir-autogen, elixir-format
 msgid "presets"
 msgstr ""
 
-#: lib/beamlet_web/live/management_live.ex:399
-#: lib/beamlet_web/live/management_live.ex:399
+#: lib/beamlet_web/live/management_live.ex:426
+#: lib/beamlet_web/live/management_live.ex:426
 #, elixir-autogen, elixir-format
 msgid "tools"
 msgstr ""
