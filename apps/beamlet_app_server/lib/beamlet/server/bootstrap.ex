@@ -6,8 +6,10 @@ defmodule Beamlet.Server.Bootstrap do
 
   # Task.start_link acknowledges startup before running network work. The task is
   # owned by the host; Cluster owns and bounds each attempt, including caller loss.
+  @spec start_link(Beamlet.Server.settings()) :: {:ok, pid()} | {:error, term()}
   def start_link(settings), do: Task.start_link(__MODULE__, :run, [settings])
 
+  @spec run(Beamlet.Server.settings()) :: :ok
   def run(settings) do
     settings[:peers]
     |> Enum.with_index(1)

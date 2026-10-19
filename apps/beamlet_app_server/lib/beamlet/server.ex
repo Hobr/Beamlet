@@ -17,6 +17,15 @@ defmodule Beamlet.Server do
   that needs none. `storage:` itself never implies durable admission; admission
   comes from a live probe of the opened dataset.
   """
+  @typedoc "Validated startup policy; connection names stay strings until Cluster validates them."
+  @type settings :: [
+          {:enabled, boolean()}
+          | {:node, Beamlet.Node.options()}
+          | {:allowed_nodes, [binary()]}
+          | {:peers, [binary()]}
+          | {:storage, Host.configuration() | nil}
+        ]
+  @spec configuration(term()) :: {:ok, settings()} | {:error, :invalid_server_configuration}
   def configuration(settings) do
     with true <- keyword?(settings, [:enabled, :node, :allowed_nodes, :peers, :storage]),
          enabled when is_boolean(enabled) <- Keyword.get(settings, :enabled, false),
@@ -38,6 +47,8 @@ defmodule Beamlet.Server do
     end
   end
 
+  @spec storage([Beamlet.Node.role()], term()) ::
+          {:ok, Host.configuration() | nil} | {:error, :invalid_server_configuration}
   defp storage(_roles, nil), do: {:ok, nil}
 
   # The release runtime config stores the normalized settings; boot re-validates its
@@ -57,18 +68,21 @@ defmodule Beamlet.Server do
     end
   end
 
+  @spec keyword?(term(), [atom()]) :: boolean()
   defp keyword?(settings, keys) do
     is_list(settings) and Keyword.keyword?(settings) and
       Keyword.keys(settings) -- keys == [] and
       Enum.uniq(Keyword.keys(settings)) == Keyword.keys(settings)
   end
 
+  @spec roles?(term()) :: boolean()
   defp roles?([:authority]), do: true
   defp roles?([:executor]), do: true
   defp roles?([:authority, :executor]), do: true
   defp roles?([:executor, :authority]), do: true
   defp roles?(_), do: false
 
+  @spec peers?(term(), [binary()], integer(), [binary()]) :: boolean()
   defp peers?([], _allowed, _remaining, _seen), do: true
 
   defp peers?([name | rest], allowed, remaining, seen) when remaining > 0 do
