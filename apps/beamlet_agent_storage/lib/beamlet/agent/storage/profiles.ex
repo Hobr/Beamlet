@@ -3,6 +3,7 @@ defmodule Beamlet.Agent.Storage.Profiles do
   alias Beamlet.Actions.Storage.Profiles, as: Actions
   alias Beamlet.Storage.Installation
 
+  @spec authority() :: Installation.t()
   def authority do
     %{
       profile: "agent-authority",

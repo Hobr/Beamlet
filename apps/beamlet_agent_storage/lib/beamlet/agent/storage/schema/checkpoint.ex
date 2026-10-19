@@ -16,6 +16,20 @@ defmodule Beamlet.Agent.Storage.Schema.Checkpoint do
     field(:recorded_at, :utc_datetime_usec)
   end
 
+  @type t :: %__MODULE__{
+          id: String.t() | nil,
+          agent_id: String.t() | nil,
+          turn_id: String.t() | nil,
+          through_seq: integer() | nil,
+          reducer_version: integer() | nil,
+          data: Beamlet.Agent.Storage.Records.value(),
+          continuation: String.t() | nil,
+          schema_version: integer() | nil,
+          digest: String.t() | nil,
+          safe_to_fork: boolean() | nil,
+          recorded_at: DateTime.t() | nil
+        }
+  @spec changeset(t(), term()) :: Ecto.Changeset.t(t())
   def changeset(record, attrs) do
     RecordChangeset.build(
       record,

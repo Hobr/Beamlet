@@ -1,5 +1,12 @@
 defmodule Beamlet.Agent.Storage.JSON do
   @moduledoc false
+  @type params :: %{kind: atom()}
+  @spec init(keyword()) :: params()
+  @spec type(term()) :: :string
+  @spec kind(term()) :: atom() | nil
+  @spec cast(term(), params()) :: {:ok, Beamlet.Agent.Storage.Records.value()} | :error
+  @spec dump(term(), term(), params()) :: {:ok, binary() | nil} | :error
+  @spec load(term(), term(), params()) :: {:ok, Beamlet.Agent.Storage.Records.value()} | :error
   use Ecto.ParameterizedType
   alias Beamlet.Agent.Storage.Codec
   def init(opts), do: %{kind: Keyword.get(opts, :kind, :event)}

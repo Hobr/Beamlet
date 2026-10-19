@@ -15,6 +15,19 @@ defmodule Beamlet.Agent.Storage.Schema.AgentOperation do
     field(:sources, Beamlet.Agent.Storage.JSON, kind: :operation)
   end
 
+  @type t :: %__MODULE__{
+          id: String.t() | nil,
+          owner_agent_id: String.t() | nil,
+          turn_id: String.t() | nil,
+          tool_call_id: String.t() | nil,
+          ordinal: integer() | nil,
+          step_id: String.t() | nil,
+          role: String.t() | nil,
+          owner_generation: integer() | nil,
+          prepared_seq: integer() | nil,
+          sources: Beamlet.Agent.Storage.Records.value()
+        }
+  @spec changeset(t(), term()) :: Ecto.Changeset.t(t())
   def changeset(record, attrs),
     do:
       RecordChangeset.build(

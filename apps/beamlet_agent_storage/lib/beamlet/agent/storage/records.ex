@@ -6,6 +6,66 @@ defmodule Beamlet.Agent.Storage.Records do
   instead of trusting an upstream caller. Errors stay plain atoms from the
   stage-A taxonomy; SQL, connection and configuration detail never escape.
   """
+  @type error ::
+          :invalid_data
+          | :limit
+          | :conflict
+          | :stale_generation
+          | :schema_unsupported
+          | :artifact_missing
+          | :storage_unavailable
+          | :storage_outcome_unknown
+          | :unresolved_execution
+          | :unsafe_checkpoint
+          | :source_not_frozen
+          | :invalid_reference
+          | :transaction_required
+          | :stale_epoch
+  @type result(value) :: {:ok, value} | {:error, error()}
+  @typedoc "Decoded JSON facts; string keys, event variants and reference relations are runtime validated."
+  @type value :: Beamlet.Actions.Storage.Records.value()
+  @type object :: Beamlet.Actions.Storage.Records.object()
+  @spec transact(module(), (-> {:ok, value} | {:error, atom()} | nil)) :: result(value)
+        when value: var
+  @spec settle(module(), (-> {:ok, value} | {:error, atom()} | nil)) :: value when value: var
+  @spec fields(term(), [atom()], [atom()]) ::
+          {:ok, %{optional(atom()) => term()}} | {:error, :invalid_data}
+  @spec uuid(term()) :: {:ok, String.t()} | {:error, :invalid_data}
+  @spec optional_uuid(term()) :: {:ok, String.t() | nil} | {:error, :invalid_data}
+  @spec text(term(), pos_integer()) :: {:ok, String.t()} | {:error, :invalid_data}
+  @spec optional_text(term(), pos_integer()) :: {:ok, String.t() | nil} | {:error, :invalid_data}
+  @spec count(term()) :: {:ok, non_neg_integer()} | {:error, :invalid_data}
+  @spec digest(term()) :: {:ok, String.t()} | {:error, :invalid_data}
+  @spec json(term(), atom()) :: {:ok, value()} | {:error, :invalid_data | :limit}
+  @spec enum(term(), [String.t()]) :: {:ok, String.t()} | {:error, :invalid_data}
+  @spec event_type(term()) :: {:ok, String.t()} | {:error, :schema_unsupported}
+  @spec get(module(), module(), term()) :: {:ok, struct()} | {:error, :conflict}
+  @spec insert(module(), Ecto.Changeset.t(record)) ::
+          {:ok, record} | {:error, :invalid_data | :limit | :conflict}
+        when record: var
+  @spec changeset_error(Ecto.Changeset.t()) :: :invalid_data | :limit | :conflict
+  @spec cas_agent(
+          module(),
+          Beamlet.Agent.Storage.Schema.Agent.t(),
+          non_neg_integer(),
+          non_neg_integer(),
+          keyword()
+        ) :: result(non_neg_integer())
+  @spec event_changeset(map()) :: Ecto.Changeset.t(Beamlet.Agent.Storage.Schema.Event.t())
+  @spec command_changeset(map()) :: Ecto.Changeset.t(Beamlet.Agent.Storage.Schema.Command.t())
+  @spec event_input(term()) ::
+          result(%{
+            id: String.t(),
+            type: String.t(),
+            payload: value(),
+            causation_id: String.t() | nil
+          })
+  @spec command_lookup(module(), String.t(), String.t()) ::
+          Beamlet.Agent.Storage.Schema.Command.t() | nil
+  # This structural conversion preserves arbitrary leaves, unlike the JSON validator.
+  @spec plain(term()) :: term()
+  @spec plain_key(key) :: key | String.t() when key: var
+
   alias Beamlet.Agent.Storage.Read
   alias Beamlet.Storage.Transaction
   import Ecto.Query

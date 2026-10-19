@@ -8,6 +8,40 @@ defmodule Beamlet.Agent.Storage.Inheritance do
   alias Beamlet.Agent.Storage.OperationRecords
   alias Beamlet.Agent.Storage.Schema.Event
   alias Beamlet.Storage.Schema.Artifact
+
+  @typep state :: %{
+           sources: [Beamlet.Agent.Storage.Records.object()],
+           closure: [Beamlet.Agent.Storage.Records.object()],
+           resolutions: Beamlet.Agent.Storage.Records.object(),
+           visiting: [String.t()],
+           deadline: integer()
+         }
+  @typep object :: Beamlet.Agent.Storage.Records.object()
+  @typep result(value) :: Beamlet.Agent.Storage.Records.result(value)
+  @typep check :: :ok | {:error, Beamlet.Agent.Storage.Records.error()}
+  @spec source_position(module(), String.t(), map()) :: check()
+  @spec timeline_entry(Event.t()) :: [object()]
+  @spec verify_resolutions(module(), String.t(), map()) :: check()
+  @spec resolution_outcome([object()], String.t(), object()) ::
+          {:cont, :ok} | {:halt, {:error, :conflict}}
+  @spec build(module(), String.t(), [object()], object(), object()) :: result(object())
+  @spec collect(module(), String.t(), [object()], state()) :: result(state())
+  @spec bounded_capture(module(), String.t(), object(), state()) ::
+          {:ok, object(), state()} | {:error, Beamlet.Agent.Storage.Records.error()}
+  @spec same_source?(object(), object()) :: boolean()
+  @spec capture(module(), String.t(), object(), state()) ::
+          {:ok, object(), state()} | {:error, Beamlet.Agent.Storage.Records.error()}
+  @spec add(object(), state()) :: {:ok, object(), state()} | {:error, :limit}
+  @spec input_artifact(module(), binary()) :: result(Artifact.t())
+  @spec verify(module(), term()) :: check()
+  @spec verify_closure(module(), [object()], integer()) :: check()
+  @spec input(module(), object()) :: result(object())
+  @spec verify_entry(module(), term(), [object()]) :: check()
+  @spec operation(module(), object(), object()) :: check()
+  @spec valid_resolution?(object(), Beamlet.Agent.Storage.Records.value()) :: boolean()
+  @spec covered?(term(), [object()]) :: boolean()
+  @spec authorized?(module(), String.t(), object(), non_neg_integer()) :: boolean()
+
   @max_refs 1024
 
   def source_position(repo, agent, attrs) do

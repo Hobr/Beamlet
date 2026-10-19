@@ -1,5 +1,10 @@
 defmodule Beamlet.Agent.Storage.Events do
   @moduledoc "Version-one event vocabulary and reference-only control payload contract."
+  @spec version() :: 1
+  @spec agent_types() :: [String.t()]
+  @spec supported?(term(), term()) :: boolean()
+  @spec control(term()) :: :ok | {:error, :invalid_data | :limit}
+  @spec reference_only?(term()) :: boolean()
   alias Beamlet.Agent.Storage.Codec
 
   @agent ~w(agent.created input.accepted model.request_prepared tool.batch_prepared operation.result_consumed turn.interrupted agent.continue_decided agent.config_changed context.selected agent.forked context.inherited agent.activated)

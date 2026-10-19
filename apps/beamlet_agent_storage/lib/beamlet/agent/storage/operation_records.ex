@@ -1,8 +1,30 @@
 defmodule Beamlet.Agent.Storage.OperationRecords do
   @moduledoc "Agent-owned operation projections and association validation."
-  alias Beamlet.Agent.Storage.Codec
   alias Beamlet.Agent.Storage.Records
   alias Beamlet.Agent.Storage.Schema.Operation
+
+  @typedoc "Validated association input. Unowned intermediate operations may have nil owner/turn/step/role."
+  @type operation :: %{
+          id: String.t(),
+          description: Records.object(),
+          description_digest: String.t(),
+          sources: [Records.value()],
+          owner_agent_id: String.t() | nil,
+          turn_id: String.t() | nil,
+          step_id: String.t() | nil,
+          role: String.t() | nil,
+          ordinal: non_neg_integer() | nil,
+          tool_call_id: String.t() | nil
+        }
+  @type attempt :: Beamlet.Actions.Storage.OperationRecords.attempt()
+  @spec validate_operation(term()) :: Records.result(operation())
+  @spec role(term(), String.t() | nil) :: Records.result(String.t() | nil)
+  @spec optional_count(term()) :: Records.result(non_neg_integer() | nil)
+  @spec description(term()) :: Records.result(Records.object())
+  @spec validate_attempt(term()) :: Records.result(attempt())
+  @spec fetch(module(), term()) :: Records.result(Records.object())
+  @spec read_operation(module(), String.t()) :: Records.result(Records.object())
+  alias Beamlet.Agent.Storage.Codec
   import Ecto.Query
   alias Beamlet.Actions.Storage.Schema.Execution
   alias Beamlet.Agent.Storage.Read

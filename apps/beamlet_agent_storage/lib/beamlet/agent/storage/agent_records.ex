@@ -20,6 +20,159 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
   alias Beamlet.Agent.Storage.Schema.Operation
   alias Ecto.Adapters.SQL
 
+  @typedoc "Optimistic Agent position; generation fencing is checked before lock version."
+  @type position :: %{
+          agent_id: String.t(),
+          lock_version: non_neg_integer(),
+          generation: non_neg_integer()
+        }
+  @typep event_spec :: {String.t(), Records.object(), String.t() | nil}
+  @typep member :: %{operation: OperationRecords.operation(), attempt: OperationRecords.attempt()}
+  @typep create_input :: %{
+           optional(:alias) => String.t() | nil,
+           command_id: String.t(),
+           id: String.t(),
+           authority_id: String.t(),
+           definition: Records.value()
+         }
+  @typep input_command :: %{
+           command_id: String.t(),
+           position: position(),
+           turn_id: String.t(),
+           input: Records.object()
+         }
+  @typep prepare_command :: %{
+           command_id: String.t(),
+           position: position(),
+           turn_id: String.t(),
+           operations: [member()],
+           orchestration: Records.object()
+         }
+  @typep consume_command :: %{
+           command_id: String.t(),
+           position: position(),
+           turn_id: String.t(),
+           accepted_refs: [Records.object()],
+           join: Records.object()
+         }
+  @typep checkpoint_command :: %{
+           command_id: String.t(),
+           position: position(),
+           id: String.t(),
+           through_seq: non_neg_integer(),
+           reducer_version: pos_integer(),
+           projection: Records.object(),
+           continuation: term(),
+           safe_to_fork: boolean()
+         }
+  @typep advance_command :: %{
+           command_id: String.t(),
+           position: position(),
+           turn_id: String.t() | nil,
+           type: String.t(),
+           payload: Records.object()
+         }
+  @typep fork_command :: %{
+           command_id: String.t(),
+           position: position(),
+           id: String.t(),
+           through_seq: non_neg_integer(),
+           timeline: [Records.object()],
+           inheritance: Records.object(),
+           resolutions: Records.object(),
+           fork_request: Records.object(),
+           risk: nil | String.t()
+         }
+  @typep restore_command :: %{command_id: String.t(), position: position()}
+  @typep command_input ::
+           input_command()
+           | prepare_command()
+           | consume_command()
+           | checkpoint_command()
+           | advance_command()
+           | fork_command()
+           | restore_command()
+  @typep check :: :ok | {:error, Records.error()}
+  @spec create_agent(module(), term()) :: Records.result(Records.object())
+  @spec create(module(), create_input()) :: Records.result(Records.object())
+  @spec accept_input(module(), term()) :: Records.result(Records.object())
+  @spec input(module(), Agent.t(), input_command(), Records.object()) ::
+          Records.result(Records.object())
+  @spec prepare_operations(module(), term()) :: Records.result(Records.object())
+  @spec members(term()) :: Records.result([member()])
+  @spec prepare(module(), Agent.t(), prepare_command(), [member()]) ::
+          Records.result(Records.object())
+  @spec preparation_specs([member()], prepare_command()) :: [event_spec()]
+  @spec unique_members([member()]) :: check()
+  @spec prepare_members(module(), Agent.t(), prepare_command(), [member()]) ::
+          Records.result([Records.object()])
+  @spec insert_association(module(), map()) :: Records.result(AgentOperation.t())
+  @spec consume_results(module(), term()) :: Records.result(Records.object())
+  @spec consume(module(), Agent.t(), consume_command()) :: Records.result(Records.object())
+  @spec consumables(module(), Agent.t(), consume_command()) :: Records.result([Records.object()])
+  @spec unconsumed(module(), String.t(), [Records.object()]) :: check()
+  @spec consumption_key(Records.object()) :: String.t()
+  @spec verify_sources(module(), Agent.t(), [Records.value()]) :: check()
+  @spec source(module(), Agent.t(), term()) :: check()
+  @spec accepted_reference(module(), Agent.t(), term()) :: check()
+  @spec consumption_role?(term(), term()) :: boolean()
+  @spec checkpoint(module(), term()) :: Records.result(Records.object())
+  @spec write_checkpoint(module(), Agent.t(), checkpoint_command(), String.t()) ::
+          Records.result(Records.object())
+  @spec insert_checkpoint(module(), Agent.t(), checkpoint_command(), String.t()) ::
+          Records.result(Records.object())
+  @spec control_references(module(), Agent.t(), term()) :: check()
+  @spec verify_control_children(module(), Agent.t(), [Records.value()]) :: check()
+  @spec control_operation(module(), Agent.t(), term()) :: check()
+  @spec inherited_operation?(module(), Agent.t(), String.t()) :: boolean()
+  @spec control_digest(Operation.t(), Records.object()) :: check()
+  @spec advance(module(), term()) :: Records.result(Records.object())
+  @spec advance_control(module(), Agent.t(), advance_command()) ::
+          Records.result(Records.object())
+  @spec resume_operations(module(), Agent.t(), advance_command()) :: check()
+  @spec resume_members(module(), Agent.t(), String.t(), [String.t()]) :: check()
+  @spec resume_operation(module(), Agent.t(), String.t(), String.t()) :: check()
+  @spec reauthorize(module(), Agent.t(), Operation.t(), Records.object()) :: check()
+  @spec fork(module(), term()) :: Records.result(Records.object())
+  @spec fork_records(module(), Agent.t(), fork_command()) ::
+          Records.result(Records.object()) | nil
+  @spec lock_fork_source(module(), String.t(), position()) :: Records.result(Agent.t()) | nil
+  @spec inherited_event(module(), String.t(), String.t(), Records.object()) ::
+          Records.result(Records.object())
+  @spec restore(module(), term()) :: Records.result(Records.object())
+  @spec activate(module(), Agent.t(), restore_command()) :: Records.result(Records.object())
+  @spec transition(module(), command_input(), (Agent.t() ->
+                                                 Records.result(Records.object()) | nil)) ::
+          Records.result(Records.object())
+  @spec load_transition(module(), position(), (Agent.t() ->
+                                                 Records.result(Records.object()) | nil)) ::
+          Records.result(Records.object()) | nil
+  @spec locked_agent(module(), String.t()) :: Records.result(Agent.t())
+  @spec validate_position(term()) :: check()
+  @spec position(Agent.t(), position()) :: check()
+  @spec authority(module(), String.t()) :: check()
+  @spec active_turn(module(), String.t(), String.t()) :: check()
+  @spec append(module(), Agent.t(), position(), [event_spec()]) ::
+          Records.result(Records.object())
+  @spec append_events(module(), Agent.t(), [event_spec()]) :: Records.result([Records.object()])
+  @spec event(module(), String.t(), pos_integer(), String.t(), Records.object(), String.t() | nil) ::
+          Records.result(Records.object())
+  @spec response(Agent.t(), non_neg_integer(), non_neg_integer(), [Records.object()]) ::
+          Records.object()
+  @spec command(module(), String.t(), String.t(), map(), (-> Records.result(Records.object())
+                                                             | nil)) ::
+          Records.result(Records.object())
+  @spec replay_command(module(), String.t(), String.t(), String.t(), (-> Records.result(
+                                                                           Records.object()
+                                                                         )
+                                                                         | nil)) ::
+          Records.result(Records.object()) | nil
+  @spec fetch(module(), term()) :: Records.result(Records.object())
+  @spec read_agent(module(), String.t()) :: Records.result(Records.object())
+  @spec command_response(module(), term(), term()) :: Records.result(Records.object())
+  @spec read_command(module(), String.t(), String.t()) :: Records.result(Records.object())
+  @spec history_page(module(), term(), term()) :: Records.result(Records.object())
+
   def create_agent(repo, attrs) do
     with {:ok, _} <-
            Records.fields(attrs, [:command_id, :id, :authority_id, :definition], [:alias]),

@@ -21,6 +21,81 @@ defmodule Beamlet.Agent.Storage.History do
   alias Beamlet.Agent.Storage.Schema.Checkpoint
   alias Beamlet.Agent.Storage.Schema.Event
   alias Beamlet.Agent.Storage.Schema.Operation
+
+  @typep event_filters :: %{
+           after_seq: non_neg_integer(),
+           through_seq: non_neg_integer() | nil,
+           limit: pos_integer(),
+           max_bytes: pos_integer(),
+           turn_id: String.t() | nil,
+           operation_id: String.t() | nil,
+           types: [String.t()] | nil,
+           origin: String.t() | nil
+         }
+  @typep cursor :: {DateTime.t(), String.t() | nil} | nil
+  @typep checkpoint_filters :: %{
+           after: cursor(),
+           through: DateTime.t() | nil,
+           limit: pos_integer(),
+           max_bytes: pos_integer()
+         }
+  @spec event_page(module(), term(), term()) :: Records.result(Records.object())
+  @spec event(module(), term(), term()) :: Records.result(Records.object())
+  @spec read_event(module(), String.t(), non_neg_integer()) :: Records.result(Records.object())
+  @spec operation_event(module(), String.t(), non_neg_integer()) ::
+          Records.result(Records.object())
+  @spec checkpoint_at(module(), term(), term()) :: Records.result(Records.object())
+  @spec read_checkpoint_at(module(), String.t(), non_neg_integer() | nil) ::
+          Records.result(Records.object())
+  @spec valid_checkpoint(map() | nil) :: Records.object() | nil
+  @spec checkpoint_page(module(), term(), term()) :: Records.result(Records.object())
+  @spec turns(module(), term(), keyword()) :: Records.result(Records.object())
+  @spec operations(module(), term(), term()) :: Records.result(Records.object())
+  @spec operation(module(), term()) :: Records.result(Records.object())
+  @spec read_operation(module(), String.t()) :: Records.result(Records.object())
+  @spec evidence(module(), term()) :: Records.result(Records.object())
+  @spec bounded_evidence(module(), String.t()) :: Records.result(Records.object())
+  @spec event_filters(term()) :: Records.result(event_filters())
+  @spec checkpoint_filters(term()) :: Records.result(checkpoint_filters())
+  @spec after_checkpoint(term()) :: Records.result(cursor())
+  @spec cursor_key(term()) :: atom()
+  @spec origin(term()) :: Records.result(String.t() | nil)
+  @spec list_bounds(term(), atom()) ::
+          {:ok, non_neg_integer(), pos_integer()} | {:error, Records.error()}
+  @spec read_events(module(), String.t(), event_filters()) :: Records.result(Records.object())
+  @spec event_query(String.t(), event_filters()) :: Ecto.Query.t()
+  @spec filter_through(Ecto.Query.t(), non_neg_integer() | nil) :: Ecto.Query.t()
+  @spec filter_types(Ecto.Query.t(), [String.t()] | nil) :: Ecto.Query.t()
+  @spec filter_turn(Ecto.Query.t(), String.t() | nil) :: Ecto.Query.t()
+  @spec filter_operation(Ecto.Query.t(), String.t() | nil) :: Ecto.Query.t()
+  @spec filter_origin(Ecto.Query.t(), String.t() | nil, String.t()) :: Ecto.Query.t()
+  @spec plain_event(Event.t(), String.t()) :: Records.object()
+  @spec oversized?([%{required(:raw) => binary(), optional(atom()) => term()}], pos_integer()) ::
+          boolean()
+  @spec take_rows([row], pos_integer(), pos_integer(), [value], non_neg_integer(), (row -> value)) ::
+          {[value], boolean()}
+        when row: %{required(:raw) => binary(), optional(atom()) => term()}, value: var
+  @spec read_checkpoints(module(), String.t(), checkpoint_filters()) ::
+          Records.result(Records.object())
+  @spec after_clause(Ecto.Query.t(), cursor()) :: Ecto.Query.t()
+  @spec read_turns(
+          module(),
+          String.t(),
+          non_neg_integer(),
+          pos_integer(),
+          non_neg_integer() | nil
+        ) :: Records.result(Records.object())
+  @spec read_operations(module(), String.t(), non_neg_integer(), pos_integer()) ::
+          Records.result(Records.object())
+  @spec attempt_for(module(), String.t()) :: Execution.t() | nil
+  @spec evidence_rows(module(), String.t(), pos_integer()) :: [Records.object()]
+  @spec seq(term()) :: Records.result(non_neg_integer())
+  @spec optional_seq(term()) :: Records.result(non_neg_integer() | nil)
+  @spec bounded(term(), integer(), integer()) :: Records.result(integer())
+  @spec optional_uuid(term()) :: Records.result(String.t() | nil)
+  @spec types(term(), term()) :: Records.result([String.t()] | nil)
+  @spec optional_time(term()) :: Records.result(DateTime.t() | nil)
+
   @page_default 100
   @page_max 500
   @page_bytes 4_194_304
