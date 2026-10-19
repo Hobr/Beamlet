@@ -4,6 +4,7 @@ defmodule Beamlet.Harness.Models.Deterministic do
   alias Beamlet.Harness.{Context, Model}
 
   @impl true
+  @spec validate_invocation(term()) :: :ok | {:error, :invalid_profile}
   def validate_invocation(invocation) do
     with :ok <- Model.validate_invocation(invocation),
          %{config: %{"reply" => reply} = config, credentials: credentials} <- invocation,
@@ -16,6 +17,7 @@ defmodule Beamlet.Harness.Models.Deterministic do
   end
 
   @impl true
+  @spec complete(term(), term(), Context.t()) :: {:ok, Model.reply()} | {:error, atom()}
   def complete(request, invocation, context \\ %Context{}) do
     with false <- Context.cancelled?(context),
          :ok <- validate_invocation(invocation),
@@ -30,6 +32,13 @@ defmodule Beamlet.Harness.Models.Deterministic do
     end
   end
 
+  @typep fixture_call :: %{id: term(), name: term(), arguments: term()}
+  @typep fixture_reply :: %{
+           kind: :text | :tool_calls,
+           content: binary() | nil,
+           calls: [fixture_call()]
+         }
+  @spec fixture(term()) :: {:ok, fixture_reply()} | {:error, :invalid_reply}
   defp fixture(%{"kind" => kind, "content" => content, "calls" => calls} = reply)
        when kind in ["text", "tool_calls"] and is_list(calls) and map_size(reply) == 3 do
     converted = Enum.map(calls, &fixture_call/1)
@@ -39,6 +48,8 @@ defmodule Beamlet.Harness.Models.Deterministic do
 
   defp fixture(_), do: {:error, :invalid_reply}
 
+  @spec fixture_reply(term(), term(), list(), [fixture_call() | nil]) ::
+          {:ok, fixture_reply()} | {:error, :invalid_reply}
   defp fixture_reply("text", content, [], _) when is_binary(content),
     do: {:ok, %{kind: :text, content: content, calls: []}}
 
@@ -51,6 +62,7 @@ defmodule Beamlet.Harness.Models.Deterministic do
 
   defp fixture_reply(_, _, _, _), do: {:error, :invalid_reply}
 
+  @spec fixture_call(term()) :: fixture_call() | nil
   defp fixture_call(%{"id" => id, "name" => name, "arguments" => args} = call)
        when map_size(call) == 3,
        do: %{id: id, name: name, arguments: args}

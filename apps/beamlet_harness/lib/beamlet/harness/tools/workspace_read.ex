@@ -3,6 +3,11 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
   @behaviour Beamlet.Harness.Tool
   alias Beamlet.Harness.{Arguments, Context}
   @impl true
+  @typep text_result ::
+           {:ok, %{text: binary(), truncated: boolean(), bytes: non_neg_integer()}}
+           | {:error, :invalid_utf8}
+  @typep read_result :: text_result() | {:error, :workspace_unavailable}
+  @spec descriptor() :: Beamlet.Harness.Catalogue.descriptor()
   def descriptor do
     %{
       "name" => "workspace_read",
@@ -16,6 +21,7 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     }
   end
 
+  @spec validate_root(term()) :: {:ok, File.Stat.t()} | {:error, :invalid_root | :unsafe_path}
   def validate_root(root) when is_binary(root) do
     if String.valid?(root) and Path.type(root) == :absolute and
          not String.contains?(root, <<0>>) and Path.expand(root) == root do
@@ -28,6 +34,7 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
   def validate_root(_), do: {:error, :invalid_root}
 
   @impl true
+  @spec invoke(term(), term(), Context.t()) :: read_result() | {:error, :cancelled}
   def invoke(args, settings, context \\ %Context{}) do
     with false <- Context.cancelled?(context),
          :ok <- Arguments.validate(args, descriptor()["parameters"]),
@@ -45,6 +52,7 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     end
   end
 
+  @spec parts(String.t()) :: {:ok, [String.t()]} | {:error, :invalid_path}
   defp parts(path) do
     parts = String.split(path, "/")
 
@@ -57,6 +65,8 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     end
   end
 
+  @spec walk(String.t(), [String.t()], :directory | :regular) ::
+          {:ok, File.Stat.t()} | {:error, :unsafe_path}
   defp walk(path, [], type) do
     case File.lstat(path) do
       {:ok, %{type: ^type} = stat} -> {:ok, stat}
@@ -68,6 +78,7 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     with {:ok, _} <- walk(path, [], :directory), do: walk(Path.join(path, part), rest, type)
   end
 
+  @spec read(String.t(), File.Stat.t(), pos_integer()) :: read_result()
   defp read(path, stat, max) do
     case :file.open(String.to_charlist(path), [:read, :raw, :binary]) do
       {:ok, fd} ->
@@ -91,6 +102,7 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     end
   end
 
+  @spec read_data(:file.io_device(), pos_integer()) :: {:ok, binary()} | {:error, term()}
   defp read_data(fd, count) do
     case :file.read(fd, count) do
       :eof -> {:ok, ""}
@@ -98,6 +110,7 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     end
   end
 
+  @spec text(binary(), pos_integer()) :: text_result()
   defp text(data, max) do
     truncated = byte_size(data) > max
     prefix = binary_part(data, 0, min(max, byte_size(data)))
@@ -114,6 +127,7 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     end
   end
 
+  @spec truncated_text(binary(), binary()) :: text_result()
   defp truncated_text(data, valid) do
     case :unicode.characters_to_binary(data, :utf8, :utf8) do
       {:error, _, _} -> {:error, :invalid_utf8}
@@ -122,12 +136,14 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     end
   end
 
+  @spec truncated_result(binary(), boolean()) :: text_result()
   defp truncated_result(valid, true),
     do: {:ok, %{text: valid, truncated: true, bytes: byte_size(valid)}}
 
   defp truncated_result(_, false), do: {:error, :invalid_utf8}
 
   # Validate observed bytes even when OTP postpones validation of a short codepoint.
+  @spec completable?(binary()) :: boolean()
   defp completable?(<<lead, _::binary>> = tail) do
     suffix =
       cond do

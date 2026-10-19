@@ -1,10 +1,14 @@
 defmodule Beamlet.Harness.Context do
   @moduledoc "Bounded conversation policy and optional local neutral hooks."
   defstruct progress: nil, cancelled?: nil
+
+  @typedoc "Optional trusted local hooks; emit/2 passes through the hook's arbitrary return value."
   @type t :: %__MODULE__{progress: nil | (map() -> any()), cancelled?: nil | (-> boolean())}
 
+  @spec cancelled?(t()) :: boolean()
   def cancelled?(%__MODULE__{cancelled?: nil}), do: false
   def cancelled?(%__MODULE__{cancelled?: callback}), do: callback.() == true
+  @spec emit(t(), term()) :: term()
   def emit(%__MODULE__{progress: nil}, _), do: :ok
 
   def emit(%__MODULE__{progress: callback}, event) do
@@ -17,6 +21,7 @@ defmodule Beamlet.Harness.Context do
     end
   end
 
+  @spec append(term(), term()) :: {:ok, list()} | {:error, :context_limit}
   def append(messages, additions) when is_list(messages) and is_list(additions) do
     all = messages ++ additions
 

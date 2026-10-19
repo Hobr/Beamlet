@@ -5,6 +5,8 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
   @limit 1_048_576
 
   @impl true
+  @typep completion :: {:ok, Model.reply()} | {:error, atom()}
+  @spec complete(term(), term(), Context.t()) :: completion()
   def complete(request, settings, context \\ %Context{}) do
     with false <- Context.cancelled?(context),
          :ok <- validate_invocation(settings),
@@ -22,6 +24,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
   end
 
   @impl true
+  @spec validate_invocation(term()) :: :ok | {:error, :invalid_profile}
   def validate_invocation(invocation) do
     with :ok <- Model.validate_invocation(invocation), {:ok, _, _} <- profile(invocation) do
       :ok
@@ -32,6 +35,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     _ -> {:error, :invalid_profile}
   end
 
+  @spec profile(term()) :: {:ok, String.t(), String.t()} | {:error, :invalid_profile}
   defp profile(%{
          config: %{"base_url" => base, "model" => model} = config,
          credentials: %{"api_key" => key} = credentials
@@ -50,6 +54,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   defp profile(_), do: {:error, :invalid_profile}
 
+  @spec safe_settings?(Model.json_object()) :: boolean()
   defp safe_settings?(settings) do
     Map.keys(settings) -- ~w(base_url model timeout_ms allow_local_http) == [] and
       is_boolean(Map.get(settings, "allow_local_http", false)) and
@@ -57,10 +62,12 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
       Map.get(settings, "timeout_ms", 5000) in 1..60_000
   end
 
+  @spec safe_base?(binary()) :: boolean()
   defp safe_base?(base) do
     String.valid?(base) and not String.contains?(base, ["\\", <<0>>, "\r", "\n", " "])
   end
 
+  @spec safe_uri?(URI.t(), Model.json_object()) :: boolean()
   defp safe_uri?(uri, settings) do
     local_http =
       uri.scheme == "http" and uri.host in ["127.0.0.1", "localhost", "::1"] and
@@ -70,14 +77,17 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
       uri.userinfo == nil and uri.query == nil and uri.fragment == nil
   end
 
+  @spec safe_host?(URI.t()) :: boolean()
   defp safe_host?(uri),
     do: is_binary(uri.host) and uri.host != "" and uri.port in 1..65_535
 
+  @spec safe_key?(term()) :: boolean()
   defp safe_key?(key),
     do:
       is_binary(key) and byte_size(key) in 1..4096 and String.valid?(key) and
         not String.contains?(key, ["\r", "\n"])
 
+  @spec payload(term(), Model.json_object()) :: {:ok, binary()} | {:error, atom()}
   defp payload(%{messages: messages, catalogue: catalogue} = request, settings) do
     with :ok <- Model.validate_request(request) do
       tools =
@@ -103,6 +113,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   defp payload(_, _), do: {:error, :invalid_request}
 
+  @spec encode_message(Model.json_object()) :: Model.json_object()
   defp encode_message(%{"role" => "assistant", "calls" => calls} = message) do
     message
     |> Map.delete("calls")
@@ -123,6 +134,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   defp encode_message(message), do: message
 
+  @spec decode_calls(term()) :: {:ok, [Model.json_object()]} | {:error, :invalid_tool_batch}
   defp decode_calls(calls) when is_list(calls) do
     Enum.reduce_while(calls, {:ok, []}, fn call, {:ok, acc} ->
       with %{
@@ -146,6 +158,8 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   defp decode_calls(_), do: {:error, :invalid_tool_batch}
 
+  @spec transport(String.t(), String.t(), binary(), Model.json_object()) ::
+          {:ok, Req.Response.t()} | {:error, term()}
   defp transport(url, key, body, settings) do
     timeout = Map.get(settings, "timeout_ms", 5000)
 
@@ -171,6 +185,8 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     end
   end
 
+  @spec collect({:data, binary()}, {Req.Request.t(), Req.Response.t()}) ::
+          {:halt | :cont, {Req.Request.t(), Req.Response.t()}}
   defp collect({:data, chunk}, {request, response}) do
     size = Map.get(response.private, :body_bytes, 0) + byte_size(chunk)
 
@@ -186,6 +202,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     end
   end
 
+  @spec decode(Req.Response.t(), Catalogue.t()) :: completion()
   defp decode(response, catalogue) do
     cond do
       response.private[:body_overflow] ->
@@ -207,6 +224,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     end
   end
 
+  @spec normalize_reply(term(), Catalogue.t()) :: completion()
   defp normalize_reply(
          %{
            "choices" => [
@@ -233,6 +251,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   defp normalize_reply(_, _), do: {:error, :invalid_reply}
 
+  @spec normalize(term(), term()) :: completion()
   def normalize(reply, catalogue) do
     with :ok <- Catalogue.validate(catalogue),
          {:ok, json} <- encode_reply(reply),
@@ -246,12 +265,15 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
   end
 
   # Direct callers can supply terms that cannot occur in decoded JSON.
+  @spec encode_reply(term()) :: {:ok, binary()} | {:error, term()}
   defp encode_reply(reply) do
     Jason.encode(reply)
   rescue
     FunctionClauseError -> {:error, :invalid_reply}
   end
 
+  @spec safe_message(Model.json_object()) ::
+          :ok | {:error, :unsupported_reply | :refused | :invalid_reply}
   defp safe_message(message) do
     cond do
       Map.keys(message) -- ~w(role content tool_calls refusal) != [] ->
@@ -268,11 +290,13 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     end
   end
 
+  @spec safe_content?(term()) :: boolean()
   defp safe_content?(nil), do: true
 
   defp safe_content?(content),
     do: is_binary(content) and String.valid?(content) and byte_size(content) <= @limit
 
+  @spec finish(term(), Model.json_object(), Catalogue.t()) :: completion()
   defp finish("stop", %{"content" => text} = message, _) when is_binary(text) do
     if message["tool_calls"] in [nil, []],
       do: {:ok, %{kind: :text, content: text, calls: []}},

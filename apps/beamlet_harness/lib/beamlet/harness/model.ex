@@ -2,9 +2,23 @@ defmodule Beamlet.Harness.Model do
   @moduledoc "Provider-neutral bounded model contracts and trusted local provider registration."
   alias Beamlet.Harness.{Catalogue, Context}
   @limit 1_048_576
-  @callback validate_invocation(map()) :: :ok | {:error, atom()}
-  @callback complete(map(), map(), Context.t()) :: {:ok, map()} | {:error, atom()}
+  @typedoc "String-key JSON; exact wire fields and UTF-8/depth/byte limits are validated at runtime."
+  @type json_value :: nil | boolean() | number() | String.t() | [json_value()] | json_object()
+  @type json_object :: %{optional(String.t()) => json_value()}
+  @typedoc "Explicit provider invocation, never inferred from ambient credentials."
+  @type invocation :: %{config: json_object(), credentials: json_object()}
+  @type request :: %{messages: [json_object()], catalogue: Catalogue.t()}
+  @type call :: %{id: String.t(), name: String.t(), arguments: json_object()}
+  @typedoc "A text response or an ordered, nonempty Tool batch."
+  @type reply ::
+          %{kind: :text, content: String.t(), calls: []}
+          | %{kind: :tool_calls, content: String.t() | nil, calls: nonempty_list(call())}
+  @type registry :: %{optional(String.t()) => module()}
+  @type validation :: :ok | {:error, atom()}
+  @callback validate_invocation(term()) :: validation()
+  @callback complete(request(), invocation(), Context.t()) :: {:ok, reply()} | {:error, atom()}
 
+  @spec default_providers() :: registry()
   def default_providers do
     %{
       "openai-compatible" => Beamlet.Harness.Models.OpenAICompatible,
@@ -12,8 +26,10 @@ defmodule Beamlet.Harness.Model do
     }
   end
 
+  @spec provider_id?(term()) :: boolean()
   def provider_id?(id), do: Catalogue.name?(id)
 
+  @spec validate_registry(term()) :: :ok | {:error, :invalid_model_providers}
   def validate_registry(registry)
       when is_map(registry) and not is_struct(registry) and map_size(registry) <= 32 do
     if Enum.all?(registry, fn {id, module} ->
@@ -26,6 +42,7 @@ defmodule Beamlet.Harness.Model do
   def validate_registry(_), do: {:error, :invalid_model_providers}
 
   # JSON validation deliberately does not use Jason's atom-key coercion.
+  @spec json?(term(), non_neg_integer()) :: boolean()
   def json?(value, depth \\ 0)
   def json?(_, depth) when depth > 24, do: false
   def json?(value, _) when is_binary(value), do: String.valid?(value)
@@ -45,6 +62,7 @@ defmodule Beamlet.Harness.Model do
 
   def json?(_, _), do: false
 
+  @spec validate_invocation(term()) :: :ok | {:error, :invalid_invocation}
   def validate_invocation(%{config: config, credentials: credentials} = invocation) do
     if map_size(invocation) == 2 and valid_config?(config) and valid_credentials?(credentials),
       do: :ok,
@@ -53,17 +71,21 @@ defmodule Beamlet.Harness.Model do
 
   def validate_invocation(_), do: {:error, :invalid_invocation}
 
+  @spec valid_config?(term()) :: boolean()
   defp valid_config?(config),
     do: object?(config) and ordinary?(config) and bounded?(config, 16_384)
 
+  @spec valid_credentials?(term()) :: boolean()
   defp valid_credentials?(credentials),
     do:
       object?(credentials) and map_size(credentials) <= 32 and
         Enum.all?(Map.keys(credentials), &(byte_size(&1) in 1..128)) and
         no_roots?(credentials) and bounded?(credentials, 16_384)
 
+  @spec object?(term()) :: boolean()
   defp object?(value), do: is_map(value) and not is_struct(value) and json?(value)
 
+  @spec ordinary?(json_value()) :: boolean()
   defp ordinary?(value) when is_map(value) do
     Enum.all?(value, fn {k, v} ->
       String.downcase(k) not in ~w(api_key token credential credentials secret password authorization root workspace_root) and
@@ -74,6 +96,7 @@ defmodule Beamlet.Harness.Model do
   defp ordinary?(value) when is_list(value), do: Enum.all?(value, &ordinary?/1)
   defp ordinary?(_), do: true
 
+  @spec no_roots?(json_value()) :: boolean()
   defp no_roots?(value) when is_map(value),
     do:
       Enum.all?(value, fn {k, v} ->
@@ -83,6 +106,7 @@ defmodule Beamlet.Harness.Model do
   defp no_roots?(value) when is_list(value), do: Enum.all?(value, &no_roots?/1)
   defp no_roots?(_), do: true
 
+  @spec bounded?(term(), pos_integer()) :: boolean()
   defp bounded?(value, limit) do
     case Jason.encode(value) do
       {:ok, json} -> byte_size(json) <= limit
@@ -90,6 +114,7 @@ defmodule Beamlet.Harness.Model do
     end
   end
 
+  @spec validate_request(term()) :: validation()
   def validate_request(%{messages: messages, catalogue: catalogue} = request) do
     with true <- map_size(request) == 2,
          :ok <- Catalogue.validate(catalogue),
@@ -104,6 +129,7 @@ defmodule Beamlet.Harness.Model do
 
   def validate_request(_), do: {:error, :invalid_request}
 
+  @spec validate_history(term(), term()) :: validation()
   def validate_history(messages, catalogue) do
     with :ok <- Catalogue.validate(catalogue),
          {:ok, _} <- Context.append([], messages) do
@@ -111,6 +137,7 @@ defmodule Beamlet.Harness.Model do
     end
   end
 
+  @spec history([term()], Catalogue.t()) :: :ok | {:error, :invalid_messages}
   defp history(messages, catalogue) do
     Enum.reduce_while(messages, {:ok, []}, fn message, {:ok, pending} ->
       case next(message, pending, catalogue) do
@@ -124,6 +151,7 @@ defmodule Beamlet.Harness.Model do
     end
   end
 
+  @spec next(term(), [String.t()], Catalogue.t()) :: {:ok, [String.t()]} | :invalid
   defp next(%{"role" => "tool", "call_id" => id, "content" => text} = m, [id | rest], _) do
     if map_size(m) == 3 and text?(text), do: {:ok, rest}, else: :invalid
   end
@@ -143,8 +171,10 @@ defmodule Beamlet.Harness.Model do
   end
 
   defp next(_, _, _), do: :invalid
+  @spec text?(term()) :: boolean()
   defp text?(text), do: is_binary(text) and String.valid?(text)
 
+  @spec validate_reply(term(), term()) :: validation()
   def validate_reply(%{kind: kind, content: content, calls: calls} = reply, catalogue) do
     with :ok <- Catalogue.validate(catalogue),
          true <- map_size(reply) == 3,
@@ -159,6 +189,7 @@ defmodule Beamlet.Harness.Model do
 
   def validate_reply(_, _), do: {:error, :invalid_reply}
 
+  @spec reply_semantics(term(), term(), term(), Catalogue.t()) :: validation()
   defp reply_semantics(kind, content, calls, catalogue) do
     case {kind, content, calls} do
       {:text, text, []} when is_binary(text) ->
@@ -178,20 +209,24 @@ defmodule Beamlet.Harness.Model do
   end
 
   # Jason returns errors for most unsupported terms, but raises for improper lists.
+  @spec encode_reply(term()) :: {:ok, String.t()} | {:error, term()}
   defp encode_reply(reply) do
     Jason.encode(reply)
   rescue
     FunctionClauseError -> {:error, :invalid_reply}
   end
 
+  @spec reply_size(binary()) :: :ok | {:error, :response_limit}
   defp reply_size(json),
     do: if(byte_size(json) <= @limit, do: :ok, else: {:error, :response_limit})
 
+  @spec canonical_call(term()) :: %{String.t() => term()} | nil
   def canonical_call(%{id: id, name: name, arguments: args} = call) when map_size(call) == 3,
     do: %{"id" => id, "name" => name, "arguments" => args}
 
   def canonical_call(_), do: nil
 
+  @spec assistant_message(reply()) :: json_object()
   def assistant_message(%{kind: :text, content: text}),
     do: %{"role" => "assistant", "content" => text}
 

@@ -3,6 +3,7 @@ defmodule Beamlet.Harness.Tools.Deterministic do
   @behaviour Beamlet.Harness.Tool
   alias Beamlet.Harness.{Arguments, Context}
   @impl true
+  @spec descriptor() :: Beamlet.Harness.Catalogue.descriptor()
   def descriptor do
     %{
       "name" => "echo",
@@ -17,6 +18,8 @@ defmodule Beamlet.Harness.Tools.Deterministic do
   end
 
   @impl true
+  @spec invoke(term(), term(), Context.t()) ::
+          {:ok, %{text: String.t()}} | {:error, :cancelled | :invalid_arguments}
   def invoke(arguments, _settings, context \\ %Context{}) do
     with false <- Context.cancelled?(context),
          :ok <- Arguments.validate(arguments, descriptor()["parameters"]) do
