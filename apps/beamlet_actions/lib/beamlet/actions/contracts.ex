@@ -47,6 +47,7 @@ defmodule Beamlet.Actions.Result do
           metadata: map()
         }
 
+  @spec valid?(term()) :: boolean()
   def valid?(%__MODULE__{} = result) do
     identity?(result) and is_map(result.metadata) and not is_struct(result.metadata) and
       result.status in [:ok, :error, :cancelled, :deadline, :uncertain] and
@@ -57,12 +58,14 @@ defmodule Beamlet.Actions.Result do
 
   def valid?(_), do: false
 
+  @spec identity?(%__MODULE__{}) :: boolean()
   defp identity?(result) do
     id?(result.operation_id) and
       (is_nil(result.execution_id) or id?(result.execution_id)) and
       (result.source != :execution or id?(result.execution_id))
   end
 
+  @spec id?(term()) :: boolean()
   defp id?(id), do: is_binary(id) and byte_size(id) in 1..128
 end
 
@@ -74,5 +77,13 @@ defmodule Beamlet.Actions.Handler do
   `remaining_ms`, and `progress`/`cancelled?` callbacks. Credentials are generic
   data and must not be copied into ordinary outputs or diagnostics.
   """
-  @callback run(term(), map()) :: {:ok, term()} | {:error, term()}
+  @typedoc "Executor-local hooks. Progress reports its own finite-credit rejection; handler payloads and reasons remain open."
+  @type context :: %{
+          settings: term(),
+          credentials: Beamlet.Actions.json_object(),
+          remaining_ms: non_neg_integer(),
+          progress: (term() -> :ok | {:error, :progress_limit}),
+          cancelled?: (-> boolean())
+        }
+  @callback run(term(), context()) :: {:ok, term()} | {:error, term()}
 end
