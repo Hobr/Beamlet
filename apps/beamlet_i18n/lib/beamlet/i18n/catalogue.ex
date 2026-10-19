@@ -31,64 +31,71 @@ defmodule Beamlet.I18n.Catalogue do
   )
 
   @doc "Shared status/state words, in catalogue order."
+  @spec statuses() :: [String.t()]
   def statuses, do: @statuses
 
   @doc "Shared error/outcome words, in catalogue order."
+  @spec reasons() :: [String.t()]
   def reasons, do: @reasons
 
   @doc "Declares the shared msgids for extraction. Never called at runtime."
+  @spec declare() :: :ok
   def declare do
     _ = shared_statuses()
     shared_reasons()
   end
 
+  @spec shared_statuses() :: :ok
   defp shared_statuses do
-    gettext("idle")
-    gettext("running")
-    gettext("waiting")
-    gettext("done")
-    gettext("stopped")
-    gettext("error")
-    gettext("starting")
-    gettext("completed")
-    gettext("pending")
-    gettext("admitting")
-    gettext("unknown")
-    gettext("complete")
-    gettext("partial")
-    gettext("ready")
-    gettext("active")
-    gettext("connected")
-    gettext("disconnected")
-    gettext("enabled")
-    gettext("disabled")
-    gettext("local")
+    # Extraction registers msgids at compile time; rendered strings are unused.
+    _ = gettext("idle")
+    _ = gettext("running")
+    _ = gettext("waiting")
+    _ = gettext("done")
+    _ = gettext("stopped")
+    _ = gettext("error")
+    _ = gettext("starting")
+    _ = gettext("completed")
+    _ = gettext("pending")
+    _ = gettext("admitting")
+    _ = gettext("unknown")
+    _ = gettext("complete")
+    _ = gettext("partial")
+    _ = gettext("ready")
+    _ = gettext("active")
+    _ = gettext("connected")
+    _ = gettext("disconnected")
+    _ = gettext("enabled")
+    _ = gettext("disabled")
+    _ = gettext("local")
     :ok
   end
 
+  @spec shared_reasons() :: :ok
   defp shared_reasons do
-    dgettext("errors", "invalid_command")
-    dgettext("errors", "invalid_configuration")
-    dgettext("errors", "invalid_authority")
-    dgettext("errors", "alias_exists")
-    dgettext("errors", "alias_limit")
-    dgettext("errors", "invalid_alias")
-    dgettext("errors", "unknown_alias")
-    dgettext("errors", "not_found")
-    dgettext("errors", "not_authority")
-    dgettext("errors", "stale_agent")
-    dgettext("errors", "unavailable")
-    dgettext("errors", "timeout")
-    dgettext("errors", "limit")
-    dgettext("errors", "busy")
-    dgettext("errors", "event_limit")
-    dgettext("errors", "timeout_or_loss")
-    dgettext("errors", "invalid_watch_options")
-    dgettext("errors", "request_failed")
-    dgettext("errors", "deadline")
-    dgettext("errors", "invalid_draft")
-    dgettext("errors", "configuration_unavailable")
-    dgettext("errors", "create_unknown")
+    # Preserve literal macro calls so Gettext can extract each shared reason.
+    _ = dgettext("errors", "invalid_command")
+    _ = dgettext("errors", "invalid_configuration")
+    _ = dgettext("errors", "invalid_authority")
+    _ = dgettext("errors", "alias_exists")
+    _ = dgettext("errors", "alias_limit")
+    _ = dgettext("errors", "invalid_alias")
+    _ = dgettext("errors", "unknown_alias")
+    _ = dgettext("errors", "not_found")
+    _ = dgettext("errors", "not_authority")
+    _ = dgettext("errors", "stale_agent")
+    _ = dgettext("errors", "unavailable")
+    _ = dgettext("errors", "timeout")
+    _ = dgettext("errors", "limit")
+    _ = dgettext("errors", "busy")
+    _ = dgettext("errors", "event_limit")
+    _ = dgettext("errors", "timeout_or_loss")
+    _ = dgettext("errors", "invalid_watch_options")
+    _ = dgettext("errors", "request_failed")
+    _ = dgettext("errors", "deadline")
+    _ = dgettext("errors", "invalid_draft")
+    _ = dgettext("errors", "configuration_unavailable")
+    _ = dgettext("errors", "create_unknown")
     :ok
   end
 end

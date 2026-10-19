@@ -10,122 +10,122 @@ msgid ""
 msgstr ""
 "Language: en\n"
 
-#: lib/beamlet/i18n/catalogue.ex:60
-#: lib/beamlet/i18n/catalogue.ex:60
+#: lib/beamlet/i18n/catalogue.ex:65
+#: lib/beamlet/i18n/catalogue.ex:65
 #, elixir-autogen, elixir-format
 msgid "active"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:55
-#: lib/beamlet/i18n/catalogue.ex:55
+#: lib/beamlet/i18n/catalogue.ex:60
+#: lib/beamlet/i18n/catalogue.ex:60
 #, elixir-autogen, elixir-format
 msgid "admitting"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:57
-#: lib/beamlet/i18n/catalogue.ex:57
+#: lib/beamlet/i18n/catalogue.ex:62
+#: lib/beamlet/i18n/catalogue.ex:62
 #, elixir-autogen, elixir-format
 msgid "complete"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:53
-#: lib/beamlet/i18n/catalogue.ex:53
+#: lib/beamlet/i18n/catalogue.ex:58
+#: lib/beamlet/i18n/catalogue.ex:58
 #, elixir-autogen, elixir-format
 msgid "completed"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:61
-#: lib/beamlet/i18n/catalogue.ex:61
+#: lib/beamlet/i18n/catalogue.ex:66
+#: lib/beamlet/i18n/catalogue.ex:66
 #, elixir-autogen, elixir-format
 msgid "connected"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:64
-#: lib/beamlet/i18n/catalogue.ex:64
+#: lib/beamlet/i18n/catalogue.ex:69
+#: lib/beamlet/i18n/catalogue.ex:69
 #, elixir-autogen, elixir-format
 msgid "disabled"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:62
-#: lib/beamlet/i18n/catalogue.ex:62
+#: lib/beamlet/i18n/catalogue.ex:67
+#: lib/beamlet/i18n/catalogue.ex:67
 #, elixir-autogen, elixir-format
 msgid "disconnected"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:49
-#: lib/beamlet/i18n/catalogue.ex:49
+#: lib/beamlet/i18n/catalogue.ex:54
+#: lib/beamlet/i18n/catalogue.ex:54
 #, elixir-autogen, elixir-format
 msgid "done"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:63
-#: lib/beamlet/i18n/catalogue.ex:63
+#: lib/beamlet/i18n/catalogue.ex:68
+#: lib/beamlet/i18n/catalogue.ex:68
 #, elixir-autogen, elixir-format
 msgid "enabled"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:51
-#: lib/beamlet/i18n/catalogue.ex:51
+#: lib/beamlet/i18n/catalogue.ex:56
+#: lib/beamlet/i18n/catalogue.ex:56
 #, elixir-autogen, elixir-format
 msgid "error"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:46
-#: lib/beamlet/i18n/catalogue.ex:46
+#: lib/beamlet/i18n/catalogue.ex:51
+#: lib/beamlet/i18n/catalogue.ex:51
 #, elixir-autogen, elixir-format
 msgid "idle"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:65
-#: lib/beamlet/i18n/catalogue.ex:65
+#: lib/beamlet/i18n/catalogue.ex:70
+#: lib/beamlet/i18n/catalogue.ex:70
 #, elixir-autogen, elixir-format
 msgid "local"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:58
-#: lib/beamlet/i18n/catalogue.ex:58
+#: lib/beamlet/i18n/catalogue.ex:63
+#: lib/beamlet/i18n/catalogue.ex:63
 #, elixir-autogen, elixir-format
 msgid "partial"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:54
-#: lib/beamlet/i18n/catalogue.ex:54
+#: lib/beamlet/i18n/catalogue.ex:59
+#: lib/beamlet/i18n/catalogue.ex:59
 #, elixir-autogen, elixir-format
 msgid "pending"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:59
-#: lib/beamlet/i18n/catalogue.ex:59
+#: lib/beamlet/i18n/catalogue.ex:64
+#: lib/beamlet/i18n/catalogue.ex:64
 #, elixir-autogen, elixir-format
 msgid "ready"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:47
-#: lib/beamlet/i18n/catalogue.ex:47
+#: lib/beamlet/i18n/catalogue.ex:52
+#: lib/beamlet/i18n/catalogue.ex:52
 #, elixir-autogen, elixir-format
 msgid "running"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:52
-#: lib/beamlet/i18n/catalogue.ex:52
+#: lib/beamlet/i18n/catalogue.ex:57
+#: lib/beamlet/i18n/catalogue.ex:57
 #, elixir-autogen, elixir-format
 msgid "starting"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:50
-#: lib/beamlet/i18n/catalogue.ex:50
+#: lib/beamlet/i18n/catalogue.ex:55
+#: lib/beamlet/i18n/catalogue.ex:55
 #, elixir-autogen, elixir-format
 msgid "stopped"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:56
-#: lib/beamlet/i18n/catalogue.ex:56
+#: lib/beamlet/i18n/catalogue.ex:61
+#: lib/beamlet/i18n/catalogue.ex:61
 #, elixir-autogen, elixir-format
 msgid "unknown"
 msgstr ""
 
-#: lib/beamlet/i18n/catalogue.ex:48
-#: lib/beamlet/i18n/catalogue.ex:48
+#: lib/beamlet/i18n/catalogue.ex:53
+#: lib/beamlet/i18n/catalogue.ex:53
 #, elixir-autogen, elixir-format
 msgid "waiting"
 msgstr ""

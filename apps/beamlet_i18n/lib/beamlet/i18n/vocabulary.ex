@@ -14,6 +14,7 @@ defmodule Beamlet.I18n.Vocabulary do
   Status/state word for an atom or binary, translated when it is shared
   vocabulary.
   """
+  @spec status(value) :: value | String.t() when value: var
   def status(value) when is_binary(value), do: word(value, Catalogue.statuses(), :status)
   def status(value) when is_atom(value) and not is_nil(value), do: status(Atom.to_string(value))
   def status(value), do: value
@@ -22,10 +23,12 @@ defmodule Beamlet.I18n.Vocabulary do
   Error/outcome word for an atom or binary, translated when it is shared
   vocabulary.
   """
+  @spec reason(value) :: value | String.t() when value: var
   def reason(value) when is_binary(value), do: word(value, Catalogue.reasons(), :reason)
   def reason(value) when is_atom(value) and not is_nil(value), do: reason(Atom.to_string(value))
   def reason(value), do: value
 
+  @spec word(String.t(), [String.t()], :status | :reason) :: String.t()
   defp word(value, known, :status) do
     if value in known, do: I18n.gettext(value), else: value
   end

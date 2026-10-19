@@ -21,11 +21,13 @@ defmodule Beamlet.I18n do
   use Gettext.Backend, otp_app: :beamlet_i18n
 
   @doc "Runtime lookup of a shared msgid in the default domain."
+  @spec gettext(String.t(), Gettext.bindings()) :: String.t()
   def gettext(msgid, bindings \\ %{}) do
     Gettext.gettext(__MODULE__, msgid, bindings)
   end
 
   @doc "Runtime lookup of a shared msgid in an explicit domain."
+  @spec dgettext(String.t(), String.t(), Gettext.bindings()) :: String.t()
   def dgettext(domain, msgid, bindings \\ %{}) do
     Gettext.dgettext(__MODULE__, domain, msgid, bindings)
   end

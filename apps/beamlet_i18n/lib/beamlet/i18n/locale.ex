@@ -14,9 +14,13 @@ defmodule Beamlet.I18n.Locale do
   @options [{"zh_CN", "中文"}, {"en", "English"}]
 
   @doc "Default canonical locale."
+  @typedoc "Canonical locale string (zh_CN or en); typespecs cannot enumerate string literals."
+  @type t :: String.t()
+  @spec default() :: t()
   def default, do: @default
 
   @doc "Canonical locales in display order."
+  @spec locales() :: [t()]
   def locales, do: @locales
 
   @doc """
@@ -25,6 +29,7 @@ defmodule Beamlet.I18n.Locale do
   Labels are intentionally not translated: each label is shown in its own
   language.
   """
+  @spec options() :: [{t(), String.t()}]
   def options, do: @options
 
   @doc """
@@ -34,6 +39,7 @@ defmodule Beamlet.I18n.Locale do
   `en`, `en-us`, `en_US` -> `"en"`. Anything else (including `nil` and
   non-binaries) is `nil`, so callers can fall back safely.
   """
+  @spec normalize(term()) :: t() | nil
   def normalize(nil), do: nil
 
   def normalize(locale) when is_binary(locale) do
@@ -43,6 +49,7 @@ defmodule Beamlet.I18n.Locale do
   def normalize(_), do: nil
 
   @doc "Canonicalises a locale, falling back to `default/0`."
+  @spec canonicalize(term()) :: t()
   def canonicalize(locale), do: normalize(locale) || default()
 
   @doc """
@@ -53,17 +60,20 @@ defmodule Beamlet.I18n.Locale do
   same language. The value is canonicalised first, so an unknown locale never
   leaks into rendering.
   """
+  @spec put(term()) :: t()
   def put(locale) do
     canonical = canonicalize(locale)
-    Gettext.put_locale(canonical)
+    _ = Gettext.put_locale(canonical)
     canonical
   end
 
   @doc "Value for an HTML `lang` attribute."
+  @spec html_lang(term()) :: String.t()
   def html_lang("zh_CN"), do: "zh-CN"
   def html_lang("en"), do: "en"
   def html_lang(_), do: html_lang(@default)
 
+  @spec aliases(binary()) :: t() | nil
   defp aliases("zh"), do: "zh_CN"
   defp aliases("zh_cn"), do: "zh_CN"
   defp aliases("zh-cn"), do: "zh_CN"
