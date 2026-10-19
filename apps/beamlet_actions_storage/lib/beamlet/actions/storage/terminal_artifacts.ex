@@ -8,6 +8,21 @@ defmodule Beamlet.Actions.Storage.TerminalArtifacts do
   authority artifact rows, so it verifies identity shape and content integrity,
   not authority existence (that stays in the authority transaction).
   """
+  @typedoc "Version-one string-key container; item fields, UUID keys and digest integrity are validated at runtime."
+  @type container :: Beamlet.Actions.Storage.Records.object()
+  @typep result(value) :: {:ok, value} | {:error, :invalid_data | :limit | :artifact_missing}
+  @spec encode(term()) :: result(container())
+  @spec encoded_size(term()) :: result(non_neg_integer())
+  @spec content(term(), term()) :: result(binary())
+  @spec fetch_item(map(), term()) :: {:ok, term()} | {:error, :artifact_missing}
+  @spec container_items(term()) :: result(%{optional(String.t()) => term()})
+  @spec validate_items(map()) :: result(non_neg_integer())
+  @spec decode_item(term()) :: result(binary())
+  @spec validated_content(binary(), non_neg_integer(), String.t()) :: result(binary())
+  @spec digest(term()) :: result(String.t())
+  @spec media_type(term()) :: result(String.t())
+  @spec size_bytes(term()) :: result(non_neg_integer())
+  @spec base64(term()) :: result(binary())
   alias Beamlet.Actions.Storage.Codec
 
   @version 1

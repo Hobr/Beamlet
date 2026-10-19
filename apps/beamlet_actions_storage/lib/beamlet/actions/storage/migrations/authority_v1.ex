@@ -1,5 +1,7 @@
 defmodule Beamlet.Actions.Storage.Migrations.AuthorityV1 do
   @moduledoc false
+  @spec up() :: :ok | nil
+  @spec down() :: no_return()
   use Ecto.Migration
 
   def up do
@@ -15,20 +17,21 @@ defmodule Beamlet.Actions.Storage.Migrations.AuthorityV1 do
       "CREATE TABLE executions (attempt_id VARCHAR(255) PRIMARY KEY NOT NULL, operation_id VARCHAR(255) NOT NULL REFERENCES operations(id), executor_id VARCHAR(255) NOT NULL, executor_boot_id VARCHAR(255) NOT NULL, description_digest VARCHAR(255) NOT NULL, dispatch_state VARCHAR(255) NOT NULL CHECK (dispatch_state IN ('prepared', 'send_claimed')), observation TEXT, budget TEXT NOT NULL, lock_version BIGINT NOT NULL CHECK (lock_version >= 0), recorded_at TIMESTAMP(6) NOT NULL)"
     )
 
-    create(unique_index(:executions, [:operation_id]))
+    _ = create(unique_index(:executions, [:operation_id]))
 
     execute(
       "CREATE TABLE execution_evidence (id VARCHAR(255) PRIMARY KEY NOT NULL, operation_id VARCHAR(255) NOT NULL REFERENCES operations(id), attempt_id VARCHAR(255) NOT NULL REFERENCES executions(attempt_id), executor_id VARCHAR(255) NOT NULL, evidence_id VARCHAR(255) NOT NULL, digest VARCHAR(255) NOT NULL, content TEXT NOT NULL, resolution TEXT, recorded_at TIMESTAMP(6) NOT NULL)"
     )
 
-    create(unique_index(:execution_evidence, [:executor_id, :evidence_id]))
+    _ = create(unique_index(:execution_evidence, [:executor_id, :evidence_id]))
 
     execute(
       "CREATE TABLE operation_events (id VARCHAR(255) PRIMARY KEY NOT NULL, operation_id VARCHAR(255) NOT NULL REFERENCES operations(id), seq BIGINT NOT NULL CHECK (seq > 0), type VARCHAR(255) NOT NULL, schema_version BIGINT NOT NULL CHECK (schema_version = 1), payload TEXT NOT NULL, recorded_at TIMESTAMP(6) NOT NULL)"
     )
 
-    create(unique_index(:operation_events, [:operation_id, :seq]))
-    flush()
+    _ = create(unique_index(:operation_events, [:operation_id, :seq]))
+    # flush executes queued DDL; its adapter-specific result list is not a domain result.
+    _ = flush()
 
     if repo().__adapter__() == Ecto.Adapters.Postgres do
       execute(

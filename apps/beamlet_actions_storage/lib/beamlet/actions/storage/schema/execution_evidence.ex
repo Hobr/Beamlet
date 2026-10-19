@@ -14,6 +14,18 @@ defmodule Beamlet.Actions.Storage.Schema.ExecutionEvidence do
     field(:recorded_at, :utc_datetime_usec)
   end
 
+  @type t :: %__MODULE__{
+          id: String.t() | nil,
+          operation_id: String.t() | nil,
+          attempt_id: String.t() | nil,
+          executor_id: String.t() | nil,
+          evidence_id: String.t() | nil,
+          digest: String.t() | nil,
+          content: Beamlet.Actions.Storage.Records.value(),
+          resolution: Beamlet.Actions.Storage.Records.value(),
+          recorded_at: DateTime.t() | nil
+        }
+  @spec changeset(t(), term()) :: Ecto.Changeset.t(t())
   def changeset(record, attrs) do
     RecordChangeset.build(
       record,

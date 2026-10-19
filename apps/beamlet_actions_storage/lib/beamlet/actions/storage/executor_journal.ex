@@ -15,6 +15,75 @@ defmodule Beamlet.Actions.Storage.ExecutorJournal do
   alias Beamlet.Actions.Storage.Schema.JournalAttempt
   alias Beamlet.Actions.Storage.TerminalArtifacts
 
+  @typep start_input :: %{
+           id: String.t(),
+           authority_id: String.t(),
+           operation_id: String.t(),
+           attempt_id: String.t(),
+           description_digest: String.t(),
+           executor_id: String.t(),
+           executor_boot_id: String.t()
+         }
+  @typep ack_input :: %{
+           authority_id: String.t(),
+           attempt_id: String.t(),
+           expected_version: non_neg_integer()
+         }
+  @typep stop_input :: %{
+           authority_id: String.t(),
+           attempt_id: String.t(),
+           expected_version: non_neg_integer(),
+           stop_reason: String.t()
+         }
+  @typep terminal_input :: %{
+           authority_id: String.t(),
+           attempt_id: String.t(),
+           expected_version: non_neg_integer(),
+           termination: Records.value(),
+           terminal_result: Records.value(),
+           terminal_artifacts: Records.object(),
+           receipt_id: String.t(),
+           receipt_digest: String.t(),
+           receipt: Records.value()
+         }
+  @typep restart_input :: %{
+           authority_id: String.t(),
+           executor_id: String.t(),
+           keep_boot_id: String.t() | nil
+         }
+  @spec claim_start(module(), term()) :: Records.result(Records.object())
+  @spec record_stop(module(), term()) :: Records.result(Records.object())
+  @spec record_terminal(module(), term()) :: Records.result(Records.object())
+  @spec acknowledge(module(), term()) :: Records.result(Records.object())
+  @spec mark_unknown_after_restart(module(), term()) :: Records.result(Records.object())
+  @spec fetch(module(), term(), term()) :: Records.result(Records.object())
+  @spec read_attempt(module(), String.t(), String.t()) :: Records.result(Records.object())
+  @spec validate_start(term()) :: Records.result(start_input())
+  @spec write_start(module(), start_input()) :: Records.result(Records.object())
+  @spec same_identity?(JournalAttempt.t(), start_input()) :: boolean()
+  @spec start_response(JournalAttempt.t()) :: Records.object()
+  @spec validate_stop(term()) :: Records.result(stop_input())
+  @spec write_stop(module(), stop_input()) :: Records.result(Records.object())
+  @spec stop_query(stop_input()) :: Ecto.Query.t()
+  @spec stop_conflict(module(), stop_input()) :: Records.result(Records.object())
+  @spec validate_terminal(term()) :: Records.result(terminal_input())
+  @spec same_digest(term(), String.t()) :: :ok | {:error, :invalid_data}
+  @spec within_budget(Records.value(), Records.value(), Records.object(), Records.value()) ::
+          :ok | {:error, Records.error()}
+  @spec encoded_size(Records.value(), atom()) :: Records.result(non_neg_integer())
+  @spec write_terminal(module(), terminal_input()) :: Records.result(Records.object())
+  @spec terminal_query(terminal_input()) :: Ecto.Query.t()
+  @spec terminal_conflict(module(), terminal_input()) :: Records.result(Records.object())
+  @spec same_terminal?(JournalAttempt.t(), terminal_input()) :: boolean()
+  @spec validate_acknowledge(term()) :: Records.result(ack_input())
+  @spec write_acknowledge(module(), ack_input()) :: Records.result(Records.object())
+  @spec validate_restart(term()) :: Records.result(restart_input())
+  @spec write_restart(module(), restart_input()) :: Records.result(Records.object())
+  @spec record(module(), String.t(), String.t()) :: JournalAttempt.t() | nil
+  @spec stored_response(module(), String.t(), String.t()) :: Records.result(Records.object())
+  @spec terminal_response(JournalAttempt.t()) :: Records.object()
+  @spec digest_of(Records.value(), atom()) :: Records.result(String.t())
+
   @stop_reasons ~w(deadline cancelled)
   @transaction_budget 33_554_432
 

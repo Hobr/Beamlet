@@ -24,6 +24,29 @@ defmodule Beamlet.Actions.Storage.Schema.JournalAttempt do
     field(:recorded_at, :utc_datetime_usec)
   end
 
+  @type t :: %__MODULE__{
+          id: String.t() | nil,
+          authority_id: String.t() | nil,
+          operation_id: String.t() | nil,
+          attempt_id: String.t() | nil,
+          description_digest: String.t() | nil,
+          executor_id: String.t() | nil,
+          executor_boot_id: String.t() | nil,
+          state: String.t() | nil,
+          stop_reason: String.t() | nil,
+          termination: Beamlet.Actions.Storage.Records.value(),
+          terminal_artifacts: Beamlet.Actions.Storage.Records.value(),
+          terminal_result: Beamlet.Actions.Storage.Records.value(),
+          receipt_id: String.t() | nil,
+          receipt_digest: String.t() | nil,
+          receipt: Beamlet.Actions.Storage.Records.value(),
+          acknowledged: boolean() | nil,
+          schema_version: integer() | nil,
+          lock_version: integer() | nil,
+          recorded_at: DateTime.t() | nil
+        }
+  @spec valid_attachment_container?(term()) :: boolean()
+  @spec changeset(t(), term()) :: Ecto.Changeset.t(t())
   def changeset(record, attrs) do
     RecordChangeset.build(
       record,

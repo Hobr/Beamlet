@@ -1,5 +1,12 @@
 defmodule Beamlet.Actions.Storage.RecordChangeset do
   @moduledoc false
+  @spec build(struct(), term(), [atom()]) :: Ecto.Changeset.t()
+  @spec homogeneous?([atom() | String.t()]) :: boolean()
+  @spec invalid(struct()) :: Ecto.Changeset.t()
+  @spec validate_fields(Ecto.Changeset.t(), [atom()]) :: Ecto.Changeset.t()
+  @spec validate_field(Ecto.Changeset.t(), atom(), term()) :: Ecto.Changeset.t()
+  @spec validate_json(Ecto.Changeset.t(), atom(), term(), atom()) :: Ecto.Changeset.t()
+  @spec validate_string(Ecto.Changeset.t(), atom(), term()) :: Ecto.Changeset.t()
   import Ecto.Changeset
   alias Beamlet.Actions.Storage.{Codec, JSON}
 

@@ -13,6 +13,75 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
   alias Beamlet.Storage.References
   alias Beamlet.Storage.Transaction
 
+  @typedoc "Validated immutable request, including the optional paired scope binding."
+  @type operation :: %{
+          id: String.t(),
+          description: Records.object(),
+          description_digest: String.t(),
+          dispatch_scope_id: String.t() | nil,
+          dispatch_epoch: non_neg_integer() | nil
+        }
+  @type attempt :: %{
+          attempt_id: String.t(),
+          executor_id: String.t(),
+          executor_boot_id: String.t(),
+          budget: Records.value()
+        }
+  @typep evidence_input :: %{
+           optional(:resolution) => Records.value(),
+           id: String.t(),
+           operation_id: String.t(),
+           attempt_id: String.t(),
+           executor_id: String.t(),
+           evidence_id: String.t(),
+           content: Records.value(),
+           digest: String.t()
+         }
+  @typep acceptance :: %{
+           optional(:evidence_id) => String.t() | nil,
+           optional(:artifact_ids) => [String.t()] | nil,
+           operation_id: String.t(),
+           expected_version: non_neg_integer(),
+           result: Records.value()
+         }
+
+  @spec prepare(module(), term()) :: Records.result(Records.object())
+  @spec prepare_in_transaction(module(), term()) :: Records.result(Records.object())
+  @spec prepare_independent(module(), operation(), attempt()) :: Records.result(Records.object())
+  @spec validate_operation(term()) :: Records.result(operation())
+  @spec description(term()) :: Records.result(Records.object())
+  @spec validate_attempt(term()) :: Records.result(attempt())
+  @spec insert_prepared(module(), operation(), attempt()) :: Records.result(Records.object())
+  @spec prepared_response(operation(), attempt()) :: Records.object()
+  @spec claim_dispatch(module(), term()) :: Records.result(Records.object())
+  @spec claim(module(), %{
+          optional(:expected_operation) => term(),
+          operation_id: String.t(),
+          attempt_id: String.t(),
+          expected_version: non_neg_integer()
+        }) :: Records.result(Records.object())
+  @spec claim_scope(module(), String.t(), term()) :: :ok | {:error, Records.error()}
+  @spec expected_operation(Operation.t(), term()) :: :ok | {:error, Records.error()}
+  @spec claim_record(module(), module(), String.t(), String.t()) ::
+          {:ok, struct()} | {:error, :conflict}
+  @spec claim_lock(Ecto.Query.t(), String.t()) :: Ecto.Query.t()
+  @spec record_evidence(module(), term()) :: Records.result(Records.object())
+  @spec evidence(module(), evidence_input()) :: Records.result(Records.object())
+  @spec replay_evidence(ExecutionEvidence.t(), evidence_input()) ::
+          Records.result(Records.object())
+  @spec insert_evidence(module(), evidence_input()) :: Records.result(Records.object())
+  @spec accept_result(module(), term()) :: Records.result(Records.object())
+  @spec accept(module(), acceptance()) :: Records.result(Records.object())
+  @spec evidence_reference(module(), String.t(), String.t() | nil) :: :ok | {:error, :conflict}
+  @spec accept_new(module(), Operation.t(), acceptance()) :: Records.result(Records.object())
+  @spec replay_accept(Operation.t(), acceptance()) :: Records.result(Records.object())
+  @spec accepted_response(Operation.t()) :: Records.object()
+  @spec fetch(module(), term()) :: Records.result(Records.object())
+  @spec read_operation(module(), String.t()) :: Records.result(Records.object())
+  @spec identities(map(), [atom()]) :: :ok | {:error, :invalid_data}
+  @spec insert_event(module(), String.t(), pos_integer(), String.t(), Records.object()) ::
+          Records.result(OperationEvent.t())
+
   @description_keys ~w(kind protocol_version payload refs budget claims safety)
 
   def prepare(repo, attrs),

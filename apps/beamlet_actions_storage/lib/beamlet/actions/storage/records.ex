@@ -6,6 +6,43 @@ defmodule Beamlet.Actions.Storage.Records do
   instead of trusting an upstream caller. Errors stay plain atoms from the
   stage-A taxonomy; SQL, connection and configuration detail never escape.
   """
+  @typedoc "Safe facade failures; transactions never expose driver detail."
+  @type error ::
+          :invalid_data
+          | :limit
+          | :conflict
+          | :stale_epoch
+          | :schema_unsupported
+          | :artifact_missing
+          | :storage_unavailable
+          | :storage_outcome_unknown
+          | :transaction_required
+          | :invalid_reference
+  @type result(value) :: {:ok, value} | {:error, error()}
+  @typedoc "Decoded persisted JSON; key relationships, UUIDs and bounds are runtime validated."
+  @type value :: nil | boolean() | number() | String.t() | [value()] | object()
+  @type object :: %{optional(String.t()) => value()}
+  @spec transact(module(), (-> {:ok, value} | {:error, atom()})) :: result(value) when value: var
+  @spec settle(module(), (-> {:ok, value} | {:error, atom()})) :: value when value: var
+  @spec fields(term(), [atom()], [atom()]) ::
+          {:ok, %{optional(atom()) => term()}} | {:error, :invalid_data}
+  @spec uuid(term()) :: {:ok, String.t()} | {:error, :invalid_data}
+  @spec optional_uuid(term()) :: {:ok, String.t() | nil} | {:error, :invalid_data}
+  @spec text(term(), pos_integer()) :: {:ok, String.t()} | {:error, :invalid_data}
+  @spec optional_text(term(), pos_integer()) :: {:ok, String.t() | nil} | {:error, :invalid_data}
+  @spec count(term()) :: {:ok, non_neg_integer()} | {:error, :invalid_data}
+  @spec digest(term()) :: {:ok, String.t()} | {:error, :invalid_data}
+  @spec json(term(), atom()) :: {:ok, value()} | {:error, :invalid_data | :limit}
+  @spec enum(term(), [String.t()]) :: {:ok, String.t()} | {:error, :invalid_data}
+  @spec get(module(), module(), term()) :: {:ok, struct()} | {:error, :conflict}
+  @spec insert(module(), Ecto.Changeset.t(record)) ::
+          {:ok, record} | {:error, :invalid_data | :limit | :conflict}
+        when record: var
+  @spec changeset_error(Ecto.Changeset.t()) :: :invalid_data | :limit | :conflict
+  # Generic conversion deliberately preserves scalar leaves, including non-JSON input.
+  @spec plain(term()) :: term()
+  @spec plain_key(key) :: key | String.t() when key: var
+
   alias Beamlet.Actions.Storage.Codec
   alias Beamlet.Actions.Storage.Read
   alias Beamlet.Storage.Transaction

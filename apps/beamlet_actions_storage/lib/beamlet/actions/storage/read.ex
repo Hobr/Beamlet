@@ -2,6 +2,7 @@ defmodule Beamlet.Actions.Storage.Read do
   @moduledoc false
   alias Beamlet.Storage.Transaction
 
+  @spec read((-> value)) :: value | {:error, :invalid_data | :storage_unavailable} when value: var
   def read(fun) do
     Transaction.read(fun)
   rescue

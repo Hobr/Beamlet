@@ -1,11 +1,35 @@
 defmodule Beamlet.Actions.Storage.DispatchScopes do
   @moduledoc "Opaque dispatch epochs. Lock order is scope then Operation; acceptance never locks a scope."
-  import Ecto.Query
-  alias Beamlet.Actions.Storage.Read
   alias Beamlet.Actions.Storage.Records
   alias Beamlet.Actions.Storage.Schema.DispatchScope
   alias Beamlet.Actions.Storage.Schema.Execution
   alias Beamlet.Actions.Storage.Schema.Operation
+
+  @typep reauthorization :: %{
+           scope_id: String.t(),
+           from_epoch: non_neg_integer(),
+           to_epoch: non_neg_integer(),
+           operation_id: String.t(),
+           attempt_id: String.t(),
+           description_digest: String.t(),
+           expected_version: non_neg_integer(),
+           attempt_version: non_neg_integer()
+         }
+  @spec create(module(), term()) :: Records.result(Records.object())
+  @spec rotate(module(), term()) :: Records.result(Records.object())
+  @spec create_in_transaction(module(), term()) :: Records.result(Records.object())
+  @spec current(module(), term()) :: Records.result(Records.object())
+  @spec read_current(module(), String.t()) :: Records.result(Records.object())
+  @spec rotate_in_transaction(module(), term()) :: Records.result(Records.object())
+  @spec validate_binding(term(), term()) :: :ok | {:error, :invalid_data}
+  @spec check(module(), term(), term()) :: :ok | {:error, Records.error()}
+  @spec reauthorize_in_transaction(module(), term()) :: Records.result(Records.object())
+  @spec reauthorize(module(), reauthorization()) :: Records.result(Records.object())
+  @spec eligible?(Operation.t() | nil, Execution.t() | nil, reauthorization()) :: boolean()
+  @spec locked(module(), String.t(), :exclusive | :shared) :: Records.result(DispatchScope.t())
+
+  import Ecto.Query
+  alias Beamlet.Actions.Storage.Read
   alias Beamlet.Storage.Transaction
 
   def create(repo, attrs),

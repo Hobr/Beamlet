@@ -16,6 +16,21 @@ defmodule Beamlet.Actions.Storage.Schema.Operation do
     field(:recorded_at, :utc_datetime_usec)
   end
 
+  @typedoc "Ecto record including unvalidated construction state; persisted constraints are checked by the changeset and SQL."
+  @type t :: %__MODULE__{
+          id: String.t() | nil,
+          dispatch_scope_id: String.t() | nil,
+          dispatch_epoch: integer() | nil,
+          description: Beamlet.Actions.Storage.Records.value(),
+          description_digest: String.t() | nil,
+          accepted_result: Beamlet.Actions.Storage.Records.value(),
+          accepted_evidence_id: String.t() | nil,
+          lock_version: integer() | nil,
+          history_seq: integer() | nil,
+          schema_version: integer() | nil,
+          recorded_at: DateTime.t() | nil
+        }
+  @spec changeset(t(), term()) :: Ecto.Changeset.t(t())
   def changeset(record, attrs) do
     RecordChangeset.build(
       record,
