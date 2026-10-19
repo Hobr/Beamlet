@@ -29,6 +29,7 @@ defmodule Beamlet.Runtime.Persistence do
     :dispatch_epoch
   ]
 
+  @typedoc "Durable wiring. Repo handles are trusted Ecto repository identities, checked by the storage facade."
   @type t :: %__MODULE__{
           authority_repo: term(),
           journal_repo: term(),
@@ -38,6 +39,51 @@ defmodule Beamlet.Runtime.Persistence do
           dispatch_scope_id: binary() | nil,
           dispatch_epoch: non_neg_integer() | nil
         }
+
+  @typedoc """
+  String-key committed storage payload. Literal string keys, UUID spelling,
+  string enums, depth and byte limits remain runtime codec constraints.
+  """
+  @type object :: Beamlet.Actions.json_object()
+  @typedoc """
+  Committed identity with operation_id, attempt_id, description_digest,
+  attempt_version and lock_version; optional paired dispatch_scope_id/dispatch_epoch.
+  This is a storage representation, not an atom-key admission envelope.
+  """
+  @type prepared :: object()
+  @typedoc """
+  Candidate string-key payload before the durable codec checks JSON safety.
+  Operation payload, metadata, environment and handler Result data retain their
+  open input domain; description/1 and result_payload/1 do not validate them.
+  """
+  @type candidate :: %{optional(binary()) => term()}
+  @type receipt :: %{id: binary(), digest: binary(), content: object()}
+  @type journal :: %{
+          authority_id: binary(),
+          operation_id: binary(),
+          attempt_id: binary(),
+          description_digest: binary(),
+          executor_id: binary(),
+          executor_boot_id: binary(),
+          lock_version: non_neg_integer(),
+          receipt_id: binary()
+        }
+  @typep prepare_result :: {:ok, prepared() | nil} | {:error, :invalid_operation | :unavailable}
+  @spec new(nil | t() | keyword()) :: nil | t()
+  @spec uuid() :: binary()
+  @spec description(Operation.t()) :: candidate()
+  @spec prepare(t() | nil, Operation.t()) :: prepare_result()
+  @spec admission_failure(term()) :: :ok
+  @spec receipt(journal(), Result.t(), object()) ::
+          {:ok, receipt()} | {:error, :durable_unavailable}
+  @spec evidence(receipt()) :: object()
+  @spec result_payload(Result.t()) :: candidate()
+  # This converter deliberately passes unsupported values through to the codec;
+  # it is not a validator and may return the same live value supplied by a caller.
+  @spec value(term()) :: term()
+  @spec submit_error(term()) :: :invalid_operation | :unavailable
+  @spec validate!(t()) :: t()
+  @spec scope?(t()) :: boolean()
 
   def new(nil), do: nil
   def new(%__MODULE__{} = persistence), do: validate!(persistence)

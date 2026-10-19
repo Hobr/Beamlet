@@ -2,6 +2,34 @@ defmodule Beamlet.Runtime.Directory do
   @moduledoc false
   use GenServer
   alias Beamlet.Runtime.{ExecutorGateway, Groups, Report}
+  @type selection :: :none | {:ok, pid(), Report.t()}
+  @typep state :: %{
+           limits: Beamlet.Runtime.Limits.t(),
+           reports: %{optional(pid()) => {integer(), Report.t()}},
+           pending: %{optional(pid()) => reference()},
+           monitors: %{optional(pid()) => reference()},
+           membership: reference()
+         }
+  @spec start_link(Beamlet.Runtime.Limits.t()) :: GenServer.on_start()
+  @spec limits() :: Beamlet.Runtime.Limits.t()
+  @spec select(Beamlet.Actions.Operation.t()) :: selection()
+  @spec snapshots() :: %{optional(pid()) => Report.t()}
+  @spec init(Beamlet.Runtime.Limits.t()) :: {:ok, state()}
+  @spec handle_info(term(), state()) :: {:noreply, state()}
+  @spec handle_call(
+          :limits | :snapshots | :observation | {:select, Beamlet.Actions.Operation.t()},
+          GenServer.from(),
+          state()
+        ) ::
+          {:reply,
+           Beamlet.Runtime.Limits.t()
+           | %{optional(pid()) => Report.t()}
+           | selection()
+           | {:ok, Beamlet.Runtime.observation()}
+           | {:error, :limit}, state()}
+  @spec invalidate(state(), [pid()]) :: state()
+  @spec fresh(state()) :: %{optional(pid()) => Report.t()}
+  @spec now() :: integer()
   def start_link(limits), do: GenServer.start_link(__MODULE__, limits, name: __MODULE__)
   def limits, do: GenServer.call(__MODULE__, :limits)
   def select(op), do: GenServer.call(__MODULE__, {:select, op})
@@ -178,11 +206,15 @@ defmodule Beamlet.Runtime.NodeEndpoint do
   @moduledoc false
   use GenServer
   alias Beamlet.Runtime.{ExecutorGateway, Groups}
+  @typep state :: %{gateway: pid() | nil, incarnation: reference()}
+  @spec start_link(Beamlet.Runtime.Limits.t()) :: GenServer.on_start()
+  @spec init(Beamlet.Runtime.Limits.t()) :: {:ok, state()}
+  @spec handle_info(term(), state()) :: {:noreply, state()} | {:stop, :gateway_lost, state()}
   def start_link(limits), do: GenServer.start_link(__MODULE__, limits, name: __MODULE__)
   @impl true
   def init(_limits) do
     gateway = Process.whereis(ExecutorGateway)
-    if gateway, do: Process.monitor(gateway)
+    _ = if gateway, do: Process.monitor(gateway)
     :ok = :pg.join(Groups, :nodes, self())
     {:ok, %{gateway: gateway, incarnation: make_ref()}}
   end

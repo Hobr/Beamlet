@@ -4,6 +4,101 @@ defmodule Beamlet.Runtime.ExecutorGateway do
   alias Beamlet.Actions.{ExecutionHandle, Operation, Result}
   alias Beamlet.Actions.Storage.{Codec, ExecutorJournal}
   alias Beamlet.Runtime.{NodeEndpoint, Persistence, Report, Worker, Workers}
+
+  @type durable_envelope :: %{
+          authority_id: binary(),
+          operation_id: binary(),
+          attempt_id: binary(),
+          description_digest: binary(),
+          executor_id: binary(),
+          executor_boot_id: binary()
+        }
+  @type admit_message ::
+          {:admit, pid(), binary(), binary(), reference(), integer(), Operation.t(),
+           non_neg_integer()}
+          | {:admit, pid(), binary(), binary(), reference(), integer(), Operation.t(),
+             non_neg_integer(), durable_envelope()}
+  @typep key :: {pid(), binary()}
+  @typep entry :: %{
+           task: Task.t(),
+           owner: reference(),
+           claims: Report.pools(),
+           handle: ExecutionHandle.t(),
+           id: binary(),
+           kill_requested: boolean(),
+           stop_source: :cancelled | :deadline | nil,
+           progress_dropped: boolean(),
+           cancellation: :atomics.atomics_ref(),
+           journal: Persistence.journal() | nil
+         }
+  @typep state :: %{
+           limits: Beamlet.Runtime.Limits.t(),
+           handlers: Report.registrations(),
+           pools: Report.pools(),
+           available: Report.pools(),
+           capabilities: [binary()],
+           environments: [binary()],
+           incarnation: reference(),
+           attempts: %{optional(key()) => entry() | :rejected | :terminal},
+           rejected_through: integer(),
+           tasks: %{optional(reference()) => key()},
+           owners: %{optional(reference()) => key()},
+           providers: %{optional(reference()) => pid()},
+           persistence: Persistence.t() | nil,
+           journal_ready: boolean(),
+           ready: boolean()
+         }
+  @typep request :: %{
+           coordinator: pid(),
+           id: binary(),
+           attempt: binary(),
+           incarnation: term(),
+           lease: term(),
+           op: term(),
+           remaining: term(),
+           durable: term()
+         }
+  @typep transition :: {:noreply, state()}
+  @typep claim_result ::
+           {:ok, Persistence.journal() | nil}
+           | {:error, :durable_unavailable | :duplicate_admission}
+  @spec start_link({Beamlet.Runtime.options(), Beamlet.Runtime.Limits.t()}) ::
+          GenServer.on_start()
+  @spec eligible?(Operation.t(), Report.placement() | Report.t()) :: boolean()
+  @spec init({Beamlet.Runtime.options(), Beamlet.Runtime.Limits.t()}) :: {:ok, state()}
+  @spec mark_restarted_attempts(Persistence.t() | nil) :: boolean()
+  @spec safe_journal((-> value)) :: value | {:error, :durable_unavailable} when value: var
+  @spec handle_info(term(), state()) :: transition()
+  @spec observed_stop?(entry(), term()) :: boolean()
+  @spec stop_worker(state(), key(), :cancelled | :deadline) :: state()
+  @spec journal_stop(state(), entry(), :cancelled | :deadline) :: entry()
+  @spec admit_message(term(), state()) :: transition()
+  @spec admit_request(pid(), binary(), binary(), term(), term(), term(), term(), term()) ::
+          request()
+  @spec admission(state(), request()) :: transition()
+  @spec durable_envelope?(state(), request()) :: boolean()
+  @spec claim_start(state(), binary(), term(), Operation.t()) :: claim_result()
+  @spec valid_durable?(term(), binary(), Persistence.t(), Operation.t()) :: boolean()
+  @spec digest_matches?(map(), Operation.t()) :: boolean()
+  @spec start_intent(state(), durable_envelope()) :: claim_result()
+  @spec remaining_budget(term(), term()) :: integer()
+  @spec admit(state(), key(), binary(), Operation.t(), pos_integer(), Persistence.journal() | nil) ::
+          transition()
+  @spec complete(state(), key(), entry(), Result.t(), Persistence.object()) :: transition()
+  @spec bound_durable_completion(state(), key(), entry(), Result.t(), Persistence.object()) ::
+          Result.t()
+  @spec record_terminal(state(), entry(), Result.t(), Persistence.object()) ::
+          {:ok, Persistence.receipt() | nil} | {:error, atom()}
+  @spec termination(term()) :: Persistence.object()
+  @spec normalize(term(), entry()) :: Result.t()
+  @spec bounded(Result.t()) :: Result.t()
+  @spec release(state(), key()) :: state()
+  @spec remember(state(), key(), :terminal | :rejected) :: state()
+  @spec charge(Report.pools(), Report.pools(), -1 | 1) :: Report.pools()
+  @spec report(state()) :: Report.placement()
+  @spec valid_admission?(state(), term(), term(), term(), term()) :: boolean()
+  @spec valid_lease?(state(), term()) :: boolean()
+  @spec utilization(state()) :: float()
   def start_link(args), do: GenServer.start_link(__MODULE__, args, name: __MODULE__)
 
   def eligible?(op, r) do

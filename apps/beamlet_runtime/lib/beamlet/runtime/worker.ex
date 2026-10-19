@@ -1,5 +1,28 @@
 defmodule Beamlet.Runtime.Worker do
   @moduledoc "MFA wrapper with finite producer credits. Auxiliary callbacks marshal through the wrapper."
+  @typedoc "Handler results are validated by the gateway; arbitrary replies must remain representable here."
+  @type result :: {:worker_result, term(), %{producer_progress_dropped: non_neg_integer()}}
+  @spec run(
+          module(),
+          term(),
+          Beamlet.Actions.json_object(),
+          term(),
+          pid(),
+          non_neg_integer(),
+          Beamlet.Runtime.Limits.t(),
+          :atomics.atomics_ref()
+        ) :: result()
+  @spec progress(
+          pid(),
+          pid(),
+          :atomics.atomics_ref(),
+          integer(),
+          term(),
+          Beamlet.Runtime.Limits.t()
+        ) :: :ok | {:error, :progress_limit}
+  @spec rate?(:atomics.atomics_ref(), non_neg_integer(), pos_integer(), non_neg_integer()) ::
+          boolean()
+  @spec marshal(pid()) :: :ok | {:marshaled, pid()}
   def run(module, payload, credentials, settings, gateway, remaining, limits, cancellation) do
     wrapper = self()
     counters = :atomics.new(4, [])

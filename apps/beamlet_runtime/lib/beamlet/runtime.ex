@@ -12,6 +12,82 @@ defmodule Beamlet.Runtime do
   alias Beamlet.Runtime.{Directory, Observation, Persistence, SharedSupervisor}
   alias Beamlet.Storage.Admission
 
+  @typedoc "Startup configuration: handlers and settings are trusted local registrations."
+  @type options :: [
+          execution: boolean(),
+          handlers: Beamlet.Runtime.Report.registrations(),
+          pools: Beamlet.Runtime.Report.pools(),
+          providers: [pid()],
+          capabilities: [binary()],
+          environments: [binary()],
+          limits: [{atom(), pos_integer()}],
+          persistence: Persistence.t() | keyword() | nil
+        ]
+  @type submit_options :: [
+          owner: pid(),
+          sink: pid(),
+          require_live_owner: boolean(),
+          persistence: Persistence.t() | keyword() | nil,
+          prepared: Persistence.prepared()
+        ]
+  @type snapshot :: %{
+          execution: Beamlet.Actions.Execution.t() | nil,
+          result: Beamlet.Actions.Result.t() | nil,
+          stopping: :requested | nil,
+          progress_dropped: boolean(),
+          durable: Beamlet.Runtime.OperationCoordinator.durable_status() | nil
+        }
+  @type observed_report ::
+          %{node: node(), status: :not_reported, age_ms: :unknown}
+          | %{
+              node: node(),
+              status: :fresh | :stale,
+              age_ms: non_neg_integer(),
+              ready: boolean(),
+              execution_ready: boolean(),
+              capabilities: [binary()],
+              environments: [binary()],
+              available: Beamlet.Runtime.Report.pools()
+            }
+  @type observation :: %{
+          version: 1,
+          source: node(),
+          expiry_ms: pos_integer(),
+          reports: [observed_report()],
+          complete: boolean()
+        }
+  @type command :: :status | :cancel | {:ack, term()}
+  @type control_result :: :ok | {:ok, snapshot()} | {:error, :unavailable}
+  @spec observation() :: {:ok, observation()} | {:error, :timeout | :unavailable | :limit}
+  @spec child_spec(options()) :: Supervisor.child_spec()
+  @spec submit(term(), submit_options()) ::
+          {:ok, OperationRef.t()} | {:error, :invalid_operation | :unavailable | :capacity}
+  @spec evidence(Persistence.t(), term(), term()) ::
+          {:ok,
+           %{
+             authority: Persistence.object(),
+             journal: Persistence.object() | :not_found | :unavailable
+           }}
+          | {:error, atom()}
+  @spec prepare(Persistence.t() | nil, Operation.t(), term()) ::
+          {:ok, Persistence.prepared() | nil} | {:error, :invalid_operation | :unavailable}
+  @spec matches_prepared?(
+          Persistence.t(),
+          Operation.t(),
+          Persistence.prepared(),
+          Persistence.object()
+        ) :: boolean()
+  @spec attempt_matches?(Persistence.t(), Persistence.prepared(), Persistence.object()) ::
+          boolean()
+  @spec prepared(term()) :: {:ok, Persistence.prepared()} | {:error, :invalid_operation}
+  @spec non_negative?(term()) :: boolean()
+  @spec coordinators_available(Persistence.t() | nil) :: :ok | {:error, :unavailable}
+  @spec valid_owner_guard?(keyword()) :: boolean()
+  @spec status(OperationRef.t()) :: {:ok, snapshot()} | {:error, :unavailable}
+  @spec cancel(OperationRef.t()) :: :ok | {:error, :unavailable}
+  @spec ack(OperationRef.t(), term()) :: :ok | {:error, :unavailable}
+  @spec control(OperationRef.t(), command()) :: control_result()
+
   @doc """
   Safe Directory-owned report observation, `{:ok, %{version: 1, source: node,
   expiry_ms: integer, reports: list, complete: boolean}}`.

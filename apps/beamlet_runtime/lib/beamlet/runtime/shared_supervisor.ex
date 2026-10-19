@@ -12,6 +12,9 @@ defmodule Beamlet.Runtime.SharedSupervisor do
     Persistence
   }
 
+  @typep options :: Beamlet.Runtime.options()
+  @spec start_link(options()) :: Supervisor.on_start()
+  @spec init(options()) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}} | :ignore
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   @impl true
   def init(opts) do
@@ -36,6 +39,23 @@ end
 
 defmodule Beamlet.Runtime.Limits do
   @moduledoc false
+  @type t :: %{
+          coordinators: pos_integer(),
+          retention_ms: pos_integer(),
+          refresh_ms: pos_integer(),
+          expiry_ms: pos_integer(),
+          admission_ms: pos_integer(),
+          cancel_ms: pos_integer(),
+          attempts: pos_integer(),
+          progress_count: pos_integer(),
+          progress_credit: pos_integer(),
+          progress_rate: pos_integer(),
+          operation_bytes: pos_integer(),
+          result_bytes: pos_integer(),
+          progress_bytes: pos_integer(),
+          report_bytes: pos_integer()
+        }
+  @spec new(keyword()) :: t()
   def new(opts) do
     defaults = %{
       coordinators: 256,

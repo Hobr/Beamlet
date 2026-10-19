@@ -6,6 +6,108 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   alias Beamlet.Runtime.{Directory, Persistence}
   alias Beamlet.Storage.Admission
 
+  @type durable_status :: %{
+          operation_id: binary(),
+          attempt_id: binary(),
+          claimed: boolean(),
+          accepted: boolean(),
+          accept_error: atom() | nil
+        }
+  @typep durable :: %{
+           persistence: Persistence.t(),
+           operation_id: binary(),
+           description_digest: binary(),
+           attempt_id: binary(),
+           attempt_version: non_neg_integer(),
+           operation_version: non_neg_integer(),
+           claimed: boolean(),
+           accepted: boolean(),
+           accept_error: atom() | nil
+         }
+  @typep durable_input :: {Persistence.t(), Persistence.prepared()} | nil
+  @typep args ::
+           {binary(), Beamlet.Actions.Operation.t(), pid(), pid()}
+           | {binary(), Beamlet.Actions.Operation.t(), pid(), pid(), boolean()}
+           | {binary(), Beamlet.Actions.Operation.t(), pid(), pid(), boolean(), durable_input()}
+  @typep state :: %{
+           id: binary(),
+           op: Beamlet.Actions.Operation.t(),
+           sink: pid(),
+           owner: pid(),
+           guarded: boolean(),
+           limits: Beamlet.Runtime.Limits.t(),
+           execution: Execution.t() | nil,
+           result: Result.t() | nil,
+           target: pid() | nil,
+           gateway: pid() | nil,
+           sequence: non_neg_integer(),
+           progress_dropped: boolean(),
+           outstanding: MapSet.t(term()),
+           started: integer(),
+           stopping: :requested | nil,
+           durable: durable() | nil
+         }
+  @typep transition :: {:noreply, state()} | {:stop, :normal, state()}
+  @typep acceptance :: %{
+           operation_id: binary(),
+           expected_version: non_neg_integer(),
+           result: Persistence.candidate(),
+           evidence_id: binary() | nil
+         }
+  @typep storage_result :: {:ok, Persistence.object()} | {:error, atom()}
+  @spec start_link(args()) :: GenServer.on_start()
+  @spec init(args()) :: {:ok, state()} | :ignore
+  @spec initialize(
+          binary(),
+          Beamlet.Actions.Operation.t(),
+          pid(),
+          pid(),
+          boolean(),
+          durable_input()
+        ) :: {:ok, state()} | :ignore
+  @spec ready(
+          binary(),
+          Beamlet.Actions.Operation.t(),
+          pid(),
+          pid(),
+          boolean(),
+          Beamlet.Runtime.Limits.t(),
+          durable_input()
+        ) :: {:ok, state()}
+  @spec handle_info(term(), state()) :: transition()
+  @spec handle_call(term(), GenServer.from(), state()) ::
+          {:reply, Beamlet.Runtime.control_result(), state()}
+  @spec owner_alive?(pid(), boolean()) :: boolean()
+  @spec select_and_dispatch(state()) :: transition()
+  @spec dispatch(Directory.selection(), state()) :: transition()
+  @spec admit(state(), pid(), Beamlet.Runtime.Report.t()) :: transition()
+  @spec admit_message(state(), binary(), Beamlet.Runtime.Report.t(), non_neg_integer()) ::
+          Beamlet.Runtime.ExecutorGateway.admit_message()
+  @spec claim_dispatch(state()) :: :ok | {:error, :durable_unavailable}
+  @spec finish(state(), :ok | :error | :uncertain | :deadline | :cancelled, term()) :: state()
+  @spec accept(state(), Result.t()) :: state()
+  @spec accept(state(), Result.t(), Persistence.receipt() | nil) :: state()
+  @spec persist(durable() | nil, Result.t(), Persistence.receipt() | nil) :: durable() | nil
+  @spec persist_evidence(Persistence.t(), durable(), Persistence.receipt() | nil) ::
+          :ok | {:error, :durable_unavailable}
+  @spec persist_result(Persistence.t(), durable(), Result.t(), Persistence.receipt() | nil) ::
+          storage_result()
+  @spec accept_result(Persistence.t(), acceptance()) :: storage_result()
+  @spec reconcile_accept(Persistence.t(), acceptance()) :: storage_result()
+  @spec admission() :: :ok | {:error, :durable_not_admitted}
+  @spec admission_failure(term()) :: :ok
+  @spec visible_result(state()) :: Result.t() | nil
+  @spec durable_state(durable_input()) :: durable() | nil
+  @spec durable_status(durable() | nil) :: durable_status() | nil
+  @spec valid_receipt?(term(), state(), Result.t()) :: boolean()
+  @spec receipt_binding?(Persistence.object(), state(), Result.t()) :: boolean()
+  @spec valid_completion?(Result.t(), ExecutionHandle.t(), state()) :: boolean()
+  @spec matching_handle?(ExecutionHandle.t(), state()) :: boolean()
+  @spec valid_progress?(ExecutionHandle.t(), term(), term(), binary(), state()) :: boolean()
+  @spec valid_handle?(ExecutionHandle.t(), state()) :: boolean()
+  @spec cleanup(state()) :: :ok | {:cancel, pid(), binary()}
+  @spec ref(state()) :: OperationRef.t()
+
   def start_link({_, _, owner, _, true, _} = args) do
     if Process.alive?(owner), do: GenServer.start_link(__MODULE__, args), else: :ignore
   end
@@ -172,9 +274,11 @@ defmodule Beamlet.Runtime.OperationCoordinator do
         %{durable: durable, execution: %{attempt_id: attempt}} = s
       )
       when not is_nil(durable) do
-    if valid_completion?(result, handle, s) and valid_receipt?(receipt, s, result) do
-      persist_evidence(durable.persistence, durable, receipt)
-    end
+    # Late evidence is best-effort; persist_evidence still reports admission failure.
+    _ =
+      if valid_completion?(result, handle, s) and valid_receipt?(receipt, s, result) do
+        persist_evidence(durable.persistence, durable, receipt)
+      end
 
     {:noreply, s}
   end
@@ -198,7 +302,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
     do: {:reply, :ok, s}
 
   def handle_call({id, :cancel}, _, %{id: id, result: nil} = s) do
-    cleanup(s)
+    _ = cleanup(s)
     Process.send_after(self(), :cancel_timeout, s.limits.cancel_ms + 100)
     {:reply, :ok, %{s | stopping: :requested}}
   end
@@ -301,7 +405,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
   end
 
   defp finish(s, status, reason) do
-    cleanup(s)
+    _ = cleanup(s)
     execution_id = if s.execution && s.execution.handle, do: s.execution.handle.id
 
     execution =

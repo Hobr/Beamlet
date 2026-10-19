@@ -2,6 +2,43 @@ defmodule Beamlet.Runtime.Report do
   @moduledoc false
   @keys ~w(node incarnation gateway lease ready execution_ready handlers capabilities environments available utilization)a
 
+  @type pools :: %{optional(binary()) => non_neg_integer()}
+  @type registrations :: %{optional(binary()) => {module(), term()}}
+  @typedoc "Selection view accepts either public handler flags or local registrations. Settings remain executor-local."
+  @type placement :: %{
+          ready: boolean(),
+          handlers: %{optional(binary()) => true | {module(), term()}},
+          available: pools(),
+          capabilities: [binary()],
+          environments: [binary()],
+          node: node()
+        }
+  @type t :: %{
+          optional(:lease) => integer(),
+          node: node(),
+          incarnation: reference(),
+          gateway: pid() | nil,
+          ready: boolean(),
+          execution_ready: boolean(),
+          handlers: %{optional(binary()) => true},
+          capabilities: [binary()],
+          environments: [binary()],
+          available: pools(),
+          utilization: number()
+        }
+  @spec valid?(term(), pid(), pos_integer()) :: boolean()
+  @spec content?(t()) :: boolean()
+  @spec identity?(t(), pid()) :: boolean()
+  @spec readiness?(t()) :: boolean()
+  @spec labels?(term()) :: boolean()
+  @spec label?(term()) :: boolean()
+  @spec pools?(term(), boolean()) :: boolean()
+  @spec handlers?(term()) :: boolean()
+  @spec providers?(term()) :: boolean()
+  @spec registrations?(term()) :: boolean()
+  @spec registration?(term()) :: boolean()
+  @spec validate_configuration!(keyword(), Beamlet.Runtime.Limits.t()) :: :ok
+
   def valid?(r, endpoint, bytes) do
     is_map(r) and Map.keys(r) -- @keys == [] and
       :erlang.external_size({:report, endpoint, make_ref(), r}) <= bytes and

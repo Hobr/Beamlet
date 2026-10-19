@@ -1,5 +1,11 @@
 defmodule Beamlet.Runtime.Observation do
   @moduledoc false
+  @type failure :: {:error, :timeout | :unavailable}
+  @spec now() :: integer()
+  @spec remaining(integer()) :: non_neg_integer()
+  @spec read(GenServer.server(), term(), term()) :: term() | failure()
+  @spec isolate((-> value), timeout()) :: value | failure() when value: var
+  @spec call(GenServer.server(), term(), timeout()) :: term() | failure()
   def now, do: System.monotonic_time(:millisecond)
   def remaining(deadline), do: max(0, deadline - now())
 
