@@ -1,5 +1,6 @@
 defmodule Beamlet.Storage.Connections do
   @moduledoc false
+  @spec sqlite(keyword()) :: keyword()
   def sqlite(config) do
     Keyword.merge(config,
       pool_size: 1,
@@ -16,6 +17,7 @@ defmodule Beamlet.Storage.Connections do
     )
   end
 
+  @spec postgres(keyword()) :: keyword()
   def postgres(config) do
     Keyword.merge(config,
       pool_size: 4,
@@ -26,6 +28,7 @@ defmodule Beamlet.Storage.Connections do
   end
 
   # DBConnection invokes this for every physical connection, including reconnects.
+  @spec verify_sqlite(DBConnection.conn()) :: [:ok]
   def verify_sqlite(connection) do
     for {pragma, expected} <- [
           {"journal_mode", "wal"},
@@ -42,6 +45,7 @@ defmodule Beamlet.Storage.Connections do
     end
   end
 
+  @spec verify_postgres(DBConnection.conn()) :: [:ok]
   def verify_postgres(connection) do
     for setting <- ["fsync", "synchronous_commit"] do
       case Postgrex.query(connection, "SHOW " <> setting, []) do

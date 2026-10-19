@@ -5,6 +5,7 @@ defmodule Beamlet.Storage.Repo do
   Each declared module is its own registered instance. Loading it starts nothing;
   Dataset opens it and Host may own its lifecycle. No migrations run in init.
   """
+  @spec __using__(keyword()) :: Macro.t()
   defmacro __using__(opts) do
     {adapter, configure} =
       case Keyword.fetch!(opts, :adapter) do
@@ -16,6 +17,7 @@ defmodule Beamlet.Storage.Repo do
     quote do
       use Ecto.Repo, otp_app: :beamlet_storage, adapter: unquote(adapter)
       @impl true
+      @spec init(:supervisor | :runtime, keyword()) :: {:ok, keyword()}
       def init(_, config) do
         {:ok, apply(Beamlet.Storage.Connections, unquote(configure), [config])}
       end

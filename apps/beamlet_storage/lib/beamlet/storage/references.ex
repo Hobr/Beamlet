@@ -3,19 +3,25 @@ defmodule Beamlet.Storage.References do
   alias Beamlet.Storage.Artifacts
 
   @doc "Collect artifact identities from a bounded JSON envelope."
+  @typep collected :: {:ok, [term()]} | {:error, :invalid_data}
+  @typep verified :: :ok | {:error, Artifacts.error()}
+  @spec ids(term()) :: collected()
   def ids(value), do: collect(value)
 
+  @spec verify(module(), term()) :: verified()
   def verify(repo, value) do
     with {:ok, ids} <- collect(value), do: Artifacts.verify_references(repo, Enum.uniq(ids))
   end
 
   @doc "Verify immutable dataset content during read-only reconstruction, without a write transaction."
+  @spec verify_read(module(), term()) :: verified()
   def verify_read(repo, value) do
     with {:ok, ids} <- collect(value) do
       verify_read_ids(repo, Enum.uniq(ids))
     end
   end
 
+  @spec verify_read_ids(module(), [term()]) :: verified()
   defp verify_read_ids(repo, ids) do
     Enum.reduce_while(ids, :ok, fn id, :ok ->
       case Artifacts.fetch(repo, id) do
@@ -25,6 +31,7 @@ defmodule Beamlet.Storage.References do
     end)
   end
 
+  @spec collect(term()) :: collected()
   defp collect(map) when is_map(map) do
     Enum.reduce_while(map, {:ok, []}, fn {key, value}, {:ok, acc} ->
       case field(key, value) do
@@ -44,6 +51,7 @@ defmodule Beamlet.Storage.References do
   end
 
   defp collect(_), do: {:ok, []}
+  @spec field(term(), term()) :: collected()
   defp field("artifact_id", value), do: {:ok, [value]}
 
   defp field(key, value) when key in ~w(artifact_ids artifact_refs) and is_list(value),

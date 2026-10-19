@@ -25,6 +25,16 @@ defmodule Beamlet.Storage.Admission do
   # always rolls back, no commit and therefore no fsync happens here.
   @probe_sql "UPDATE storage_metadata SET format_version = format_version WHERE id = 1"
 
+  @typedoc "Fresh admission observation, distinct from registration readiness."
+  @type status :: :admitted | :not_configured | {:refused, atom()}
+  @typep state :: %{
+           repo: module(),
+           dataset_opts: Dataset.options(),
+           reason: atom() | nil,
+           resources: [{module(), Dataset.options()}],
+           status: status() | nil
+         }
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
   end
@@ -33,6 +43,7 @@ defmodule Beamlet.Storage.Admission do
   Fresh admission status: `:admitted | {:refused, reason} | :not_configured`
   (`:not_configured` means no admission process exists in this VM).
   """
+  @spec status(atom()) :: status()
   def status(name \\ __MODULE__) do
     case Process.whereis(name) do
       nil -> :not_configured
@@ -42,12 +53,14 @@ defmodule Beamlet.Storage.Admission do
     :exit, _ -> {:refused, :storage_unavailable}
   end
 
+  @spec admitted?(atom()) :: boolean()
   def admitted?(name \\ __MODULE__), do: status(name) == :admitted
 
   @doc """
   Durable submit/accept gate: `:ok`, or `{:error, :durable_not_admitted}` when a
   host admission process reports a refused dataset. Never consults a cached flag.
   """
+  @spec consult(atom()) :: :ok | {:error, :durable_not_admitted}
   def consult(name \\ __MODULE__) do
     case checks(name) do
       :admitted -> :ok
@@ -58,6 +71,7 @@ defmodule Beamlet.Storage.Admission do
 
   # `:consult` honours a recorded failure without re-probing it away; `:status` is
   # the operator view and always probes.
+  @spec checks(atom()) :: status()
   defp checks(name) do
     case Process.whereis(name) do
       nil -> :not_configured
@@ -68,6 +82,7 @@ defmodule Beamlet.Storage.Admission do
   end
 
   @doc "Turns admission off after a durable write path failed; `reason` is a safe atom."
+  @spec failure(atom(), atom()) :: :ok
   def failure(reason, name \\ __MODULE__) when is_atom(reason) do
     case Process.whereis(name) do
       # Synchronous: a caller that just lost a write must not race the next gate
@@ -84,6 +99,7 @@ defmodule Beamlet.Storage.Admission do
   `Beamlet.Storage.Dataset.verify/2` plus a real rolled-back write.
   Returns `:admitted` or `{:error, reason}`.
   """
+  @spec probe(module(), Dataset.options()) :: :admitted | {:error, atom()}
   def probe(repo, dataset_opts) do
     with :ok <- Dataset.verify(repo, dataset_opts),
          :ok <- write_probe(repo),
@@ -91,6 +107,7 @@ defmodule Beamlet.Storage.Admission do
   end
 
   @impl true
+  @spec init(term()) :: {:ok, state()} | {:stop, :invalid_admission_configuration}
   def init(opts) do
     with true <- Keyword.keyword?(opts),
          repo when is_atom(repo) and repo != nil <- Keyword.get(opts, :repo),
@@ -114,6 +131,8 @@ defmodule Beamlet.Storage.Admission do
   end
 
   @impl true
+  @spec handle_call(:status | :consult | {:failure, atom()}, GenServer.from(), state()) ::
+          {:reply, status() | :ok, state()}
   def handle_call(:status, _from, state) do
     status = probe(state)
     # A probe that succeeded clears a previously recorded failure; a probe that
@@ -139,6 +158,7 @@ defmodule Beamlet.Storage.Admission do
   end
 
   @impl true
+  @spec handle_cast({:failure, atom()}, state()) :: {:noreply, state()}
   def handle_cast({:failure, reason}, state),
     do: {:noreply, %{state | status: {:refused, reason}}}
 
@@ -146,6 +166,7 @@ defmodule Beamlet.Storage.Admission do
   # `:restored_backup`, `:schema_unsupported`, ...) instead of a generic outage. A
   # recorded write failure is honoured by `:consult` before this probe runs, so a
   # failed write path is never admitted merely because a later read happens to work.
+  @spec probe(state()) :: status()
   defp probe(state) do
     if state.reason != nil do
       {:refused, state.reason}
@@ -157,6 +178,7 @@ defmodule Beamlet.Storage.Admission do
     end
   end
 
+  @spec probe_resources([{module(), Dataset.options()}]) :: :admitted | {:error, atom()}
   defp probe_resources(resources) do
     Enum.reduce_while(resources, :admitted, fn {repo, opts}, :admitted ->
       case probe(repo, opts) do
@@ -166,6 +188,7 @@ defmodule Beamlet.Storage.Admission do
     end)
   end
 
+  @spec write_probe(module()) :: :ok | {:error, :write_failed | :storage_unavailable}
   defp write_probe(repo) do
     case Transaction.write(repo, fn -> rollback_probe(repo) end) do
       {:error, :probe_executed} -> :ok
@@ -178,6 +201,7 @@ defmodule Beamlet.Storage.Admission do
     :exit, _ -> {:error, :storage_unavailable}
   end
 
+  @spec rollback_probe(module()) :: no_return()
   defp rollback_probe(repo) do
     case SQL.query(repo, @probe_sql, [], log: false) do
       {:ok, _result} -> repo.rollback(:probe_executed)

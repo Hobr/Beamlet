@@ -14,9 +14,35 @@ defmodule Beamlet.Storage.Dataset do
   alias Ecto.Adapters.SQL
   alias Exqlite.Sqlite3
 
+  @typedoc "Dataset refusal classifications; opening never initializes or repairs existing data."
+  @type error ::
+          :invalid_data
+          | :dataset_missing
+          | :dataset_exists
+          | :path_alias
+          | :conflict
+          | :dataset_mismatch
+          | :schema_unsupported
+          | :restored_backup
+          | :storage_unavailable
+  @typedoc "Explicit adapter connection options with a trusted installation descriptor."
+  @type options :: [
+          {:descriptor, Installation.t()}
+          | {:dataset_id, String.t()}
+          | {:database, String.t()}
+          | {:peer_database, String.t()}
+          | {atom(), term()}
+        ]
+  @typep mode :: :initialize | :open
+  @typep verification :: :ok | {:error, error()}
+  @typep rows :: [[term()]]
+  @typep reader :: (String.t() -> {:ok, rows()} | {:error, term()})
+  @spec initialize(module(), term()) :: {:ok, pid()} | {:error, error()}
   def initialize(repo, opts), do: start(repo, opts, :initialize)
+  @spec open(module(), term()) :: {:ok, pid()} | {:error, error()}
   def open(repo, opts), do: start(repo, opts, :open)
 
+  @spec start(module(), term(), mode()) :: {:ok, pid()} | {:error, error()}
   defp start(repo, opts, mode) do
     with :ok <- validate(repo, opts),
          :ok <- available(repo),
@@ -47,6 +73,7 @@ defmodule Beamlet.Storage.Dataset do
     :exit, _ -> {:error, :storage_unavailable}
   end
 
+  @spec finish_start(module(), pid(), options(), mode()) :: {:ok, pid()} | {:error, error()}
   defp finish_start(repo, pid, opts, mode) do
     case safely(fn -> initialize_and_verify(repo, opts, mode) end) do
       :ok ->
@@ -58,14 +85,17 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  @spec initialize_and_verify(module(), options(), mode()) :: verification()
   defp initialize_and_verify(repo, opts, mode) do
     with :ok <- maybe_initialize(repo, opts, mode), do: verify_metadata(repo, opts)
   end
 
+  @spec available(module()) :: :ok | {:error, :conflict}
   defp available(repo) do
     if Process.whereis(repo), do: {:error, :conflict}, else: :ok
   end
 
+  @spec validate(module(), term()) :: verification()
   defp validate(repo, opts) do
     with true <- Keyword.keyword?(opts),
          true <- not Keyword.has_key?(opts, :name) and not Keyword.has_key?(opts, :url),
@@ -80,8 +110,10 @@ defmodule Beamlet.Storage.Dataset do
     _ -> {:error, :invalid_data}
   end
 
+  @spec postgres?(module()) :: boolean()
   defp postgres?(repo), do: repo.__adapter__() == Ecto.Adapters.Postgres
 
+  @spec validate_paths(keyword()) :: verification()
   defp validate_paths(opts) do
     a = opts[:database]
     b = opts[:peer_database]
@@ -95,6 +127,7 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  @spec valid_path?(term()) :: boolean()
   defp valid_path?(path) when is_binary(path) do
     Path.type(path) == :absolute and path != "/" and
       not String.contains?(path, <<0>>) and
@@ -114,6 +147,7 @@ defmodule Beamlet.Storage.Dataset do
 
   defp valid_path?(_), do: false
 
+  @spec same_file?(String.t(), String.t()) :: boolean()
   defp same_file?(a, b) do
     case {File.stat(a), File.stat(b)} do
       {{:ok, x}, {:ok, y}} -> x.inode == y.inode and x.major_device == y.major_device
@@ -121,10 +155,12 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  @spec prepare_file(module(), options(), mode()) :: verification()
   defp prepare_file(repo, opts, mode) do
     if postgres?(repo), do: :ok, else: prepare_sqlite_file(opts, mode)
   end
 
+  @spec prepare_sqlite_file(options(), mode()) :: :ok | {:error, term()}
   defp prepare_sqlite_file(opts, :open) do
     if File.regular?(opts[:database]), do: :ok, else: {:error, :dataset_missing}
   end
@@ -137,6 +173,7 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  @spec preflight(module(), options(), mode()) :: :ok | {:error, term()}
   defp preflight(_, _, :initialize), do: :ok
 
   defp preflight(repo, opts, :open) do
@@ -153,6 +190,7 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  @spec read_raw(reference(), String.t()) :: {:ok, rows()} | {:error, term()}
   defp read_raw(conn, sql) do
     with {:ok, statement} <- Sqlite3.prepare(conn, sql) do
       try do
@@ -163,6 +201,7 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  @spec maybe_initialize(module(), options(), mode()) :: verification()
   defp maybe_initialize(_, _, :open), do: :ok
 
   defp maybe_initialize(repo, opts, :initialize) do
@@ -184,10 +223,12 @@ defmodule Beamlet.Storage.Dataset do
   end
 
   @doc "Read-only identity/format/profile/complete manifest/migration verification."
+  @spec verify(module(), term()) :: verification()
   def verify(repo, opts) do
     with :ok <- validate(repo, opts), do: safely(fn -> verify_metadata(repo, opts) end)
   end
 
+  @spec verify_metadata(module(), options()) :: verification()
   defp verify_metadata(repo, opts) do
     verify_rows(opts, fn sql ->
       case SQL.query(repo, sql, [], log: false) do
@@ -197,6 +238,7 @@ defmodule Beamlet.Storage.Dataset do
     end)
   end
 
+  @spec read_error(term()) :: :dataset_missing | :schema_unsupported | :storage_unavailable
   defp read_error(%Postgrex.Error{postgres: %{code: :undefined_table}}), do: :dataset_missing
   defp read_error(%Postgrex.Error{postgres: %{code: :undefined_column}}), do: :schema_unsupported
   defp read_error(%Exqlite.Error{message: message}), do: read_error(message)
@@ -211,6 +253,7 @@ defmodule Beamlet.Storage.Dataset do
 
   defp read_error(_), do: :storage_unavailable
 
+  @spec verify_rows(options(), reader()) :: verification()
   defp verify_rows(opts, read) do
     # Read format first: old metadata has different columns, and must be refused
     # before opening a writable SQLite connection or inspecting business tables.
@@ -248,6 +291,7 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  @spec verify_migrations(Installation.t(), reader()) :: :ok | {:error, :schema_unsupported}
   defp verify_migrations(descriptor, read) do
     expected = Enum.map(descriptor.migrations, &[&1.id])
 
@@ -257,6 +301,7 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
+  @spec safely((-> value)) :: value | {:error, :storage_unavailable} when value: var
   defp safely(fun) do
     fun.()
   rescue

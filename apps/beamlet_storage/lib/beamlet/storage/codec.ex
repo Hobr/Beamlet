@@ -15,9 +15,17 @@ defmodule Beamlet.Storage.Codec do
   @secret_segments ~w(credential credentials password passwd secret secrets token)
   @reference_suffixes ~w(ref refs id ids name names path)
 
+  @typedoc "Persistable JSON. Exact string keys, credential policy and resource bounds require runtime validation."
+  @type value :: nil | boolean() | number() | String.t() | [value()] | object()
+  @type object :: %{optional(String.t()) => value()}
+  @type error :: :invalid_data | :limit
+  @typep budget :: {integer(), integer()}
+  @typep walk_result :: {:ok, budget()} | {:error, error()}
+  @spec limit(pos_integer()) :: pos_integer()
   def limit(bytes) when is_integer(bytes) and bytes > 0, do: bytes
 
   @doc "Validates and emits sorted-key UTF-8 JSON, never ETF or inspected terms."
+  @spec encode(term(), pos_integer()) :: {:ok, binary()} | {:error, error()}
   def encode(value, kind \\ 4_194_304) do
     with {:ok, _} <- walk(value, 0, {@nodes, limit(kind)}),
          encoded <- value |> canonical() |> IO.iodata_to_binary(),
@@ -29,6 +37,7 @@ defmodule Beamlet.Storage.Codec do
     end
   end
 
+  @spec decode(term(), pos_integer()) :: {:ok, value()} | {:error, error()}
   def decode(bytes, kind \\ 4_194_304)
 
   def decode(bytes, kind) when is_binary(bytes) do
@@ -49,12 +58,15 @@ defmodule Beamlet.Storage.Codec do
 
   def decode(_, _), do: {:error, :invalid_data}
 
+  @spec digest(term(), pos_integer()) :: {:ok, String.t()} | {:error, error()}
   def digest(value, kind \\ 4_194_304) do
     with {:ok, bytes} <- encode(value, kind), do: {:ok, hash(bytes)}
   end
 
+  @spec hash(iodata()) :: String.t()
   def hash(bytes), do: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
 
+  @spec uuid?(term()) :: boolean()
   def uuid?(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do
       {:ok, ^value} -> true
@@ -65,6 +77,7 @@ defmodule Beamlet.Storage.Codec do
   def uuid?(_), do: false
 
   # Byte accounting happens during traversal, before constructing a whole JSON value.
+  @spec walk(term(), non_neg_integer(), budget()) :: walk_result()
   defp walk(_, depth, {nodes, bytes}) when depth > @depth or nodes <= 0 or bytes < 0,
     do: {:error, :limit}
 
@@ -99,6 +112,8 @@ defmodule Beamlet.Storage.Codec do
 
   defp walk(_, _, _), do: {:error, :invalid_data}
 
+  @spec walk_pair({term(), term()}, {:ok, budget()}, non_neg_integer()) ::
+          {:cont, walk_result()} | {:halt, walk_result()}
   defp walk_pair({key, item}, {:ok, remaining}, depth) do
     if is_binary(key) and byte_size(key) <= elem(remaining, 1) and
          not credential_key?(key) do
@@ -114,6 +129,7 @@ defmodule Beamlet.Storage.Codec do
     end
   end
 
+  @spec credential_key?(binary()) :: boolean()
   defp credential_key?(key) do
     normalized = key |> String.downcase() |> String.replace("-", "_")
     segments = String.split(normalized, "_", trim: true)
@@ -126,12 +142,15 @@ defmodule Beamlet.Storage.Codec do
     end
   end
 
+  @spec spend(budget(), non_neg_integer()) :: walk_result()
   defp spend({nodes, bytes}, used) when bytes >= used and nodes > 0,
     do: {:ok, {nodes - 1, bytes - used}}
 
   defp spend(_, _), do: {:error, :limit}
+  @spec spend_bytes(budget(), non_neg_integer()) :: walk_result()
   defp spend_bytes({nodes, bytes}, used) when bytes >= used, do: {:ok, {nodes, bytes - used}}
   defp spend_bytes(_, _), do: {:error, :limit}
+  @spec walk_list(term(), non_neg_integer(), budget(), boolean()) :: walk_result()
   defp walk_list([], _, budget, _), do: {:ok, budget}
 
   defp walk_list([head | tail], depth, budget, comma?) do
@@ -143,6 +162,7 @@ defmodule Beamlet.Storage.Codec do
   defp walk_list(_, _, _, _), do: {:error, :invalid_data}
 
   # Bound parser recursion before Jason allocates a decoded tree.
+  @spec scan_depth(binary(), integer(), boolean(), boolean()) :: :ok | {:error, :limit}
   defp scan_depth(_, depth, _, _) when depth > @depth + 1, do: {:error, :limit}
   defp scan_depth(<<>>, _, _, _), do: :ok
 
@@ -165,6 +185,7 @@ defmodule Beamlet.Storage.Codec do
     do: scan_depth(rest, depth, quoted, escaped)
 
   # Reject duplicate keys rather than silently accepting Jason's last value.
+  @spec plain_objects(term()) :: {:ok, value()} | {:error, :invalid_data}
   defp plain_objects(%Jason.OrderedObject{values: pairs}) do
     Enum.reduce_while(pairs, {:ok, %{}}, fn {key, value}, {:ok, acc} ->
       with false <- Map.has_key?(acc, key), {:ok, value} <- plain_objects(value) do
@@ -190,6 +211,7 @@ defmodule Beamlet.Storage.Codec do
 
   defp plain_objects(value), do: {:ok, value}
 
+  @spec canonical(value()) :: iodata()
   defp canonical(value) when is_map(value) do
     pairs =
       value

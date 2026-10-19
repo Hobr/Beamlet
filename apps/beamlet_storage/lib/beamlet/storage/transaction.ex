@@ -23,10 +23,20 @@ defmodule Beamlet.Storage.Transaction do
   external effects. Return values are passed through; callers must rollback on
   participant failure (or compose via Ecto.Multi). No nested transaction is made.
   """
+  @typedoc "Safe write classification; an unknown outcome permits no automatic retry."
+  @type write_error :: :conflict | :invalid_data | :storage_outcome_unknown
+  @typep load_error :: %ArgumentError{message: String.t()}
+  @typep repo_error :: %RuntimeError{message: String.t()}
+  @spec participate(module(), (-> value)) :: value | {:error, :transaction_required}
+        when value: var
   def participate(repo, fun) when is_function(fun, 0) do
     if repo.in_transaction?(), do: fun.(), else: {:error, :transaction_required}
   end
 
+  @spec write(module(), (-> value) | (module() -> value)) :: {:ok, value} | {:error, term()}
+        when value: var
+  @spec write(module(), Ecto.Multi.t()) ::
+          {:ok, map()} | {:error, term()} | {:error, term(), term(), map()}
   def write(repo, multi_or_fun) do
     opts = [timeout: 5000, log: false]
 
@@ -50,6 +60,7 @@ defmodule Beamlet.Storage.Transaction do
   # A rejected statement aborts and rolls back the whole transaction, so the write
   # set is provably absent. Connection loss and unclassified driver errors stay
   # outcome-unknown: the client cannot prove the commit did not happen.
+  @spec classify_sqlite(Exqlite.Error.t()) :: write_error()
   defp classify_sqlite(%Exqlite.Error{message: message}) when is_binary(message) do
     cond do
       String.contains?(message, "UNIQUE constraint") ->
@@ -70,6 +81,7 @@ defmodule Beamlet.Storage.Transaction do
 
   defp classify_sqlite(_), do: :storage_outcome_unknown
 
+  @spec classify_postgres(Postgrex.Error.t()) :: write_error()
   defp classify_postgres(%Postgrex.Error{postgres: %{code: code}}) do
     cond do
       code == :unique_violation -> :conflict
@@ -80,6 +92,7 @@ defmodule Beamlet.Storage.Transaction do
 
   defp classify_postgres(_), do: :storage_outcome_unknown
 
+  @spec read((-> value)) :: value | {:error, :storage_unavailable | :invalid_data} when value: var
   def read(fun) do
     fun.()
   rescue
@@ -97,6 +110,7 @@ defmodule Beamlet.Storage.Transaction do
 
   # Ecto raises when our strict JSON type refuses corrupted stored bytes. Do not
   # leak the raw field in that exception, or hide unrelated argument/programming errors.
+  @spec invalid_json_load(load_error(), Exception.stacktrace()) :: {:error, :invalid_data}
   defp invalid_json_load(error, [{Ecto.Repo.Queryable, :struct_load!, _, _} | _] = stacktrace) do
     if String.starts_with?(error.message, "cannot load ") and
          String.contains?(error.message, " as type #Beamlet.Storage.JSON<"),
@@ -106,6 +120,8 @@ defmodule Beamlet.Storage.Transaction do
 
   defp invalid_json_load(error, stacktrace), do: reraise(error, stacktrace)
 
+  @spec unavailable_repo(repo_error(), reason, Exception.stacktrace()) :: {:error, reason}
+        when reason: var
   defp unavailable_repo(error, reason, stacktrace) do
     if String.starts_with?(error.message, "could not lookup Ecto repo "),
       do: {:error, reason},
