@@ -1,6 +1,17 @@
 defmodule Beamlet.Agent.Core.Decision do
   @moduledoc "Existing Agent continuation classifications, without dispatch or persistence."
 
+  @spec reply_position(term()) :: binary() | {:error, :invalid_reply}
+  @spec resumable?(term()) :: boolean()
+  @spec resume(position) ::
+          :idle
+          | :advance
+          | :replay_reply
+          | :pending
+          | {:error, {:unsupported_continuation, position}}
+        when position: var
+  @spec safe_fork?(term()) :: boolean()
+
   def reply_position(%{kind: :text}), do: "completed"
   def reply_position(%{kind: :tool_calls}), do: "reply_recorded"
   def reply_position(_), do: {:error, :invalid_reply}

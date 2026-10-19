@@ -2,6 +2,19 @@ defmodule Beamlet.Agent.Core.Data do
   @moduledoc false
   @body_keys ~w(messages assistant request reply result output payload content text arguments prompt tools schema)
 
+  @typedoc "String-key JSON. Literal string keys, UUID spelling, UTF-8 and depth limits remain runtime checks."
+  @type value :: nil | boolean() | number() | binary() | [value()] | object()
+  @type object :: %{optional(binary()) => value()}
+  @spec uuid?(term()) :: boolean()
+  @spec digest?(term()) :: boolean()
+  @spec plain?(term()) :: boolean()
+  @spec plain?(term(), non_neg_integer()) :: boolean()
+  @spec list?(term(), non_neg_integer()) :: boolean()
+  @spec proper_list?(term()) :: boolean()
+  @spec fields?(term()) :: boolean()
+  @spec control?(term()) :: boolean()
+  @spec reference_only?(term()) :: boolean()
+
   # Canonical spelling accepted by the storage adapter's Ecto.UUID.cast equality check.
   def uuid?(
         <<a::binary-size(8), "-", b::binary-size(4), "-", c::binary-size(4), "-",

@@ -2,6 +2,59 @@ defmodule Beamlet.Agent.Core.Reducer do
   @moduledoc "Versioned, effect-free reduction of committed Agent orchestration events."
   alias Beamlet.Agent.Core.Data
 
+  @typedoc """
+  Reference-only string-key control, including initial and paused states.
+
+  `agent_id` and `turn_id` carry UUIDs (nil before a turn); `through_seq`,
+  `generation`, `definition_version` and `step` carry counters. `inputs`,
+  `pending`, `consumed` and `timeline` retain ordered references, never bodies.
+  Pending members bind operation_id/step_id/ordinal; consumed members bind
+  operation_id/accepted_digest/consumption_kind. `inheritance` holds sources
+  and closure; `fork`, `blocked` and `environment_risk` may be nil.
+  `resolutions` is indexed by Operation UUID and `paused` is boolean.
+
+  Continuations include await_input, await_model_result, model_prepared,
+  await_tool_results, reply_recorded and completed. Exact string keys and
+  string enums cannot be expressed in typespecs; reduce/2 validates shape,
+  ordering and transition legality. This type does not imply runtime validation.
+  """
+  @type state :: Data.object()
+  @typedoc """
+  Versioned string-key event envelope with id, scope_id, seq, schema_version,
+  type and payload, plus turn/Operation/input digest bindings when applicable.
+  decode/1 validates the event name and per-event payload. Reduction additionally
+  checks contiguous sequence numbers, matching scope and legal control position.
+  """
+  @type event :: Data.object()
+  @type error :: {:error, :invalid_history | :schema_unsupported}
+  @typep reduction :: {:ok, state()} | error()
+  @spec version() :: 1
+  @spec new(identity) :: %{optional(binary()) => identity | Data.value()} when identity: var
+  @spec reduce(term(), term()) :: reduction()
+  @spec replay(term(), term()) :: reduction()
+  @spec replay_events(state(), [term()]) :: reduction()
+  @spec decode(term()) :: :ok | error()
+  @spec valid_state?(term()) :: boolean()
+  @spec valid_collections?(state()) :: boolean()
+  @spec prepare_position?(state(), boolean()) :: boolean()
+  @spec valid_member?(term()) :: boolean()
+  @spec unique_member?([Data.object()], Data.object()) :: boolean()
+  @spec validate_payload(binary(), term()) :: :ok | error()
+  @spec payload_shape?(binary(), Data.object()) :: boolean()
+  @spec inherited_source?(term()) :: boolean()
+  @spec inherited_reference?(Data.object()) :: boolean()
+  @spec inherited_resolution?(term()) :: boolean()
+  @spec positive_seq?(term()) :: boolean()
+  @spec keys?(Data.object(), [binary()]) :: boolean()
+  @spec decisions(value) :: [value | Data.value()] when value: var
+  @spec decision_shape?(Data.value()) :: boolean()
+  @spec resolution_shape?(term()) :: boolean()
+  @spec apply_event(state(), event()) :: reduction()
+  @spec valid_continue_decision?(state(), Data.value(), [binary()]) :: boolean()
+  @spec new_member?(state(), Data.object(), boolean()) :: boolean()
+  @spec consumption_position?(state(), Data.object()) :: boolean()
+  @spec continue_decided(state(), event()) :: reduction()
+
   def version, do: 1
 
   def new(id) do

@@ -3,6 +3,56 @@ defmodule Beamlet.Agent.Core.Context do
   alias Beamlet.Agent.Core.Data
   alias Beamlet.Harness.Model
 
+  @typep object :: Data.object()
+  @typep message :: Model.json_object()
+  @typedoc "Ordered material cursor; messages are retained in reverse order until messages/1."
+  @type accumulator :: %{
+          control: object(),
+          remaining: [Data.value()],
+          messages: [message()],
+          count: non_neg_integer(),
+          bytes: non_neg_integer()
+        }
+  @type built :: %{request: object(), sources: [Data.value()], policy: object()}
+  @typep failure :: {:error, atom() | Jason.EncodeError.t() | Exception.t()}
+  @typep accumulated :: {:ok, accumulator()} | failure()
+  @typep message_result :: {:ok, message()} | failure()
+  @typep pairing :: {:ok, [binary()]} | {:error, :unsafe_position}
+  @typep pair_step :: {:cont, {:ok, [binary()]}} | {:halt, {:error, :unsafe_position}}
+  @typedoc "Decoded reply before semantic Model validation; malformed field values intentionally remain representable."
+  @type decoded_reply :: %{
+          kind: :text | :tool_calls,
+          content: Data.value(),
+          calls: [%{id: Data.value(), name: Data.value(), arguments: Data.value()}]
+        }
+  @spec start(term()) :: accumulated()
+  @spec append(term(), term()) :: accumulated()
+  @spec append_message(accumulator(), [Data.value()], object()) :: accumulated()
+  @spec messages(term()) :: {:ok, [message()]} | failure()
+  @spec finish(accumulator(), Beamlet.Harness.Catalogue.t()) :: {:ok, built()} | failure()
+  @spec build(term(), Beamlet.Harness.Catalogue.t(), term()) :: {:ok, built()} | failure()
+  @spec materialize(term(), term()) :: {:ok, [message()]} | failure()
+  @spec accumulate(term(), term()) :: accumulated()
+  @spec append_next(term(), {:ok, accumulator()}) ::
+          {:cont, {:ok, accumulator()}} | {:halt, failure()}
+  @spec valid_data?(object()) :: boolean()
+  @spec bound_material?(object(), object()) :: boolean()
+  @spec valid_material?(term()) :: boolean()
+  @spec resolution_matches?(object(), object()) :: boolean()
+  @spec operation_shape?(term()) :: boolean()
+  @spec message(object()) :: message_result()
+  @spec complete_boundary(term()) :: :ok | {:error, :unsafe_position}
+  @spec pair_messages(term()) :: pairing()
+  @spec pair(term(), pairing()) :: pair_step()
+  @spec call_ids([term()]) :: pair_step()
+  @spec observation(term(), term()) :: {:ok, binary()} | failure()
+  @spec encode_observation(map(), term()) :: {:ok, binary()} | failure()
+  @spec resolved_message(object(), Data.value()) :: message_result()
+  @spec result_message(term()) :: message_result()
+  @spec model_message(term(), Beamlet.Harness.Catalogue.t()) :: message_result()
+  @spec reply(term()) :: {:ok, decoded_reply()} | {:error, :invalid_reply}
+  @spec native_call(term()) :: %{id: Data.value(), name: Data.value(), arguments: Data.value()}
+
   def start(control) do
     if is_map(control) and Data.plain?(control) and Data.proper_list?(control["timeline"]),
       do:
