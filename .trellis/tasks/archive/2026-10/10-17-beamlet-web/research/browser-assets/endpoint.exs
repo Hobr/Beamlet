@@ -74,7 +74,8 @@ defmodule BrowserFixtureModel do
          }}
 
       users >= 2 ->
-        {:ok, %{kind: :text, content: "SECOND-TURN-ACK: " <> text <> "\n" <> long_context(), calls: []}}
+        {:ok,
+         %{kind: :text, content: "SECOND-TURN-ACK: " <> text <> "\n" <> long_context(), calls: []}}
 
       true ->
         {:ok,
@@ -205,7 +206,9 @@ end
 agent_options = [
   model: model_binding,
   catalogue: catalogue_handle,
-  tools: %{"slow-echo" => %{id: "slow-echo", capability: "tool.slow-echo", environment: "workspace"}},
+  tools: %{
+    "slow-echo" => %{id: "slow-echo", capability: "tool.slow-echo", environment: "workspace"}
+  },
   display_metadata: %{title: "Fixture Agent", preset_id: "tool-run"}
 ]
 
@@ -213,7 +216,10 @@ agent_options = [
 {:ok, external} =
   Beamlet.Agent.start(
     node(),
-    Keyword.merge(agent_options, id: "cli-external-agent", display_metadata: %{title: "CLI Agent"})
+    Keyword.merge(agent_options,
+      id: "cli-external-agent",
+      display_metadata: %{title: "CLI Agent"}
+    )
   )
 
 {:ok, _turn} = Beamlet.Agent.input(external, "external CLI first turn")
@@ -226,7 +232,8 @@ agent_options = [
   Beamlet.Agent.delegate(parent, [
     %{
       authority: node(),
-      options: Keyword.merge(agent_options, id: "child-browser", display_metadata: %{title: "Child"}),
+      options:
+        Keyword.merge(agent_options, id: "child-browser", display_metadata: %{title: "Child"}),
       input: "HOLD child task"
     }
   ])
@@ -235,7 +242,9 @@ File.mkdir_p!(out)
 
 handles =
   Enum.reduce([external, parent], %{}, fn ref, acc ->
-    {:ok, handle} = Beamlet.Web.Handles.remember(%{authority: ref.authority, id: ref.id, pid: ref.pid})
+    {:ok, handle} =
+      Beamlet.Web.Handles.remember(%{authority: ref.authority, id: ref.id, pid: ref.pid})
+
     Map.put(acc, ref.id, handle)
   end)
 
