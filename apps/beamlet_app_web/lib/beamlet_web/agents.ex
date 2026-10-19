@@ -3,9 +3,21 @@ defmodule Beamlet.Web.Agents do
   alias Beamlet.{Agent, Node}
   alias Beamlet.Web.{Handles, Presets}
 
+  @type input_result ::
+          {:accepted, Agent.turn()}
+          | {:rejected, :busy | :invalid_or_oversize_input | :stale_ref | :invalid_command}
+          | :input_unknown
+  @type creation_result ::
+          {:created,
+           %{ref: Agent.Ref.t(), navigation: Handles.navigation(), input: input_result()}}
+          | {:create_unknown, %{authority: node(), id: binary()}}
+          | {:rejected, :invalid_draft}
+  @spec discover(term()) :: {:ok, Node.Agents.result()} | {:error, :invalid_query}
   def discover(targets), do: Node.Agents.discover(targets)
+  @spec attach(term()) :: Handles.navigation()
   def attach(descriptor), do: Handles.remember(descriptor)
 
+  @spec create(term()) :: creation_result()
   def create(draft) do
     case Presets.resolve(draft) do
       {:ok, resolved} ->
@@ -30,6 +42,7 @@ defmodule Beamlet.Web.Agents do
     end
   end
 
+  @spec input(Agent.Ref.t(), term()) :: input_result()
   def input(ref, text) do
     case Agent.input(ref, text) do
       {:ok, turn} ->

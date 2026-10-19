@@ -30,6 +30,7 @@ defmodule Beamlet.Web.Router do
     plug :accepts, ["json"]
   end
 
+  @spec put_csp_nonce(Plug.Conn.t(), term()) :: Plug.Conn.t()
   defp put_csp_nonce(conn, _opts) do
     nonce = :crypto.strong_rand_bytes(16) |> Base.encode64()
     [policy] = get_resp_header(conn, "content-security-policy")

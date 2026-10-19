@@ -3,6 +3,7 @@ defmodule Beamlet.Web.WorkbenchCommands do
   alias Beamlet.Node.Cluster
   alias Beamlet.Web.{Agents, Handles, OwnedCall, Presets}
 
+  @spec discover() :: {:ok, Beamlet.Node.Agents.result()}
   def discover do
     allowed = Application.get_env(:beamlet_app_web, :host, []) |> Keyword.get(:allowed_nodes, [])
     {:ok, connected} = Cluster.connected(allowed)
@@ -21,12 +22,19 @@ defmodule Beamlet.Web.WorkbenchCommands do
     |> then(&{:ok, &1})
   end
 
+  @spec resolve(term()) ::
+          {:ok, Presets.resolved()} | {:error, :invalid_draft} | :configuration_unavailable
   defp resolve(draft) do
     Presets.resolve(draft)
   catch
     :exit, _ -> :configuration_unavailable
   end
 
+  @spec create(pid(), term(), term()) ::
+          {:navigation, Handles.navigation()}
+          | :create_unknown
+          | :configuration_unavailable
+          | :invalid_draft
   def create(owner, tag, draft) do
     case resolve(draft) do
       {:ok, resolved} ->

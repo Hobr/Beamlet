@@ -33,6 +33,11 @@ defmodule Beamlet.Web.Layouts do
 
   slot :inner_block, required: true
 
+  @spec app(%{
+          required(:flash) => map(),
+          required(:inner_block) => list(),
+          optional(atom()) => term()
+        }) :: Phoenix.LiveView.Rendered.t()
   def app(assigns) do
     ~H"""
     <header class="navbar px-4 sm:px-6 lg:px-8">
@@ -82,6 +87,8 @@ defmodule Beamlet.Web.Layouts do
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
 
+  @spec flash_group(%{required(:flash) => map(), optional(atom()) => term()}) ::
+          Phoenix.LiveView.Rendered.t()
   def flash_group(assigns) do
     ~H"""
     <div id={@id} aria-live="polite">
@@ -130,6 +137,10 @@ defmodule Beamlet.Web.Layouts do
   """
   attr :locale_options, :list, required: true
 
+  @spec locale_switcher(%{
+          required(:locale_options) => [Beamlet.Web.Locale.option()],
+          optional(atom()) => term()
+        }) :: Phoenix.LiveView.Rendered.t()
   def locale_switcher(assigns) do
     ~H"""
     <nav aria-label={gettext("Language")} class="flex items-center gap-2">
@@ -150,6 +161,7 @@ defmodule Beamlet.Web.Layouts do
 
   See <head> in root.html.heex which applies the theme before page load.
   """
+  @spec theme_toggle(Beamlet.Web.CoreComponents.assigns()) :: Phoenix.LiveView.Rendered.t()
   def theme_toggle(assigns) do
     ~H"""
     <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">

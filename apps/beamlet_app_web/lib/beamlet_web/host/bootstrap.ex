@@ -3,8 +3,10 @@ defmodule Beamlet.Web.Host.Bootstrap do
   use Task, restart: :temporary
   require Logger
   alias Beamlet.Node.Cluster
+  @spec start_link(Beamlet.Web.Host.settings()) :: {:ok, pid()} | {:error, term()}
   def start_link(config), do: Task.start_link(__MODULE__, :run, [config])
 
+  @spec run(Beamlet.Web.Host.settings()) :: :ok
   def run(config) do
     config[:peers]
     |> Enum.with_index(1)

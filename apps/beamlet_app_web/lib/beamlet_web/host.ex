@@ -5,6 +5,15 @@ defmodule Beamlet.Web.Host do
   alias Beamlet.Node.Cluster
   alias Beamlet.Web.Presets
 
+  @typedoc "Validated Web startup policy with private resolved preset bindings."
+  @type settings :: [
+          {:enabled, boolean()}
+          | {:node, Beamlet.Node.options()}
+          | {:allowed_nodes, [binary()]}
+          | {:peers, [binary()]}
+          | {:catalogue, Presets.configuration()}
+        ]
+  @spec configuration(term()) :: {:ok, settings()} | {:error, :invalid_web_host_configuration}
   def configuration(settings) do
     with true <- is_list(settings) and Keyword.keyword?(settings),
          true <-
@@ -36,9 +45,13 @@ defmodule Beamlet.Web.Host do
     _ -> {:error, :invalid_web_host_configuration}
   end
 
+  @spec start_link(term()) :: Supervisor.on_start()
   def start_link(settings), do: Supervisor.start_link(__MODULE__, settings, name: __MODULE__)
 
   @impl true
+  @spec init(term()) ::
+          {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}}
+          | {:stop, :invalid_web_host_configuration}
   def init(settings) do
     case configuration(settings) do
       {:ok, config} ->

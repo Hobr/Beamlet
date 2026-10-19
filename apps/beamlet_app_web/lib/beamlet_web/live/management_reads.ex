@@ -2,6 +2,14 @@ defmodule Beamlet.Web.ManagementReads do
   @moduledoc "Read-only management adapters over trusted configuration and public projections."
   alias Beamlet.Node.Cluster
 
+  @type result :: %{
+          connected: [node()],
+          targets: [node()],
+          distributed: boolean(),
+          reads: [{:ok, Beamlet.Node.Observation.aggregate()} | {:error, :invalid_query}],
+          excluded: [node()]
+        }
+  @spec nodes() :: {:ok, result()} | {:error, :invalid_authority}
   def nodes do
     allowed = Application.get_env(:beamlet_app_web, :host, []) |> Keyword.get(:allowed_nodes, [])
 
@@ -27,6 +35,7 @@ defmodule Beamlet.Web.ManagementReads do
 
   # Trust is validated once per name; an invalid or unusable allowlist is an
   # explicit configuration failure rather than a crashed or silently partial page.
+  @spec resolve([binary()]) :: {:ok, [node()]} | {:error, :invalid_authority}
   defp resolve(allowed) do
     allowed
     |> Enum.reduce_while({:ok, []}, fn name, {:ok, acc} ->

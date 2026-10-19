@@ -7,6 +7,10 @@ defmodule Beamlet.Web.ManagementLive do
   on_mount({Locale, :default})
 
   @impl true
+  @typep socket :: Phoenix.LiveView.Socket.t()
+  @typep reply :: {:noreply, socket()}
+  @typep assigns :: %{optional(atom()) => term()}
+  @spec mount(term(), map(), socket()) :: {:ok, socket()}
   def mount(_, _, socket) do
     {:ok,
      assign(socket,
@@ -26,6 +30,7 @@ defmodule Beamlet.Web.ManagementLive do
   end
 
   @impl true
+  @spec handle_params(map(), binary(), socket()) :: reply()
   def handle_params(params, uri, s) do
     s = Locale.on_params(s, params, uri)
     if s.assigns.caller, do: send(s.assigns.caller, :cancel)
@@ -49,6 +54,7 @@ defmodule Beamlet.Web.ManagementLive do
     {:noreply, if(connected?(s), do: read(s), else: s)}
   end
 
+  @spec read(socket()) :: socket()
   defp read(%{assigns: %{pending: true}} = s), do: s
 
   defp read(s) do
@@ -77,11 +83,13 @@ defmodule Beamlet.Web.ManagementLive do
   end
 
   @impl true
+  @spec handle_event(binary(), map(), socket()) :: reply()
   def handle_event("refresh", _, s), do: {:noreply, read(s)}
   # Forged business/admin events have no command path, including input/stop/close.
   def handle_event(_, _, s), do: {:noreply, s}
 
   @impl true
+  @spec handle_info(term(), socket()) :: reply()
   def handle_info(
         {:owned, {:management, g}, {:ok, ref}},
         %{assigns: %{generation: g, live_action: :diagnostics}} = s
@@ -146,12 +154,14 @@ defmodule Beamlet.Web.ManagementLive do
 
   def handle_info(_, s), do: {:noreply, s}
 
+  @spec selected_activity(map() | nil, term()) :: map() | nil
   defp selected_activity(nil, _), do: nil
 
   defp selected_activity(display, key),
     do: Enum.find(display[:activities] || [], &(turn(&1[:id]) == key))
 
   @impl true
+  @spec render(assigns()) :: Phoenix.LiveView.Rendered.t()
   def render(assigns) do
     ~H"""
     <main class="min-h-screen bg-base-200 text-base-content p-4 lg:p-8">
@@ -232,6 +242,8 @@ defmodule Beamlet.Web.ManagementLive do
 
   attr :data, :map, required: true
 
+  @spec node_results(%{required(:data) => ManagementReads.result(), optional(atom()) => term()}) ::
+          Phoenix.LiveView.Rendered.t()
   def node_results(assigns) do
     ~H"""
     <section>
@@ -304,6 +316,10 @@ defmodule Beamlet.Web.ManagementLive do
 
   attr :runtime, :any, required: true
 
+  @spec runtime_reports(%{
+          required(:runtime) => {:ok, Beamlet.Runtime.observation()} | {:error, atom()},
+          optional(atom()) => term()
+        }) :: Phoenix.LiveView.Rendered.t()
   def runtime_reports(assigns) do
     ~H"""
     <div :if={match?({:ok, _}, @runtime)}>
@@ -352,6 +368,8 @@ defmodule Beamlet.Web.ManagementLive do
 
   attr :data, :map, required: true
 
+  @spec preset_results(%{required(:data) => Presets.description(), optional(atom()) => term()}) ::
+          Phoenix.LiveView.Rendered.t()
   def preset_results(assigns) do
     ~H"""
     <section>
@@ -392,6 +410,15 @@ defmodule Beamlet.Web.ManagementLive do
     """
   end
 
+  @spec section(
+          :nodes
+          | :presets
+          | :diagnostics
+          | :models
+          | :tools
+          | :environments
+          | :authorities
+        ) :: binary()
   defp section(:nodes), do: gettext("nodes")
   defp section(:presets), do: gettext("presets")
   defp section(:diagnostics), do: gettext("diagnostics")
@@ -400,13 +427,16 @@ defmodule Beamlet.Web.ManagementLive do
   defp section(:environments), do: gettext("environments")
   defp section(:authorities), do: gettext("authorities")
 
+  @spec labels(term()) :: binary()
   defp labels([]), do: gettext("none")
   defp labels(v) when is_list(v), do: Enum.map_join(v, ", ", &text/1)
   defp labels(_), do: gettext("Unknown")
 
+  @spec environment(term()) :: binary()
   defp environment(nil), do: gettext("not required")
   defp environment(id), do: text(id)
 
+  @spec failure(atom(), term()) :: binary()
   defp failure(:nodes, reason),
     do:
       gettext(
@@ -428,14 +458,17 @@ defmodule Beamlet.Web.ManagementLive do
         reason: reason(reason)
       )
 
+  @spec reason(term()) :: binary()
   defp reason({:error, inner}), do: reason(inner)
   defp reason(v) when is_atom(v), do: Vocabulary.reason(v)
   defp reason(_), do: gettext("Unknown")
 
+  @spec services(term()) :: binary()
   defp services(v) when is_map(v),
     do: Enum.map_join(v, ", ", fn {k, value} -> "#{k}: #{text(value)}" end)
 
   defp services(v), do: text(v)
+  @spec age(term()) :: binary()
   defp age(v) when is_integer(v), do: gettext("%{value} ms", value: v)
   defp age(_), do: gettext("Unknown")
 end

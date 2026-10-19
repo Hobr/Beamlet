@@ -9,6 +9,12 @@ defmodule Beamlet.Web.ObservationComponents do
 
   attr :diagnostic_handle, :string, default: nil
 
+  @spec activities(%{
+          optional(:display) => map() | nil,
+          optional(:pending) => boolean(),
+          optional(:diagnostic_handle) => binary() | nil,
+          optional(atom()) => term()
+        }) :: Phoenix.LiveView.Rendered.t()
   def activities(assigns) do
     ~H"""
     <section aria-label={gettext("Current concurrent activity")} class="my-4">
@@ -65,10 +71,12 @@ defmodule Beamlet.Web.ObservationComponents do
     """
   end
 
+  @spec text(term()) :: binary()
   def text(nil), do: gettext("Unknown / omitted")
   def text(v) when is_binary(v), do: v
   def text(v) when is_atom(v), do: Vocabulary.status(v)
   def text(_), do: gettext("Unsupported content omitted")
+  @spec turn(term()) :: binary()
   def turn(nil), do: gettext("Turn unknown")
 
   def turn(v),

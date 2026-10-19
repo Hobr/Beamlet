@@ -7,6 +7,17 @@ defmodule Beamlet.Web.WorkbenchLive do
   on_mount({Locale, :default})
 
   @impl true
+  @typep socket :: Phoenix.LiveView.Socket.t()
+  @typep reply :: {:noreply, socket()}
+  @typep assigns :: %{
+           required(:draft) => Presets.draft(),
+           required(:drafts) => %{
+             optional(binary()) => {:ok, Presets.draft()} | {:error, :invalid_draft}
+           },
+           required(:catalogue) => Presets.description() | nil,
+           optional(atom()) => term()
+         }
+  @spec mount(term(), map(), socket()) :: {:ok, socket()}
   def mount(_, _, socket) do
     {:ok,
      assign(socket,
@@ -38,6 +49,7 @@ defmodule Beamlet.Web.WorkbenchLive do
   end
 
   @impl true
+  @spec handle_params(map(), binary(), socket()) :: reply()
   def handle_params(params, uri, socket) do
     socket = Locale.on_params(socket, params, uri)
     leave(socket.assigns.observer)
@@ -66,7 +78,8 @@ defmodule Beamlet.Web.WorkbenchLive do
         load_catalogue()
       end)
 
-      open_handle(owner, generation, params["handle"])
+      # This starts an optional owned caller; replies arrive asynchronously.
+      _ = open_handle(owner, generation, params["handle"])
 
       send(self(), :discover)
     end
@@ -75,6 +88,7 @@ defmodule Beamlet.Web.WorkbenchLive do
   end
 
   @impl true
+  @spec handle_info(term(), socket()) :: reply()
   def handle_info({:owned, {:load, g}, {catalogue, drafts}}, %{assigns: %{generation: g}} = s)
       when is_map(catalogue) do
     {_, {:ok, draft}} = Enum.at(Enum.sort(drafts), 0, {nil, {:ok, %{}}})
@@ -236,6 +250,7 @@ defmodule Beamlet.Web.WorkbenchLive do
   def handle_info(_, s), do: {:noreply, s}
 
   @impl true
+  @spec handle_event(binary(), map(), socket()) :: reply()
   def handle_event("search", %{"search" => q}, s),
     do: {:noreply, assign(s, search: String.slice(q, 0, 128))}
 
@@ -318,6 +333,7 @@ defmodule Beamlet.Web.WorkbenchLive do
 
   def handle_event(_, _, s), do: {:noreply, s}
 
+  @spec clear_command_feedback(socket()) :: socket()
   defp clear_command_feedback(s) do
     assign(s,
       identity: nil,
@@ -329,6 +345,7 @@ defmodule Beamlet.Web.WorkbenchLive do
     )
   end
 
+  @spec update_draft(assigns(), Presets.draft()) :: Presets.draft()
   defp update_draft(assigns, d) do
     draft =
       if d["preset"] && d["preset"] != assigns.draft["preset"] do
@@ -354,6 +371,7 @@ defmodule Beamlet.Web.WorkbenchLive do
     if needs_environment, do: draft, else: Map.put(draft, "environment", nil)
   end
 
+  @spec modified?(assigns()) :: boolean()
   defp modified?(assigns) do
     case get_in(assigns, [:drafts, assigns.draft["preset"]]) do
       {:ok, defaults} -> Map.drop(defaults, ["task"]) != Map.drop(assigns.draft, ["task"])
@@ -361,17 +379,23 @@ defmodule Beamlet.Web.WorkbenchLive do
     end
   end
 
+  @spec open_handle(pid(), non_neg_integer(), binary() | nil) :: :ok | pid()
   defp open_handle(_, _, nil), do: :ok
 
   defp open_handle(owner, generation, handle),
     do: OwnedCall.start(owner, {:open, generation}, fn -> Handles.fetch(handle) end)
 
+  @spec load_catalogue() ::
+          {Presets.description(),
+           %{optional(binary()) => {:ok, Presets.draft()} | {:error, :invalid_draft}}}
   defp load_catalogue do
     catalogue = Presets.describe()
     drafts = Map.new(catalogue.presets, fn {id, _} -> {id, Presets.reset(id)} end)
     {catalogue, drafts}
   end
 
+  @spec command(socket(), (pid(), {non_neg_integer(), reference()} -> term()), non_neg_integer()) ::
+          reply()
   defp command(s, fun, timeout \\ 8_000) do
     tag = {s.assigns.generation, make_ref()}
     owner = self()
@@ -385,14 +409,17 @@ defmodule Beamlet.Web.WorkbenchLive do
      )}
   end
 
+  @spec observe(socket(), Beamlet.Agent.Ref.t()) :: socket()
   defp observe(s, ref) do
     leave(s.assigns.observer)
     observer = OwnedCall.observe(self(), {s.assigns.generation, ref}, ref, s.assigns.observer)
     assign(s, ref: ref, observer: observer, display: nil, snapshot: nil)
   end
 
+  @spec leave(pid() | nil) :: :ok | :leave
   defp leave(nil), do: :ok
   defp leave(pid), do: send(pid, :leave)
+  @spec outcome(term()) :: binary()
   defp outcome({:accepted, _}), do: gettext("Input accepted")
 
   defp outcome({:rejected, reason}),
@@ -417,6 +444,7 @@ defmodule Beamlet.Web.WorkbenchLive do
         "Outcome unknown / unavailable. No automatic retry. Discover the displayed identity explicitly."
       )
 
+  @spec active?(Beamlet.Agent.snapshot() | nil) :: boolean()
   defp active?(nil), do: true
   defp active?(snapshot), do: snapshot[:status] in [:running, :waiting]
 end

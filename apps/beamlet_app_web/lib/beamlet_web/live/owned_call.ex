@@ -1,6 +1,10 @@
 defmodule Beamlet.Web.OwnedCall do
   @moduledoc "Finite disposable callers. Killing a caller never implies business cancellation."
 
+  # Correlation tags and worker results belong to callers of this generic relay.
+  @typep tag :: term()
+  @typep observation_exit :: :ok | Beamlet.Agent.error() | {:observation, tag(), :unavailable}
+  @spec start(pid(), tag(), (-> term()), non_neg_integer()) :: pid()
   def start(owner, tag, fun, timeout \\ 8_000) do
     spawn(fn ->
       Process.flag(:trap_exit, true)
@@ -19,6 +23,7 @@ defmodule Beamlet.Web.OwnedCall do
 
   # Relay milestones and completion from the same process. Signals from the
   # worker precede its EXIT, including when a deadline interrupts the call.
+  @spec deliver(pid(), message) :: message | {:milestone, message} when message: var
   def deliver(owner, message) do
     case Process.get(__MODULE__) do
       nil -> send(owner, message)
@@ -26,6 +31,7 @@ defmodule Beamlet.Web.OwnedCall do
     end
   end
 
+  @spec command(pid(), tag(), pid(), reference(), integer()) :: :ok | {:owned, tag(), term()}
   defp command(owner, tag, worker, monitor, deadline) do
     receive do
       {:milestone, message} ->
@@ -54,6 +60,7 @@ defmodule Beamlet.Web.OwnedCall do
     end
   end
 
+  @spec finish_worker(pid(), pid()) :: :ok
   defp finish_worker(owner, worker) do
     receive do
       {:milestone, message} ->
@@ -65,12 +72,14 @@ defmodule Beamlet.Web.OwnedCall do
     end
   end
 
+  @spec safe((-> value)) :: value | :unavailable when value: var
   defp safe(fun) do
     fun.()
   catch
     _, _ -> :unavailable
   end
 
+  @spec observe(pid(), tag(), Beamlet.Agent.Ref.t(), pid() | nil) :: pid()
   def observe(owner, tag, ref, previous \\ nil) do
     spawn(fn ->
       Process.flag(:trap_exit, true)
@@ -90,6 +99,7 @@ defmodule Beamlet.Web.OwnedCall do
     end)
   end
 
+  @spec wait_previous(pid() | nil) :: :ok
   defp wait_previous(nil), do: :ok
 
   defp wait_previous(previous) do
@@ -101,6 +111,7 @@ defmodule Beamlet.Web.OwnedCall do
     end
   end
 
+  @spec retire(pid()) :: :ok
   defp retire(sink) do
     send(sink, :leave)
 
@@ -111,6 +122,7 @@ defmodule Beamlet.Web.OwnedCall do
     end
   end
 
+  @spec kill_sink(pid()) :: :ok
   defp kill_sink(sink) do
     Process.exit(sink, :kill)
 
@@ -119,6 +131,7 @@ defmodule Beamlet.Web.OwnedCall do
     end
   end
 
+  @spec subscribe(pid(), tag(), Beamlet.Agent.Ref.t()) :: observation_exit()
   defp subscribe(owner, tag, ref) do
     Process.monitor(ref.pid)
 
@@ -128,10 +141,13 @@ defmodule Beamlet.Web.OwnedCall do
     end
   end
 
+  @spec await_display(pid(), tag(), Beamlet.Agent.Ref.t(), non_neg_integer()) ::
+          observation_exit()
   defp await_display(owner, tag, ref, sequence) do
     receive do
       {:displayed, ^sequence} ->
-        Beamlet.Agent.ack(ref, sequence)
+        # Display flow control has no retry path here; source/owner DOWN handles loss.
+        _ = Beamlet.Agent.ack(ref, sequence)
         snapshots(owner, tag, ref)
 
       :leave ->
@@ -142,6 +158,7 @@ defmodule Beamlet.Web.OwnedCall do
     end
   end
 
+  @spec snapshots(pid(), tag(), Beamlet.Agent.Ref.t()) :: observation_exit()
   defp snapshots(owner, tag, ref) do
     receive do
       :leave ->
