@@ -10,7 +10,7 @@ defmodule Beamlet.Umbrella.MixProject do
       version: "0.1.0",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      dialyzer: [plt_add_apps: [:mix]],
+      dialyzer: [plt_add_apps: [:mix], flags: [:unmatched_returns, :unknown]],
       aliases: aliases(),
       default_release: :beamlet_server,
       releases: [

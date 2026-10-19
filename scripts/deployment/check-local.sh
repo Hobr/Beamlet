@@ -3,6 +3,8 @@ set -euo pipefail
 export ERL_FLAGS='+S 2:2'
 logs=$(mktemp -d /tmp/beamlet-acceptance.XXXXXX)
 printf 'Evidence directory: %s\n' "$logs"
+elixir scripts/quality/check-contracts-test.exs >"$logs/contract-tests.log" 2>&1
+elixir scripts/quality/check-contracts.exs >"$logs/contracts.log" 2>&1
 mix format --check-formatted >"$logs/format.log" 2>&1
 mix compile --warnings-as-errors >"$logs/compile.log" 2>&1
 mix test --seed 631927 >"$logs/tests.log" 2>&1

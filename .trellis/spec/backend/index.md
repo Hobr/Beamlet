@@ -59,6 +59,7 @@ commands for the change are identified.
 | [Backend CLI and Release](./backend-release.md) | CLI bounds, isolated packaging/config, named control ports and deployment evidence |
 | [State and Persistence](./database-guidelines.md) | Format3 descriptors/profiles, foundation vs domain ownership, transactions, host composition and sessions |
 | [Error Handling](./error-handling.md) | OTP startup propagation, status renderers, component feedback and gaps |
+| [Typespec Conventions](./typespec-guidelines.md) | Public/private contracts, callbacks, ownership, JSON limits, intentional discards and coverage gates |
 | [Quality Guidelines](./quality-guidelines.md) | Formatting, build/test/static-analysis commands, test examples and coverage limits |
 | [Logging and Telemetry](./logging-guidelines.md) | Request IDs, formatter, Phoenix/VM metrics, development diagnostics |
 

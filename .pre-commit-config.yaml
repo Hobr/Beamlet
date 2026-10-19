@@ -13,6 +13,20 @@ repos:
 
   - repo: local
     hooks:
+      - id: contracts-test
+        name: 'contract checker tests'
+        entry: elixir scripts/quality/check-contracts-test.exs
+        language: system
+        pass_filenames: false
+        files: '(^apps/[^/]+/lib/.*\.ex$|^scripts/quality/|^\.pre-commit-config\.yaml$|^scripts/deployment/check-local\.sh$)'
+
+      - id: contracts
+        name: 'production public and private contracts'
+        entry: elixir scripts/quality/check-contracts.exs
+        language: system
+        pass_filenames: false
+        files: '(^apps/[^/]+/lib/.*\.ex$|^scripts/quality/|^\.pre-commit-config\.yaml$|^scripts/deployment/check-local\.sh$)'
+
       - id: mix-test
         name: 'elixir test'
         entry: mix test

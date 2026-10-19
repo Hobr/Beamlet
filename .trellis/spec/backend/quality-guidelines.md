@@ -35,6 +35,7 @@ Run these from the repository root unless noted:
 | Format/check Elixir and HEEx | `mix format` / `mix format --check-formatted` (`.formatter.exs`, child formatters, `.pre-commit-config.yaml`) |
 | All app tests | `mix test` (`README.md`, pre-commit test hook) |
 | Focused web regression | `mix test apps/beamlet_app_web/test/beamlet_web/controllers/page_controller_test.exs` from the umbrella root (child-dir form is blocked by an umbrella `:only` mismatch; see below) |
+| Contract coverage and scanner regression | `elixir scripts/quality/check-contracts-test.exs` and `elixir scripts/quality/check-contracts.exs`; full public/private production scope, also wired into pre-commit and check-local; see [Typespec Conventions](./typespec-guidelines.md) |
 | Static checks | `mix dialyzer`, `mix credo`, `mix sobelow` (`.pre-commit-config.yaml`, root tool deps); root alias runs `sobelow --root apps/beamlet_app_web --private` |
 | Repository hooks | `pre-commit run --all-files` (`README.md`, `.pre-commit-config.yaml`); this includes general file hygiene, Elixir test/format hooks, Dialyzer, Credo, Sobelow, the example benchmark and CycloneDX SBoM generation |
 | Asset changes | `mix tailwind beamlet_web`, `mix esbuild beamlet_web`; add `--minify` for deploy output and `mix phx.digest` for digests. Run from the umbrella root: `cd apps/beamlet_app_web && mix assets.build` currently fails on an umbrella dependency-consistency check |
@@ -52,6 +53,8 @@ Development Endpoint watchers must also pass `:beamlet_web` to
 `:beamlet_app_web` fails profile lookup even when production asset builds pass.
 
 Umbrella child-directory commands are unreliable: `apps/beamlet_app_web` and `apps/beamlet_cli` declare `beamlet_runtime` (and CLI also `beamlet_harness`) with `only: :test`, while `apps/beamlet_node` declares `beamlet_runtime` without it, so Mix aborts any task started inside those child directories ("does not match the :only option calculated"). Root-level equivalents are authoritative until that pre-existing manifest inconsistency is resolved; do not silently drop the restriction just to make a child command run.
+
+Root formatting also covers `scripts/quality/*.exs`. The contract hooks run once with `pass_filenames: false` and trigger on production `.ex` paths, all `scripts/quality/` files, `.pre-commit-config.yaml` and `scripts/deployment/check-local.sh`. Default `mix dialyzer` includes `:unmatched_returns` and `:unknown` alongside default warnings; no global warning suppression is used.
 
 The local hooks use system `mix`; test and format hooks match Elixir files.
 Dialyzer, Credo, Sobelow, benchmark and SBoM hooks also match root `mix.lock`
