@@ -1,4 +1,103 @@
 defmodule Beamlet.Agent.Display do
+  @typedoc "Public labels only; sizes, exact keys and distinct Tool IDs require metadata?/1."
+  @type metadata :: %{
+          optional(:title) => binary(),
+          optional(:preset_id) => binary(),
+          optional(:option_ids) => %{
+            optional(:model) => binary(),
+            optional(:environment) => binary(),
+            optional(:constraints) => binary(),
+            optional(:tools) => [binary()]
+          }
+        }
+  @typep annotation :: %{id: reference(), turn: Beamlet.Agent.turn()}
+  @typep call :: %{id: binary(), name: binary(), arguments: binary(), truncated: boolean()}
+  @typep entry :: %{
+           id: reference(),
+           turn: Beamlet.Agent.turn(),
+           role: binary(),
+           content: binary() | nil,
+           call_id: binary() | nil,
+           calls: [call()],
+           truncated: boolean()
+         }
+  @typep activity :: %{
+           required(:id) => reference() | binary() | non_neg_integer(),
+           required(:kind) => :model | :tool | :child,
+           required(:turn) => Beamlet.Agent.turn(),
+           required(:status) => :pending | :admitting | :running | :starting | :completed,
+           required(:placement) => :unknown,
+           required(:truncated) => boolean(),
+           optional(:operation) => Beamlet.Actions.OperationRef.t() | nil,
+           optional(:attempt) => binary() | nil,
+           optional(:child) => Beamlet.Agent.Ref.t() | nil,
+           optional(:child_turn) => Beamlet.Agent.turn(),
+           optional(:name) => binary(),
+           optional(:arguments) => binary(),
+           optional(:result) => binary() | nil,
+           optional(:result_omitted) => :unsupported_content | nil
+         }
+  @typep display :: %{
+           version: 1,
+           coverage: :live_context,
+           metadata: metadata(),
+           entries: [entry()],
+           activities: [activity()],
+           omitted: %{entries: non_neg_integer(), activities: non_neg_integer()},
+           truncated: boolean(),
+           reasons: [atom()]
+         }
+  @typedoc "Display can be omitted entirely or replaced by a budget marker; base final/progress remain open."
+  @type snapshot :: %{
+          required(:ref) => Beamlet.Agent.Ref.t(),
+          required(:turn) => Beamlet.Agent.turn(),
+          required(:terminal_turn) => Beamlet.Agent.turn(),
+          required(:status) => atom(),
+          required(:steps) => non_neg_integer(),
+          required(:final) => term(),
+          required(:progress) => term(),
+          optional(:display) =>
+            display()
+            | %{version: 1, coverage: :live_context, truncated: true, reason: :snapshot_budget}
+        }
+  @spec metadata?(term()) :: boolean()
+  @spec option_ids?(term()) :: boolean()
+  @spec labels?(term(), integer()) :: boolean()
+  @spec label?(term()) :: boolean()
+  @spec annotate(Beamlet.Agent.Server.state(), [Beamlet.Harness.Model.json_object()]) ::
+          Beamlet.Agent.Server.state()
+  @spec project(Beamlet.Agent.snapshot(), Beamlet.Agent.Server.state()) :: snapshot()
+  @spec field_truncated?(entry() | activity()) :: boolean()
+  @spec unsupported_content?(entry() | activity()) :: boolean()
+  @spec reason([atom()], boolean(), atom()) :: [atom()]
+  @spec fit(Beamlet.Agent.snapshot(), Beamlet.Agent.Server.state(), display()) :: snapshot()
+  @spec compact(Beamlet.Agent.snapshot(), Beamlet.Agent.Server.state()) :: snapshot()
+  @spec omit(display(), :entries | :activities) :: display()
+  @spec byte_omission(display()) :: display()
+  @spec entry(Beamlet.Harness.Model.json_object(), annotation()) :: entry()
+  @spec call(Beamlet.Harness.Model.json_object()) :: call()
+  @spec activities(Beamlet.Agent.Server.state()) :: [activity()]
+  @spec model_activities(Beamlet.Agent.Server.state()) :: [activity()]
+  @spec tool_activities(Beamlet.Agent.Server.state()) :: [activity()]
+  @spec child_activities(Beamlet.Agent.Server.state()) :: [activity()]
+  @spec completed_children(Beamlet.Agent.Server.state()) :: [activity()]
+  @spec render_result(term()) :: %{
+          result: binary() | nil,
+          truncated: boolean(),
+          result_omitted: :unsupported_content | nil
+        }
+  @spec pending_owner(Beamlet.Agent.Server.state(), pid()) :: Beamlet.Agent.Server.pending() | nil
+  @spec tool_activity?(
+          Beamlet.Agent.Server.state(),
+          binary(),
+          Beamlet.Agent.Server.pending() | nil,
+          Beamlet.Harness.Model.json_object() | nil
+        ) :: Beamlet.Agent.Server.pending() | Beamlet.Harness.Model.json_object() | boolean()
+  @spec pending_tool(Beamlet.Agent.Server.state(), binary()) ::
+          Beamlet.Agent.Server.pending() | nil
+  @spec cond_status(term(), term()) :: :completed | :pending | :admitting
+  @spec text(binary() | nil) :: {binary() | nil, boolean()}
+  @spec utf8_prefix(binary()) :: binary()
   @moduledoc """
   Bounded, replacement-only display of live Agent context, never model history.
 

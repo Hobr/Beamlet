@@ -1,4 +1,17 @@
 defmodule Beamlet.Agent.History do
+  @typep object :: Beamlet.Agent.Core.Data.object()
+  @typep result(value) :: Beamlet.Agent.result(value)
+  @spec query(term(), term(), term()) :: result(object())
+  @spec turns(term(), keyword()) :: result(object())
+  @spec turn_events(term(), term(), keyword()) :: result(object())
+  @spec view(term()) :: {:ok, binary()} | {:error, :invalid_data}
+  @spec position(object(), map(), term(), binary()) ::
+          {:ok, pos_integer(), non_neg_integer()} | {:error, :invalid_data}
+  @spec dispatch(binary(), module(), binary(), pos_integer(), non_neg_integer(), map()) ::
+          result(object())
+  @spec known_operation?(object(), term()) :: boolean()
+  @spec operations(module(), binary(), [object()], pos_integer()) :: result([object()])
+  @spec operation_projection(module(), binary(), object(), pos_integer()) :: result(object())
   @moduledoc "Read-only fixed-high-water facts and reference-derived context, independent of live providers."
   alias Beamlet.Agent.ContextBuilder
   alias Beamlet.Agent.Loader

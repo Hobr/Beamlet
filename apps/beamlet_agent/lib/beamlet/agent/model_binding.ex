@@ -1,4 +1,23 @@
 defmodule Beamlet.Agent.ModelBinding do
+  @typedoc "Portable immutable provider configuration; adapter resolution belongs to the authority."
+  @type t :: %{
+          required(:provider) => binary(),
+          required(:config) => Beamlet.Harness.Model.json_object(),
+          optional(:credentials) => Beamlet.Harness.Model.json_object(),
+          optional(:placement) => placement()
+        }
+  @type placement :: %{
+          optional(:environment) => binary() | nil,
+          optional(:allowed_nodes) => [node()] | nil,
+          optional(:claims) => %{optional(binary()) => pos_integer()}
+        }
+  @spec registry() :: Beamlet.Harness.Model.registry()
+  @spec portable?(term()) :: boolean()
+  @spec valid?(term()) :: boolean()
+  @spec invocation(map()) :: %{config: term(), credentials: term()}
+  @spec validate(module(), term()) :: :ok | {:error, :invalid_invocation}
+  @spec validate_adapter(module(), Beamlet.Harness.Model.invocation()) ::
+          :ok | {:error, :invalid_invocation}
   @moduledoc "Validation of the immutable authority-owned model binding."
   alias Beamlet.Actions.Operation
   alias Beamlet.Harness.Model

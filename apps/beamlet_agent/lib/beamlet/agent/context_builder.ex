@@ -1,4 +1,17 @@
 defmodule Beamlet.Agent.ContextBuilder do
+  @typep object :: Beamlet.Agent.Core.Data.object()
+  @typep result(value) :: Beamlet.Agent.result(value)
+  @spec complete_boundary(term()) :: :ok | {:error, :unsafe_position}
+  @spec observation(term(), term()) :: result(binary())
+  @spec reply(term()) :: result(Beamlet.Agent.Core.Context.decoded_reply())
+  @spec build(module(), object(), Beamlet.Harness.Catalogue.t()) ::
+          result(Beamlet.Agent.Core.Context.built())
+  @spec materialize(module(), object()) :: result([Beamlet.Harness.Model.json_object()])
+  @spec load(module(), object()) :: result(Beamlet.Agent.Core.Context.accumulator())
+  @spec load_next(module(), object(), object(), {:ok, Beamlet.Agent.Core.Context.accumulator()}) ::
+          {:cont, {:ok, Beamlet.Agent.Core.Context.accumulator()}}
+          | {:halt, Beamlet.Agent.error()}
+  @spec material(module(), object(), object()) :: result(object())
   @moduledoc "Loads and verifies context sources before applying the pure conversation policy."
   alias Beamlet.Agent.Core.Context
   alias Beamlet.Agent.Loader

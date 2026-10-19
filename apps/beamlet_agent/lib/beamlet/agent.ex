@@ -1,4 +1,68 @@
 defmodule Beamlet.Agent do
+  @typedoc "Turn tokens are incarnation-local references or persisted UUIDs."
+  @type turn :: reference() | binary() | nil
+  @typedoc "Errors preserve storage and adapter reasons, including structured blocked reasons."
+  @type error :: {:error, term()}
+  @type result(value) :: {:ok, value} | error()
+  @typedoc "Open command reply: each command selects its own result, while raw command/2 remains an extension boundary."
+  @type command_result :: :ok | result(term())
+  @typedoc "A durable locator may additionally carry trusted live model, Tool and runtime configuration."
+  @type locator :: %{
+          required(:repo) => module(),
+          required(:agent_id) => binary(),
+          optional(:model) => Beamlet.Agent.ModelBinding.t(),
+          optional(:tools) => %{optional(binary()) => Beamlet.Agent.Integration.Caller.profile()},
+          optional(:catalogue) => Beamlet.Harness.Catalogue.t(),
+          optional(:runtime) => Beamlet.Agent.Durable.runtime(),
+          optional(:source) => %{environment: :confirmed_stopped | :unconfirmed},
+          optional(:environment) => term()
+        }
+  @type snapshot :: %{
+          ref: Beamlet.Agent.Ref.t(),
+          turn: turn(),
+          terminal_turn: turn(),
+          status: :idle | :running | :waiting | :paused | :done | :error | :stopped,
+          steps: non_neg_integer(),
+          final: term(),
+          progress: term()
+        }
+  @type child_specification :: %{
+          required(:authority) => node(),
+          required(:options) => keyword(),
+          required(:input) => binary(),
+          optional(:launcher) => pid()
+        }
+  @spec start(node(), term()) :: result(Beamlet.Agent.Ref.t())
+  @spec start_local(term()) :: result(Beamlet.Agent.Ref.t())
+  @spec remote_start(node(), term()) :: result(Beamlet.Agent.Ref.t())
+  @spec list(term()) :: result([Beamlet.Agent.Discovery.descriptor()])
+  @spec lookup(term(), term()) :: result(Beamlet.Agent.Ref.t())
+  @spec lookup(term()) :: result(Beamlet.Agent.Ref.t())
+  @spec close(Beamlet.Agent.Ref.t()) :: :ok | error()
+  @spec input(Beamlet.Agent.Ref.t(), term()) :: result(turn())
+  @spec input(Beamlet.Agent.Ref.t(), term(), term()) :: result(turn())
+  @spec delegate(Beamlet.Agent.Ref.t(), term(), keyword()) :: result(reference())
+  @spec peer_request(Beamlet.Agent.Ref.t(), Beamlet.Agent.Ref.t(), term(), term()) ::
+          result(reference())
+  @spec peer_reply(Beamlet.Agent.Ref.t(), reference(), term()) :: :ok | error()
+  @spec peer_take(Beamlet.Agent.Ref.t(), reference()) :: result(term())
+  @spec inbox(Beamlet.Agent.Ref.t()) :: result(%{optional(reference()) => term()})
+  @spec snapshot(Beamlet.Agent.Ref.t()) :: result(snapshot())
+  @spec snapshot(Beamlet.Agent.Ref.t(), term()) :: result(Beamlet.Agent.Display.snapshot())
+  @spec stop_turn(Beamlet.Agent.Ref.t()) :: :ok | error()
+  @spec subscribe(Beamlet.Agent.Ref.t(), term()) :: :ok | error()
+  @spec subscribe(Beamlet.Agent.Ref.t(), term(), term()) :: :ok | error()
+  @spec unsubscribe(Beamlet.Agent.Ref.t(), term()) :: :ok | error()
+  @spec ack(Beamlet.Agent.Ref.t(), term()) :: :ok | error()
+  @spec restore(term(), term(), term()) :: result(Beamlet.Agent.Ref.t())
+  @spec inactive(term()) :: :ok | {:error, :already_active}
+  @spec start_restored(locator(), Beamlet.Agent.Durable.restored()) ::
+          result(Beamlet.Agent.Ref.t())
+  @spec fork(locator(), term(), term(), term()) :: result(Beamlet.Agent.Durable.forked())
+  @spec history(term(), term(), term()) :: result(Beamlet.Agent.Core.Data.object())
+  @spec export(map(), term(), term()) :: result(Beamlet.Agent.Core.Data.object())
+  @spec continue(Beamlet.Agent.Ref.t(), term(), term(), term()) :: result(snapshot())
+  @spec command(Beamlet.Agent.Ref.t(), term()) :: command_result()
   @moduledoc "Explicit authority, bounded asynchronous Agents and opt-in paused durable recovery."
   alias Beamlet.Agent.Durable
   alias Beamlet.Agent.History

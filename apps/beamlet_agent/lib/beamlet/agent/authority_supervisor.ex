@@ -1,4 +1,6 @@
 defmodule Beamlet.Agent.AuthoritySupervisor do
+  @spec start_link(keyword()) :: Supervisor.on_start()
+  @spec init(keyword()) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}}
   alias Beamlet.Harness.Model
   @moduledoc "Opt-in identity island; Registry loss invalidates all temporary Agents."
   use Supervisor

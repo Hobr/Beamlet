@@ -1,4 +1,18 @@
 defmodule Beamlet.Agent.Integration.Caller do
+  @typedoc "Portable Tool placement, without local settings or workspace roots."
+  @type profile :: %{
+          required(:id) => binary(),
+          required(:capability) => binary(),
+          # Operation validates placement as bounded data, not only text labels.
+          optional(:environment) => term(),
+          optional(:claims) => %{optional(binary()) => pos_integer()},
+          optional(:allowed_nodes) => [node()] | nil
+        }
+  @typep result :: {:ok, Beamlet.Actions.Operation.t()} | {:error, atom()}
+  @spec profile?(term()) :: boolean()
+  @spec operation(term(), term()) :: result()
+  @spec operation(term(), term(), pos_integer()) :: result()
+  @spec bounded(result(), pos_integer()) :: result()
   @moduledoc "Construct bounded model invocations and opaque Tool Operations."
   alias Beamlet.Actions.Operation
   alias Beamlet.Agent.Storage.Codec

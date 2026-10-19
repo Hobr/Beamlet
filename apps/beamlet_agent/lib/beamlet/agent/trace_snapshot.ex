@@ -1,4 +1,43 @@
 defmodule Beamlet.Agent.TraceSnapshot do
+  @typedoc "Fixed high waters plus explicit missing closure members; no execution permission."
+  @type t :: %{
+          agent: Beamlet.Agent.Core.Data.object(),
+          events: [Beamlet.Agent.Core.Data.object()],
+          control: Beamlet.Agent.Core.Reducer.state(),
+          operations: [Beamlet.Agent.Core.Data.object()],
+          inputs: [Beamlet.Agent.Core.Data.object()],
+          artifacts: [Beamlet.Storage.Schema.Artifact.t()],
+          missing: [Beamlet.Agent.Core.Data.object()]
+        }
+  @typep object :: Beamlet.Agent.Core.Data.object()
+  @typep state :: %{
+           operations: %{optional(binary()) => object()},
+           inputs: %{optional(binary()) => object()},
+           artifacts: %{optional(binary()) => Beamlet.Storage.Schema.Artifact.t()},
+           missing: [object()],
+           inherited: [object()],
+           bytes: non_neg_integer(),
+           deadline: integer()
+         }
+  @typep result(value) :: Beamlet.Agent.result(value)
+  @spec capture(module(), term()) :: result(t())
+  @spec pages(module(), binary(), pos_integer(), non_neg_integer(), [object()], non_neg_integer()) ::
+          result([object()])
+  @spec operations(module(), [object()], state()) :: result(state())
+  @spec operation(module(), object(), state()) :: result(state())
+  @spec capture_operation(module(), object(), state()) :: result(state())
+  @spec valid_evidence(term()) :: :ok | {:error, :invalid_reference}
+  @spec valid_operation(term(), term(), term()) :: :ok | {:error, :invalid_reference}
+  @spec valid_accepted(term(), term()) :: :ok | {:error, :invalid_reference}
+  @spec sources(module(), binary(), [object()], state()) :: result(state())
+  @spec source(module(), binary(), term(), state()) :: result(state())
+  @spec inherited_inputs(module(), state()) :: result(state())
+  @spec artifacts(module(), term(), state()) :: result(state())
+  @spec artifact_outcome(module(), binary(), {:ok, state()}) ::
+          {:cont, {:ok, state()}} | {:halt, Beamlet.Agent.error()}
+  @spec artifact(module(), binary(), state()) :: result(state())
+  @spec charge(state(), term()) :: {:ok, state()} | {:error, :limit}
+  @spec missing(state(), binary(), binary() | nil, atom() | binary()) :: state()
   @moduledoc false
   alias Beamlet.Agent.Reducer
   alias Beamlet.Agent.Storage.AgentRecords

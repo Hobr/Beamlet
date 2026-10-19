@@ -1,4 +1,31 @@
 defmodule Beamlet.Agent.Delegation do
+  @typep spec :: Beamlet.Agent.child_specification()
+  @typep outcome :: :ok | Beamlet.Agent.error()
+  @spec launch(pid(), reference(), non_neg_integer(), spec(), pid()) :: :ok
+  @spec admit(pid(), reference(), non_neg_integer(), spec(), pid()) :: :ok | tuple()
+  @spec relay(pid(), reference(), pid(), reference()) :: :ok
+  @spec run(pid(), reference(), non_neg_integer(), spec()) ::
+          Beamlet.Agent.command_result() | tuple()
+  @spec startup(reference()) :: outcome()
+  @spec startup_clear() :: outcome()
+  @spec await(
+          pid(),
+          reference(),
+          reference(),
+          reference(),
+          non_neg_integer(),
+          Beamlet.Agent.Ref.t(),
+          Beamlet.Agent.turn()
+        ) :: Beamlet.Agent.command_result() | tuple()
+  @spec finish(
+          pid(),
+          reference(),
+          non_neg_integer(),
+          Beamlet.Agent.Ref.t(),
+          Beamlet.Agent.turn(),
+          Beamlet.Agent.result(term())
+        ) :: tuple()
+  @spec cleanup(Beamlet.Agent.Ref.t()) :: :ok | Beamlet.Agent.error()
   @moduledoc false
   alias Beamlet.Agent.Lifecycle
   # One bounded helper per owned child, never one per subscriber or event.
@@ -109,7 +136,8 @@ defmodule Beamlet.Agent.Delegation do
   defp await(parent, pm, cm, group, id, child, turn) do
     receive do
       {:beamlet_agent, ^child, seq, {:snapshot, snapshot}} ->
-        Beamlet.Agent.ack(child, seq)
+        # Credits are best-effort; the snapshot and monitors drive completion.
+        _ = Beamlet.Agent.ack(child, seq)
 
         cond do
           snapshot.turn == turn and snapshot.status == :done ->
@@ -141,13 +169,15 @@ defmodule Beamlet.Agent.Delegation do
   end
 
   defp finish(parent, group, id, child, turn, result) do
-    cleanup(child)
+    # Cleanup cannot replace the already selected child result.
+    _ = cleanup(child)
     send(parent, {:delegation_result, group, id, child, turn, result})
   end
 
   defp cleanup(child) do
-    Beamlet.Agent.stop_turn(child)
-    Beamlet.Agent.unsubscribe(child)
+    # Attempt every retirement step even when an earlier live reference has expired.
+    _ = Beamlet.Agent.stop_turn(child)
+    _ = Beamlet.Agent.unsubscribe(child)
     Beamlet.Agent.close(child)
   end
 end

@@ -1,4 +1,32 @@
 defmodule Beamlet.Agent.Discovery do
+  @type descriptor :: %{authority: node(), id: binary(), pid: pid()}
+  @typep result ::
+           {:ok, [descriptor()] | Beamlet.Agent.Ref.t()}
+           | {:error,
+              :invalid_query
+              | :unavailable
+              | :timeout
+              | :not_authority
+              | :limit
+              | :stale_agent
+              | :not_found}
+  @spec budget() :: 5000
+  @spec bytes() :: 1_048_576
+  @spec now() :: integer()
+  @spec remaining(integer()) :: non_neg_integer()
+  @spec valid_id?(term()) :: boolean()
+  @spec list(term()) :: {:ok, [descriptor()]} | {:error, atom()}
+  @spec lookup(term(), term(), term()) :: {:ok, Beamlet.Agent.Ref.t()} | {:error, atom()}
+  @spec lookup(term()) :: {:ok, Beamlet.Agent.Ref.t()} | {:error, atom()}
+  @spec query(term(), term()) :: result()
+  @spec bounded_request(node(), term()) :: result()
+  @spec request(node(), term(), integer()) :: result()
+  @spec query_local(term(), term()) :: result()
+  @spec validate_result(result(), pid(), integer()) :: result()
+  @spec valid_query?(term()) :: boolean()
+  @spec local(:list | {:lookup, binary(), pid() | nil}, integer()) :: result()
+  @spec fetch_ref(pid(), binary(), integer()) :: {:ok, Beamlet.Agent.Ref.t()} | {:error, atom()}
+  @spec call_ref(pid(), binary(), integer()) :: {:ok, Beamlet.Agent.Ref.t()} | {:error, atom()}
   @moduledoc false
   alias Beamlet.Agent.Ref
   @budget 5000

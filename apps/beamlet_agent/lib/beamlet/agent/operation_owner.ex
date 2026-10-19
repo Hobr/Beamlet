@@ -1,4 +1,8 @@
 defmodule Beamlet.Agent.OperationOwner do
+  @spec run(pid(), reference(), Beamlet.Actions.Operation.t(), pid(), keyword()) :: :ok
+  @spec submit(pid(), reference(), Beamlet.Actions.Operation.t(), keyword()) ::
+          {:operation_failed, reference(), {:error, atom()}}
+  @spec await(Beamlet.Actions.OperationRef.t()) :: no_return()
   @moduledoc false
   alias Beamlet.Agent.Lifecycle
 
@@ -34,7 +38,8 @@ defmodule Beamlet.Agent.OperationOwner do
   defp await(ref) do
     receive do
       {:ack, seq} ->
-        Beamlet.Runtime.ack(ref, seq)
+        # Credit acknowledgement is best-effort against a possibly expired Ref.
+        _ = Beamlet.Runtime.ack(ref, seq)
         await(ref)
     end
   end

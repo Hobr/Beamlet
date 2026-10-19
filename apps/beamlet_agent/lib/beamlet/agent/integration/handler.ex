@@ -1,4 +1,6 @@
 defmodule Beamlet.Agent.Integration.Handler do
+  @spec run(term(), Beamlet.Actions.Handler.context()) :: {:ok, term()} | {:error, term()}
+  @spec native(Beamlet.Actions.Handler.context()) :: Beamlet.Harness.Context.t()
   alias Beamlet.Agent.ModelBinding
   @moduledoc "Executor adapter resolving only locally installed trusted providers and Tools."
   @behaviour Beamlet.Actions.Handler

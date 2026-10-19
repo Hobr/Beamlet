@@ -1,4 +1,71 @@
 defmodule Beamlet.Agent.TraceExport do
+  @typep object :: Beamlet.Agent.Core.Data.object()
+  @typedoc "Snapshot with stable Agent/Operation high waters, captured before filesystem writes."
+  @type fixed :: %{
+          repo: module(),
+          agent_id: binary(),
+          history_seq: pos_integer(),
+          agent: object(),
+          events: [object()],
+          control: object(),
+          operations: [object()],
+          inputs: [object()],
+          artifacts: [Beamlet.Storage.Schema.Artifact.t()],
+          missing: [object()]
+        }
+  @typep policy :: %{
+           dir: binary(),
+           page: pos_integer(),
+           page_bytes: pos_integer(),
+           redaction: :none | :drop_content
+         }
+  @typep result(value) :: Beamlet.Agent.result(value)
+  @typep check :: :ok | Beamlet.Agent.error()
+  @typep files :: %{optional(binary()) => [object()]}
+  @typep artifacts :: %{optional(binary()) => binary()}
+  @typep writer :: %{count: non_neg_integer(), hash: :crypto.hash_state(), oversized: [object()]}
+  @spec begin(module(), term()) :: result(fixed())
+  @spec export(module(), term(), term()) :: result(object())
+  @spec write(fixed(), term()) :: result(object())
+  @spec policy(term()) :: result(policy())
+  @spec valid_dir?(term()) :: boolean()
+  @spec exceeds_page_bounds?(pos_integer(), pos_integer()) :: boolean()
+  @spec valid_page_bounds?(term(), term()) :: boolean()
+  @spec records(fixed()) :: files()
+  @spec write_files(fixed(), policy()) :: result(object())
+  @spec write_lines(binary(), [object()], policy()) :: result(object())
+  @spec write_page(IO.device(), [object()], binary(), policy(), writer()) :: result(writer())
+  @spec oversized(binary(), policy(), binary(), writer()) :: [object()]
+  @spec reduce_outcome(result(value)) :: {:cont, {:ok, value}} | {:halt, Beamlet.Agent.error()}
+        when value: var
+  @spec redact(binary(), object(), :none | :drop_content) :: object()
+  @spec write_artifacts(fixed(), policy()) :: result([object()])
+  @spec write_artifact(Beamlet.Storage.Schema.Artifact.t(), {:ok, [object()]}, binary()) ::
+          {:cont, {:ok, [object()]}} | {:halt, Beamlet.Agent.error()}
+  @spec manifest(fixed(), policy(), object(), [object()]) :: object()
+  @spec verify(binary()) :: result(object())
+  @spec header(object()) :: check()
+  @spec valid_identity?(object()) :: boolean()
+  @spec valid_collections?(object()) :: boolean()
+  @spec valid_artifact_list?(term()) :: boolean()
+  @spec package_budget(binary(), object()) :: check()
+  @spec valid_highwater?(term()) :: boolean()
+  @spec verify_files(binary(), object()) :: result(files())
+  @spec lines(binary()) :: result([object()])
+  @spec verify_artifacts(binary(), object()) :: result(artifacts())
+  @spec content(object(), files(), artifacts()) :: check()
+  @spec verify_content(term(), files(), artifacts()) :: check()
+  @spec valid_operation_record?(term()) :: boolean()
+  @spec covered_artifacts?([binary()], artifacts(), [object()]) :: boolean()
+  @spec covered_operations?(object(), [object()], [object()]) :: boolean()
+  @spec omitted?([object()], binary(), binary()) :: boolean()
+  @spec empty_directory(binary()) :: check()
+  @spec mkdir(binary()) :: check()
+  @spec file_write(binary(), iodata()) :: check()
+  @spec normalize_file(term()) :: :ok | {:error, :invalid_data}
+  @spec read_file(binary(), pos_integer()) :: result(binary())
+  @spec decode(binary()) :: result(object())
+  @spec digest(:crypto.hash_state()) :: binary()
   @moduledoc "Format-2, bounded offline trace packages. Begin captures fixed Agent/Operation high waters before writing pages."
   alias Beamlet.Agent.Reducer
   alias Beamlet.Agent.Storage.Codec

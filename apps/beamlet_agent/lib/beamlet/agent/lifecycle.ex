@@ -1,4 +1,16 @@
 defmodule Beamlet.Agent.Lifecycle do
+  @typep resources :: %{optional(reference()) => pid()}
+  @spec run(
+          pid(),
+          (pid() -> term()),
+          pid(),
+          :operation | :delegation,
+          {binary(), non_neg_integer()} | nil
+        ) :: :ok
+  @spec start_worker(pid(), (pid() -> term()), pid(), [reference()]) :: :ok
+  @spec loop(pid(), pid(), reference(), [reference()], resources(), :ready | [tuple()]) :: :ok
+  @spec retire(resources()) :: :ok
+  @spec await_down(resources()) :: :ok
   @moduledoc false
 
   # The controller never calls infrastructure. Every blocking call belongs to its

@@ -1,4 +1,35 @@
 defmodule Beamlet.Agent.Resources do
+  @typep monitors :: %{optional(reference()) => pid()}
+  @typep identity :: {binary(), non_neg_integer()} | nil
+  @typep waiter :: {GenServer.from(), binary(), non_neg_integer()}
+  @typep state :: %{
+           slots: monitors(),
+           processes: monitors(),
+           groups: %{optional(reference()) => reference()},
+           agents: monitors(),
+           rejected: %{optional(reference()) => {pid(), pid()}},
+           kinds: %{optional(reference()) => :operation | :delegation},
+           identities: %{optional(reference()) => identity()},
+           waiters: [waiter()]
+         }
+  @typep transition :: {:noreply, state()}
+  @typep response :: {:reply, :ok | {:error, :limit | :already_active}, state()} | transition()
+  @spec start_link(keyword()) :: GenServer.on_start()
+  @spec fence_agent(binary(), non_neg_integer()) ::
+          :ok | {:error, :owners_retiring | :limit | :already_active}
+  @spec init(term()) :: {:ok, state()}
+  @spec handle_call({:fence_agent, binary(), non_neg_integer()}, GenServer.from(), state()) ::
+          response()
+  @spec fence_slots(state(), [reference()], waiter()) :: response()
+  @spec handle_info(term(), state()) :: transition()
+  @spec track(pid(), pid(), state()) :: transition()
+  @spec register(pid(), reference(), pid(), :operation | :delegation, identity(), state()) ::
+          transition()
+  @spec identity_matches?(term(), binary(), non_neg_integer()) :: boolean()
+  @spec reply_fences(state()) :: state()
+  @spec terminate(term(), state()) :: :ok
+  @spec remember(state()) :: :ok
+  @spec drain(monitors()) :: :ok
   @moduledoc false
   use GenServer
   @generation {__MODULE__, :generation}

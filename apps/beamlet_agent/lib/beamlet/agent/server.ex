@@ -1,4 +1,203 @@
 defmodule Beamlet.Agent.Server do
+  @typedoc "Live private orchestration state, including empty startup and paused restored states. Payloads/final reasons stay open because native providers and peer messages are extensible."
+  @type state :: %{
+          ref: Beamlet.Agent.Ref.t(),
+          catalogue: Beamlet.Harness.Catalogue.t(),
+          model: Beamlet.Agent.ModelBinding.t(),
+          tools: %{optional(binary()) => Beamlet.Agent.Integration.Caller.profile()},
+          messages: [Beamlet.Harness.Model.json_object()],
+          execution_blocked: boolean(),
+          display_entries: [%{id: reference(), turn: Beamlet.Agent.turn()}],
+          display_metadata: Beamlet.Agent.Display.metadata(),
+          turn: Beamlet.Agent.turn(),
+          terminal_turn: Beamlet.Agent.turn(),
+          status: :idle | :running | :waiting | :paused | :done | :error | :stopped,
+          steps: non_neg_integer(),
+          pending: %{optional(binary()) => pending()},
+          owners: %{optional(reference()) => owner()},
+          authority_resources: pid() | nil,
+          operation_limit: pos_integer(),
+          order: [binary()],
+          results: %{
+            optional(binary() | non_neg_integer()) =>
+              Beamlet.Harness.Model.json_object() | child_result()
+          },
+          subscribers: %{optional(pid()) => subscriber()},
+          sequence: non_neg_integer(),
+          assistant: Beamlet.Harness.Model.json_object() | nil,
+          children: children(),
+          helpers: %{optional(reference()) => pid()},
+          continuation: boolean(),
+          delegator: reference() | nil,
+          peers: %{
+            optional(reference()) => %{
+              target: Beamlet.Agent.Ref.t(),
+              turn: Beamlet.Agent.turn(),
+              monitor: reference()
+            }
+          },
+          inbox: %{optional(reference()) => term()},
+          progress:
+            %{operation_id: binary(), tool: key(), attempt: binary(), value: term()} | nil,
+          final: term(),
+          durable: Beamlet.Agent.Durable.t() | nil,
+          durable_batch: %{
+            optional(binary()) => %{
+              required(:prepared) => Beamlet.Runtime.Persistence.prepared(),
+              optional(:operation) => Beamlet.Actions.Operation.t()
+            }
+          },
+          restored_pending: [Beamlet.Agent.Core.Data.value()],
+          durable_continuation: binary()
+        }
+  @type pending :: %{
+          ref: Beamlet.Actions.OperationRef.t(),
+          key: key(),
+          turn: Beamlet.Agent.turn(),
+          owner: pid(),
+          monitor: reference(),
+          attempt: binary() | nil,
+          sequence: non_neg_integer()
+        }
+  @type owner :: %{
+          required(:pid) => pid(),
+          required(:monitor) => reference(),
+          required(:key) => key(),
+          required(:turn) => Beamlet.Agent.turn(),
+          optional(:completed) => boolean()
+        }
+  @type child_result :: %{
+          child: Beamlet.Agent.Ref.t() | nil,
+          turn: Beamlet.Agent.turn(),
+          result: Beamlet.Agent.result(term())
+        }
+  @typep subscriber :: %{
+           monitor: reference(),
+           outstanding: MapSet.t(non_neg_integer()),
+           dirty: boolean(),
+           view: :default | :display
+         }
+  @typep children :: %{
+           optional(non_neg_integer()) => %{
+             required(:pid) => pid(),
+             required(:monitor) => reference(),
+             optional(:ref) => Beamlet.Agent.Ref.t(),
+             optional(:turn) => Beamlet.Agent.turn()
+           }
+         }
+  @typep key :: :model | binary()
+  @typep object :: Beamlet.Agent.Core.Data.object()
+  @typep response ::
+           {:reply, Beamlet.Agent.command_result(), state()} | {:stop, :normal, :ok, state()}
+  @typep transition :: {:noreply, state()} | {:stop, :normal, state()}
+  @typep dispatch ::
+           :ephemeral
+           | {:persistence, Beamlet.Runtime.Persistence.t()}
+           | Beamlet.Runtime.Persistence.prepared()
+  @spec start_link(term()) :: GenServer.on_start()
+  @spec deployment_limit() :: {:ok, pos_integer()} | {:error, :runtime_unavailable}
+  @spec init({keyword(), pos_integer()}) :: {:ok, state()} | {:stop, :invalid_agent_options}
+  @spec valid_options?(term(), (term() -> boolean())) :: boolean()
+  @spec valid_keyword_options?(keyword(), (term() -> boolean())) :: boolean()
+  @spec valid_option_keys?(keyword()) :: boolean()
+  @spec valid_delegator?(term()) :: boolean()
+  @spec valid_durable_pair?(term(), term()) :: boolean()
+  @spec valid_tools?(term()) :: boolean()
+  @spec valid_id?(term()) :: boolean()
+  @spec delegation_specs?(term()) :: boolean()
+  @spec delegation_spec?(term()) :: boolean()
+  @spec start_children([Beamlet.Agent.child_specification()], reference(), pid()) ::
+          {:ok, children()}
+  @spec start_delegation(
+          pid(),
+          reference(),
+          {Beamlet.Agent.child_specification(), non_neg_integer()},
+          children(),
+          pid()
+        ) :: {:cont, {:ok, children()}}
+  @spec handle_call(term(), GenServer.from(), state()) :: response()
+  @spec control(term(), state()) :: response()
+  @spec handle_info(term(), state()) :: transition()
+  @spec completed_owner(%{optional(reference()) => owner()}, pid()) :: %{
+          optional(reference()) => owner()
+        }
+  @spec progress_valid?(pending(), term(), term(), term(), Beamlet.Actions.OperationRef.t()) ::
+          boolean()
+  @spec delegation_available?(state()) :: boolean()
+  @spec accept_delegation(state(), reference(), children(), keyword()) :: response()
+  @spec joined(state()) :: state()
+  @spec append_child_observations([object()], [map()]) :: Beamlet.Agent.result([object()])
+  @spec child_observation({non_neg_integer(), child_result()}) :: %{
+          status: :ok | :error,
+          value: term()
+        }
+  @spec dispatch(
+          state(),
+          Beamlet.Agent.ModelBinding.t() | Beamlet.Agent.Integration.Caller.profile(),
+          term(),
+          key()
+        ) :: state()
+  @spec step_dispatch(state()) :: :ephemeral
+  @spec start_operation(state(), Beamlet.Actions.Operation.t(), key(), dispatch()) :: state()
+  @spec dispatch_options(state(), dispatch()) :: Beamlet.Agent.result(keyword())
+  @spec canonical_reply(term(), Beamlet.Harness.Catalogue.t()) ::
+          {:ok,
+           %{
+             kind: :text | :tool_calls,
+             content: binary() | nil,
+             calls: [Beamlet.Harness.Model.call()],
+             assistant: object()
+           }}
+          | {:error, :invalid_reply}
+  @spec complete(state(), key(), Beamlet.Actions.Result.t() | %{operation_id: binary()}) ::
+          state()
+  @spec complete_durable_model(state(), %{operation_id: binary()}) :: state()
+  @spec complete_model_error(state(), object()) :: state()
+  @spec complete_model_output(state(), object()) :: state()
+  @spec complete_reply(state(), term()) :: state()
+  @spec complete_tool(state(), binary(), binary()) :: state()
+  @spec apply_consumption(state(), [object()]) :: state()
+  @spec batch(state(), object()) :: state()
+  @spec tool_operations(state(), [Beamlet.Harness.Model.call()]) ::
+          {:ok, [%{id: binary(), operation: Beamlet.Actions.Operation.t()}]}
+          | {:error, :invalid_tool_batch}
+  @spec durable_dispatch(state()) :: :ok | {:error, :missing_durable_runtime}
+  @spec dispatch_tool(Beamlet.Harness.Model.call(), state()) :: {:halt | :cont, state()}
+  @spec envelope?(term()) :: boolean()
+  @spec bounded_message?(term()) :: boolean()
+  @spec stop_owned(state()) :: state()
+  @spec block_turn(state(), atom()) :: {state(), boolean(), term()}
+  @spec stop_status(boolean(), term()) :: :paused | :stopped | :error
+  @spec fail(state(), term()) :: state()
+  @spec do_fail(state(), term()) :: state()
+  @spec durable_pair?(term(), term()) :: boolean()
+  @spec restore_state(state(), %{control: object(), durable: Beamlet.Agent.Durable.t()} | nil) ::
+          state()
+  @spec durable_input(state(), [object()], binary() | nil) :: response()
+  @spec commit_batch(
+          state(),
+          object(),
+          [Beamlet.Harness.Model.call()],
+          [%{id: binary(), operation: Beamlet.Actions.Operation.t()}],
+          [object()]
+        ) :: Beamlet.Agent.result(state())
+  @spec commit_consumption(state(), [object()]) :: Beamlet.Agent.result(state())
+  @spec continue(state(), term(), term(), term()) :: response()
+  @spec owners_retiring?(state()) :: boolean()
+  @spec resume(state(), Beamlet.Agent.Durable.t()) :: response()
+  @spec replay_reply(state()) :: state()
+  @spec resume_pending(state()) :: state()
+  @spec pending_rows(state()) :: Beamlet.Agent.result([object()])
+  @spec resume_rows(state(), [object()]) :: state()
+  @spec resume_operation(object(), state()) :: state()
+  @spec dispatch_restored(state(), object(), key()) :: state()
+  @spec restored_profile(state(), key(), object()) ::
+          Beamlet.Agent.ModelBinding.t() | Beamlet.Agent.Integration.Caller.profile() | nil
+  @spec durable_reason(term()) :: atom()
+  @spec view(state()) :: Beamlet.Agent.snapshot()
+  @spec view(state(), :default | :display) :: Beamlet.Agent.Display.snapshot()
+  @spec publish_activity(state()) :: state()
+  @spec publish(state(), [:default | :display]) :: state()
   alias Beamlet.Agent.ContextBuilder
   alias Beamlet.Agent.Display
   alias Beamlet.Agent.Durable
@@ -180,14 +379,8 @@ defmodule Beamlet.Agent.Server do
     if delegation_available?(s) and valid do
       group = make_ref()
 
-      case start_children(specs, group, s.authority_resources) do
-        {:ok, children} ->
-          accept_delegation(s, group, children, opts)
-
-        {:error, reason, children} ->
-          helpers = helper_monitors(children)
-          {:reply, {:error, reason}, %{s | helpers: helpers}}
-      end
+      {:ok, children} = start_children(specs, group, s.authority_resources)
+      accept_delegation(s, group, children, opts)
     else
       {:reply, {:error, :invalid_or_busy_delegation}, s}
     end
@@ -669,8 +862,6 @@ defmodule Beamlet.Agent.Server do
       :erlang.external_size({:beamlet_operation, ref, {:progress, attempt, seq, value}}) <= 8192
   end
 
-  defp helper_monitors(children), do: Map.new(children, fn {_, c} -> {c.monitor, c.pid} end)
-
   defp delegation_available?(s),
     do:
       not s.execution_blocked and s.status in [:idle, :done, :error, :stopped] and
@@ -1090,7 +1281,7 @@ defmodule Beamlet.Agent.Server do
   end
 
   defp do_fail(s, reason) do
-    stop_owned(s)
+    _ = stop_owned(s)
 
     Enum.each(s.pending, fn {_, p} ->
       Process.demonitor(p.monitor, [:flush])

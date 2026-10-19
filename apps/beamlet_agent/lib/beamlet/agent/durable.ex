@@ -1,4 +1,93 @@
 defmodule Beamlet.Agent.Durable do
+  @typedoc "Committed control plus optional live dispatch wiring; freshly opened instances have nil generation/turn/runtime fields."
+  @type t :: %__MODULE__{
+          repo: module(),
+          authority_id: binary(),
+          agent_id: binary(),
+          definition: Beamlet.Agent.Core.Data.object() | nil,
+          version: non_neg_integer() | nil,
+          generation: non_neg_integer() | nil,
+          turn_id: binary() | nil,
+          step: non_neg_integer() | nil,
+          runtime: runtime() | nil,
+          control: Beamlet.Agent.Core.Reducer.state() | nil
+        }
+  @type runtime :: %{
+          authority_repo: module(),
+          journal_repo: module(),
+          executor_id: binary(),
+          executor_boot_id: binary()
+        }
+  @type restored :: %{
+          durable: t(),
+          alias: binary() | nil,
+          control: Beamlet.Agent.Core.Reducer.state()
+        }
+  @type forked :: %{
+          agent_id: binary(),
+          locator: Beamlet.Agent.locator(),
+          version: non_neg_integer(),
+          generation: non_neg_integer(),
+          through_seq: pos_integer(),
+          risk: binary() | nil,
+          source: %{agent_id: binary(), through_seq: pos_integer()}
+        }
+  @typep object :: Beamlet.Agent.Core.Data.object()
+  @typep result(value) :: Beamlet.Agent.result(value)
+  @spec step(t()) :: non_neg_integer()
+  @spec position(t()) :: %{
+          agent_id: binary(),
+          lock_version: non_neg_integer(),
+          generation: non_neg_integer() | nil
+        }
+  @spec runtime(t()) :: {:ok, runtime()} | {:error, :missing_durable_runtime}
+  @spec with_runtime(t(), map()) :: {:ok, t()} | {:error, :invalid_data}
+  @spec persistence(t(), object()) :: result(Beamlet.Runtime.Persistence.t())
+  @spec open(module(), %{
+          required(:command_id) => binary(),
+          required(:agent_id) => binary(),
+          required(:authority_id) => binary(),
+          required(:definition) => object(),
+          optional(:alias) => binary()
+        }) :: result(t())
+  @spec inspect(Beamlet.Agent.locator(), keyword()) :: result(Beamlet.Agent.Loader.loaded())
+  @spec accept_input(t(), %{command_id: binary(), turn_id: binary(), text: binary()}) ::
+          result(t())
+  @spec prepare(
+          t(),
+          [%{required(:operation) => Beamlet.Actions.Operation.t(), optional(:id) => binary()}],
+          binary(),
+          [Beamlet.Agent.Core.Data.value()],
+          term()
+        ) :: {:ok, t(), [object()]} | Beamlet.Agent.error()
+  @spec consume(t(), [binary()], binary()) :: result(t())
+  @spec accepted_refs(t(), [binary()]) :: result([object()])
+  @spec consumption_kind(t(), object(), binary()) :: binary()
+  @spec block(t(), atom() | binary()) :: result(t())
+  @spec decide(t(), %{command_id: binary(), checkpoint_id: binary(), decision: term()}) ::
+          result(t())
+  @spec validate_decision(t(), term(), [binary()]) :: :ok | Beamlet.Agent.error()
+  @spec validate_resolution(t(), term(), [binary()]) :: :ok | Beamlet.Agent.error()
+  @spec resumable(t(), [binary()], term()) :: :ok | Beamlet.Agent.error()
+  @spec resumable_result?(object(), object(), term()) :: boolean()
+  @spec advance(t(), binary(), object(), binary() | nil) :: result(t())
+  @spec execution_gate(t()) :: :ok | {:error, {:blocked, :environment_risk_unconfirmed}}
+  @spec fork(Beamlet.Agent.locator(), term(), term(), term()) :: result(forked())
+  @spec fork_source(term()) :: result(object())
+  @spec fork_new(Beamlet.Agent.locator(), term(), term(), term(), object()) :: result(forked())
+  @spec fork_response(Beamlet.Agent.locator(), object()) :: {:ok, forked()}
+  @spec fork_id(term()) :: binary() | nil
+  @spec fork_write(Beamlet.Agent.locator(), map()) :: result(object())
+  @spec safe_fork(object()) :: :ok | {:error, :unsafe_position}
+  @spec restore(term(), term(), term()) :: result(restored())
+  @spec inactive(object()) :: :ok | {:error, :already_active}
+  @spec activate(t(), non_neg_integer(), term()) :: result(t())
+  @spec from_loaded(Beamlet.Agent.locator(), Beamlet.Agent.Loader.loaded()) :: t()
+  @spec context(t(), Beamlet.Harness.Catalogue.t()) :: result(Beamlet.Agent.Core.Context.built())
+  @spec committed(t(), object()) :: result(t())
+  @spec preflight(t(), [{binary(), object(), binary() | nil}]) :: :ok | Beamlet.Agent.error()
+  @spec preparation_events([%{operation: map()}]) :: [{binary(), object(), binary() | nil}]
+  @spec write(t(), atom(), map()) :: result(object())
   @moduledoc "Agent-owned input and reference orchestration over Agent authority format 3."
   import Kernel, except: [inspect: 1, inspect: 2]
   alias Beamlet.Agent.ContextBuilder
@@ -214,7 +303,6 @@ defmodule Beamlet.Agent.Durable do
         attrs.command_id
       )
     else
-      false -> {:error, :unresolved_execution}
       error -> error
     end
   end

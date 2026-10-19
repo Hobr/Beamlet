@@ -1,4 +1,28 @@
 defmodule Beamlet.Agent.Loader do
+  @typedoc "Fixed-high-water reconstruction. String-key record fields and reference relationships are runtime validated."
+  @type loaded :: %{
+          agent: Beamlet.Agent.Core.Data.object(),
+          control: Beamlet.Agent.Core.Reducer.state()
+        }
+  @typep object :: Beamlet.Agent.Core.Data.object()
+  @typep result(value) :: Beamlet.Agent.result(value)
+  @typep check :: :ok | Beamlet.Agent.error()
+  @spec load(module(), term(), keyword()) :: result(loaded())
+  @spec base(module(), binary(), pos_integer(), keyword()) ::
+          {object(), non_neg_integer(), non_neg_integer()}
+  @spec cached_base(module(), binary(), pos_integer()) ::
+          {object(), non_neg_integer(), non_neg_integer()}
+  @spec pages(module(), object(), pos_integer(), non_neg_integer(), non_neg_integer()) ::
+          {:ok, object(), non_neg_integer(), non_neg_integer()} | Beamlet.Agent.error()
+  @spec references(module(), object()) :: check()
+  @spec owned_references(module(), object()) :: check()
+  @spec resolutions(module(), object()) :: check()
+  @spec bounded_operation(module(), binary(), object(), integer()) :: result(object())
+  @spec operation(module(), binary(), term()) :: result(object())
+  @spec prepared_reference(module(), binary(), object()) :: check()
+  @spec sources(module(), binary(), object()) :: check()
+  @spec source(module(), binary(), pos_integer(), term()) :: check() | false
+  @spec accepted_digest(module(), object(), object()) :: check()
   @moduledoc "Bounded fixed-high-water history reconstruction. Reads never activate or dispatch."
   alias Beamlet.Agent.Reducer
   alias Beamlet.Agent.Storage.AgentRecords

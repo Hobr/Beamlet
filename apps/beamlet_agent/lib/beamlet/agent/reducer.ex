@@ -1,4 +1,14 @@
 defmodule Beamlet.Agent.Reducer do
+  @typep state :: Beamlet.Agent.Core.Reducer.state()
+  @spec version() :: pos_integer()
+  @spec new(identity) :: %{optional(binary()) => identity | Beamlet.Agent.Core.Data.value()}
+        when identity: var
+  @spec decisions(value) :: [value | Beamlet.Agent.Core.Data.value()] when value: var
+  @spec reduce(state(), term()) :: {:ok, state()} | Beamlet.Agent.Core.Reducer.error()
+  @spec replay(state(), [term()]) :: {:ok, state()} | Beamlet.Agent.Core.Reducer.error()
+  @spec decode(term()) :: :ok | Beamlet.Agent.Core.Reducer.error()
+  @spec validate_payload(binary(), term()) :: :ok | {:error, atom()}
+  @spec normalize(Beamlet.Agent.Core.Data.object()) :: Beamlet.Agent.Core.Data.object()
   @moduledoc "Storage envelope adapter for the pure Agent reducer."
   alias Beamlet.Agent.Core.Reducer, as: Core
   alias Beamlet.Agent.Storage.Codec

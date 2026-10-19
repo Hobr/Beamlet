@@ -1,4 +1,22 @@
 defmodule Beamlet.Agent.TraceVerifier do
+  @typep object :: Beamlet.Agent.Core.Data.object()
+  @typep state :: %{
+           agent_id: binary(),
+           operations: %{optional(binary()) => object()},
+           inputs: %{optional(binary()) => object()},
+           inherited: [object()],
+           artifacts: %{optional(binary()) => binary()},
+           missing: [object()]
+         }
+  @spec closure(object(), %{binary() => [object()]}, %{optional(binary()) => binary()}, [object()]) ::
+          :ok | {:error, :invalid_reference}
+  @spec owned_result_ref?(term(), binary(), state()) :: boolean()
+  @spec result_ref?(term(), state()) :: boolean()
+  @spec inherited?(term(), state()) :: boolean()
+  @spec sources?(term(), state()) :: boolean()
+  @spec source?(term(), object(), state()) :: boolean()
+  @spec input_source?(object(), object(), object()) :: boolean()
+  @spec omitted?(state(), binary(), binary()) :: boolean()
   @moduledoc false
   alias Beamlet.Agent.Storage.Codec
 
