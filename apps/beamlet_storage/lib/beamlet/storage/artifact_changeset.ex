@@ -1,5 +1,6 @@
 defmodule Beamlet.Storage.ArtifactChangeset do
   @moduledoc false
+  # 只供制品 schema 使用；拒绝未知字段及混合原子/字符串键，避免 cast 忽略额外输入。
   import Ecto.Changeset
   alias Beamlet.Storage.Codec
 

@@ -1,5 +1,6 @@
 defmodule Beamlet.Agent.Storage.Schema.Agent do
   @moduledoc false
+  # 内部 Ecto 行映射，包含尚未插入的 nil 构造状态；对外通过记录门面校验身份和事务约束。
   use Ecto.Schema
   alias Beamlet.Agent.Storage.RecordChangeset
   @primary_key {:id, :string, autogenerate: false}
@@ -16,7 +17,9 @@ defmodule Beamlet.Agent.Storage.Schema.Agent do
     field(:forked_from_checkpoint_id, :string)
   end
 
-  @typedoc "Agent row including empty construction state; persisted invariants remain enforced at runtime."
+  @typedoc "内部 Ecto 行形状，允许尚未插入的 nil 字段；changeset 与 SQL 才实施持久化约束。
+
+Agent row including empty construction state; persisted invariants remain enforced at runtime."
   @type t :: %__MODULE__{
           id: String.t() | nil,
           dispatch_scope_id: String.t() | nil,

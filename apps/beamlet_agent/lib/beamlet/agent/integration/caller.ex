@@ -1,5 +1,9 @@
 defmodule Beamlet.Agent.Integration.Caller do
-  @typedoc "Portable Tool placement, without local settings or workspace roots."
+  @typedoc """
+  不带本地 settings 或工作区根的可移植工具路由，placement 仍由 Operation 校验。
+
+  Portable Tool placement, without local settings or workspace roots.
+  """
   @type profile :: %{
           required(:id) => binary(),
           required(:capability) => binary(),
@@ -13,12 +17,17 @@ defmodule Beamlet.Agent.Integration.Caller do
   @spec operation(term(), term()) :: result()
   @spec operation(term(), term(), pos_integer()) :: result()
   @spec bounded(result(), pos_integer()) :: result()
-  @moduledoc "Construct bounded model invocations and opaque Tool Operations."
+  @moduledoc """
+  把模型绑定或可移植工具路由转换为有界 Operation。配置版本摘要排除对话、参数和凭证；本地设置与工作区根不进入工具路由。
+
+  Construct bounded model invocations and opaque Tool Operations.
+  """
   alias Beamlet.Actions.Operation
   alias Beamlet.Agent.Storage.Codec
   alias Beamlet.Runtime.Directory
   alias Beamlet.Runtime.Persistence
 
+  @doc "验证可移植工具路由及默认完整 Operation 字节界限。"
   def profile?(p) when is_map(p) do
     Map.keys(p) -- [:id, :capability, :environment, :claims, :allowed_nodes] == [] and
       is_binary(p[:id]) and byte_size(p.id) in 1..128 and String.valid?(p.id) and
@@ -27,6 +36,7 @@ defmodule Beamlet.Agent.Integration.Caller do
 
   def profile?(_), do: false
 
+  @doc "构造带配置摘要的模型或工具 Operation；显式 limit 形式不读取 Directory，默认形式使用当前上限，现存但不可用的 Directory 返回 runtime_unavailable。"
   def operation(profile, request) do
     limit = if Process.whereis(Directory), do: Directory.limits().operation_bytes, else: 262_144
     operation(profile, request, limit)
@@ -34,6 +44,7 @@ defmodule Beamlet.Agent.Integration.Caller do
     :exit, _ -> {:error, :runtime_unavailable}
   end
 
+  @doc "显式 limit 形式：按给定完整 Operation 字节上限构造，不读取 Directory；profile 形状不符返回 invalid_profile。"
   def operation(%{provider: provider, config: config} = binding, request, limit) do
     placement = Map.get(binding, :placement, %{})
 

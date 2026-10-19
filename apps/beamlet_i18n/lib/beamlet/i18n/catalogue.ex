@@ -1,5 +1,7 @@
 defmodule Beamlet.I18n.Catalogue do
   @moduledoc """
+  共享 msgid 的唯一声明所有者。declare 仅供编译时提取，不在运行时调用；共享状态与原因使用封闭列表，新增词汇须保持目录互斥与中文完整性。
+
   Single owner of the shared msgids.
 
   Web and CLI never register this backend for extraction (they only call the
@@ -30,15 +32,27 @@ defmodule Beamlet.I18n.Catalogue do
     request_failed deadline invalid_draft configuration_unavailable create_unknown
   )
 
-  @doc "Shared status/state words, in catalogue order."
+  @doc """
+  返回共享状态封闭词表，保持目录声明顺序。
+
+  Shared status/state words, in catalogue order.
+  """
   @spec statuses() :: [String.t()]
   def statuses, do: @statuses
 
-  @doc "Shared error/outcome words, in catalogue order."
+  @doc """
+  返回共享错误与结果封闭词表，保持目录声明顺序。
+
+  Shared error/outcome words, in catalogue order.
+  """
   @spec reasons() :: [String.t()]
   def reasons, do: @reasons
 
-  @doc "Declares the shared msgids for extraction. Never called at runtime."
+  @doc """
+  声明共享 msgid 供编译时提取；运行时不调用，不产生业务工作。
+
+  Declares the shared msgids for extraction. Never called at runtime.
+  """
   @spec declare() :: :ok
   def declare do
     _ = shared_statuses()

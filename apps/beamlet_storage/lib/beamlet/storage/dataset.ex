@@ -1,5 +1,7 @@
 defmodule Beamlet.Storage.Dataset do
   @moduledoc """
+  数据集 format3 的显式安装与打开边界。initialize 仅安装全新目标；open 不创建缺失 SQLite 文件，也不迁移或修复。成功返回 {:ok, linked_pid}，调用方负责 repo.stop/0。失败仅关闭本次启动的 Repo，已注册 Repo 返回 conflict。选项必须包含可信 descriptor、规范 UUID dataset_id 和 database；SQLite 还需绝对、无符号链接且互不别名的 peer_database。PostgreSQL 数据库由宿主预先创建。restored_backup 是显式运维标记，不是自动回滚检测。
+
   Explicit installation/open boundary. `initialize/2` is for a new dataset only;
   `open/2` never migrates or creates a missing SQLite file. Both leave a linked
   Repo running on success and return its pid. Stop it with `repo.stop/0`.
@@ -14,7 +16,9 @@ defmodule Beamlet.Storage.Dataset do
   alias Ecto.Adapters.SQL
   alias Exqlite.Sqlite3
 
-  @typedoc "Dataset refusal classifications; opening never initializes or repairs existing data."
+  @typedoc "数据集拒绝原因：缺失、已存在、路径别名、身份不符、清单不支持、恢复备份或不可用等；不自动修复。
+
+Dataset refusal classifications; opening never initializes or repairs existing data."
   @type error ::
           :invalid_data
           | :dataset_missing
@@ -25,7 +29,9 @@ defmodule Beamlet.Storage.Dataset do
           | :schema_unsupported
           | :restored_backup
           | :storage_unavailable
-  @typedoc "Explicit adapter connection options with a trusted installation descriptor."
+  @typedoc "含可信安装描述符和数据集身份的显式适配器连接选项；禁止 name/url 覆盖注册与连接策略。
+
+Explicit adapter connection options with a trusted installation descriptor."
   @type options :: [
           {:descriptor, Installation.t()}
           | {:dataset_id, String.t()}
@@ -37,8 +43,10 @@ defmodule Beamlet.Storage.Dataset do
   @typep verification :: :ok | {:error, error()}
   @typep rows :: [[term()]]
   @typep reader :: (String.t() -> {:ok, rows()} | {:error, term()})
+  @doc "显式安装全新数据集并返回链接的 Repo PID。SQLite 使用独占创建，父目录须已存在；PostgreSQL 须预先置备空数据库。已有目标拒绝，失败安装可能留下不完整目标，不自动删除或重试。"
   @spec initialize(module(), term()) :: {:ok, pid()} | {:error, error()}
   def initialize(repo, opts), do: start(repo, opts, :initialize)
+  @doc "只打开完整匹配的现有数据集，成功返回链接 PID，由调用方关闭。SQLite 在可写启动前做只读预检；旧格式、缺失或不完整安装均拒绝，不修复。"
   @spec open(module(), term()) :: {:ok, pid()} | {:error, error()}
   def open(repo, opts), do: start(repo, opts, :open)
 
@@ -222,7 +230,9 @@ defmodule Beamlet.Storage.Dataset do
     end
   end
 
-  @doc "Read-only identity/format/profile/complete manifest/migration verification."
+  @doc "只读校验已运行 Repo 的身份、format3、profile、完整清单、安装完成标记及迁移 ID；不迁移、不探测写入。
+
+Read-only identity/format/profile/complete manifest/migration verification."
   @spec verify(module(), term()) :: verification()
   def verify(repo, opts) do
     with :ok <- validate(repo, opts), do: safely(fn -> verify_metadata(repo, opts) end)
@@ -255,6 +265,7 @@ defmodule Beamlet.Storage.Dataset do
 
   @spec verify_rows(options(), reader()) :: verification()
   defp verify_rows(opts, read) do
+    # 先只读判断格式，避免旧库因启动可写 SQLite 连接产生 WAL 或被误当成待升级库。
     # Read format first: old metadata has different columns, and must be refused
     # before opening a writable SQLite connection or inspecting business tables.
     with {:ok, [[3]]} <- read.("SELECT format_version FROM storage_metadata WHERE id = 1"),

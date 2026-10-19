@@ -1,6 +1,8 @@
 defmodule Beamlet.Actions.MixProject do
   use Mix.Project
 
+  # 纯契约库：不依赖任何兄弟应用，也没有 Application 回调。
+  # 构建/依赖/配置路径全部指回 umbrella 根，与其余应用共享。
   def project do
     [
       app: :beamlet_actions,
@@ -23,6 +25,8 @@ defmodule Beamlet.Actions.MixProject do
   end
 
   # Run "mix help deps" to learn about dependencies.
+  # 目前无需依赖：通用数据校验复用 OTP 自带 JSON，
+  # 派发与 Handler 实现归 Runtime 及嵌入方。
   defp deps do
     [
       # {:dep_from_hexpm, "~> 0.3.0"},

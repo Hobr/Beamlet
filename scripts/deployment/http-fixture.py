@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Opt-in executor-local deterministic HTTP fixture; never contacts a provider."""
+"""执行器本地、确定性的 HTTP 夹具：仿 OpenAI 兼容端点，绝不访问真实提供方。
+
+它先要求一次 workspace_read(marker.txt) Tool 调用，收到 Tool 观察后再输出完整
+Tool 内容的 SHA256，便于调用方比对“确实读到了标记”。
+Opt-in executor-local deterministic HTTP fixture; never contacts a provider.
+"""
 import argparse
 import hashlib
 import json

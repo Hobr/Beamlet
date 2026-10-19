@@ -1,9 +1,14 @@
 defmodule Beamlet.Web.OwnedCall do
-  @moduledoc "Finite disposable callers. Killing a caller never implies business cancellation."
+  @moduledoc """
+  有限生命周期的临时调用者与订阅接收者。守护进程监控页面并等待关联 worker/sink 实际退出；杀死调用者不代表撤回已排队创建或取消外部业务。
+
+  Finite disposable callers. Killing a caller never implies business cancellation.
+  """
 
   # Correlation tags and worker results belong to callers of this generic relay.
   @typep tag :: term()
   @typep observation_exit :: :ok | Beamlet.Agent.error() | {:observation, tag(), :unavailable}
+  @doc "启动受 owner 拥有的临时 worker，默认 8 秒；经守护者返回 owned 消息，截止或 owner 消失只终止调用者，不撤回已派发业务。"
   @spec start(pid(), tag(), (-> term()), non_neg_integer()) :: pid()
   def start(owner, tag, fun, timeout \\ 8_000) do
     spawn(fn ->
@@ -23,6 +28,7 @@ defmodule Beamlet.Web.OwnedCall do
 
   # Relay milestones and completion from the same process. Signals from the
   # worker precede its EXIT, including when a deadline interrupts the call.
+  @doc "通过同一守护者按顺序中继创建里程碑与最终结果；无守护者上下文时直接发送给 owner。"
   @spec deliver(pid(), message) :: message | {:milestone, message} when message: var
   def deliver(owner, message) do
     case Process.get(__MODULE__) do
@@ -79,6 +85,7 @@ defmodule Beamlet.Web.OwnedCall do
     _, _ -> :unavailable
   end
 
+  @doc "启动拥有订阅 sink 的守护者；先等待 previous 退出，再订阅精确 Ref。显示消费后才确认快照，离开或 owner 消失只清理观察，不关闭 Agent。"
   @spec observe(pid(), tag(), Beamlet.Agent.Ref.t(), pid() | nil) :: pid()
   def observe(owner, tag, ref, previous \\ nil) do
     spawn(fn ->

@@ -1,5 +1,9 @@
 import Config
 
+# 开发环境专用设置：禁用缓存、开启调试与代码重载。
+# watcher 用 esbuild/tailwind 的 `beamlet_web` profile 持续重建资源。
+# 这里固定的 secret_key_base 只用于本地开发，不得用于生产。
+#
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
@@ -53,4 +57,5 @@ config :live_debugger,
   port: 4007
 
 # Enable dev routes for dashboard and mailbox
+# `dev_routes` 是编译期开关：只有开发构建会挂载 /dev 面板路由。
 config :beamlet_app_web, dev_routes: true

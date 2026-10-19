@@ -1,6 +1,9 @@
 defmodule Beamlet.Web.MixProject do
   use Mix.Project
 
+  # Web 宿主应用：`mod:` 表示它有 Application 回调。业务库（不含本应用）
+  # 不反向依赖 Phoenix。本 manifest 的 `elixir: "~> 1.17"` 是历史下界，
+  # 实际构建仍以 umbrella 根及各后端应用要求的 1.20 为准。
   def project do
     [
       app: :beamlet_app_web,
@@ -30,10 +33,13 @@ defmodule Beamlet.Web.MixProject do
   end
 
   # Specifies which paths to compile per environment.
+  # 仅测试环境额外编译 test/support（ConnCase 等辅助模块）。
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
   # Specifies your project dependencies.
+  # Runtime 仅测试使用（集成夹具）；Phoenix 开发工具与资源安装器只在 dev 启用；
+  # esbuild/tailwind 的 profile 名是 `beamlet_web`（不是 OTP app 名 beamlet_app_web）。
   #
   # Type `mix help deps` for examples and options.
   defp deps do
@@ -77,6 +83,8 @@ defmodule Beamlet.Web.MixProject do
   end
 
   # Aliases are shortcuts or tasks specific to the current project.
+  # 注意：这些别名只在应用目录注册；umbrella 根目录需直接调用同名任务
+  # （如 `MIX_ENV=prod mix tailwind beamlet_web --minify`）。
   #
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do

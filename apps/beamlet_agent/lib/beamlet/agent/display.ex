@@ -1,5 +1,9 @@
 defmodule Beamlet.Agent.Display do
-  @typedoc "Public labels only; sizes, exact keys and distinct Tool IDs require metadata?/1."
+  @typedoc """
+  公开创建标签，精确键/UTF-8/4096 字节约束由 metadata? 校验，不代表授权。
+
+  Public labels only; sizes, exact keys and distinct Tool IDs require metadata?/1.
+  """
   @type metadata :: %{
           optional(:title) => binary(),
           optional(:preset_id) => binary(),
@@ -47,7 +51,11 @@ defmodule Beamlet.Agent.Display do
            truncated: boolean(),
            reasons: [atom()]
          }
-  @typedoc "Display can be omitted entirely or replaced by a budget marker; base final/progress remain open."
+  @typedoc """
+  基础快照加可选 display；预算不足时可仅有标记或完全省略 display。
+
+  Display can be omitted entirely or replaced by a budget marker; base final/progress remain open.
+  """
   @type snapshot :: %{
           required(:ref) => Beamlet.Agent.Ref.t(),
           required(:turn) => Beamlet.Agent.turn(),
@@ -99,6 +107,8 @@ defmodule Beamlet.Agent.Display do
   @spec text(binary() | nil) :: {binary() | nil, boolean()}
   @spec utf8_prefix(binary()) :: binary()
   @moduledoc """
+  实时上下文的有界替换视图，不能用作模型历史。最多 32 条近期消息、16 个活动，各文本字段 8192 UTF-8 字节；预算不足可只给标记或完全省略 display，消费者应清除旧视图。pending 仅表示取得 Runtime Ref，placement 当前未知。
+
   Bounded, replacement-only display of live Agent context, never model history.
 
   Optional creation metadata is a plain map with `:title` (1..128 UTF-8 bytes),
@@ -127,6 +137,7 @@ defmodule Beamlet.Agent.Display do
   @snapshot_limit 1_048_000
   @text_limit 8192
 
+  @doc "校验公开标签、精确键及 4096 字节元数据上限；这些标签不独立证明授权。"
   def metadata?(value) when is_map(value) and not is_struct(value) do
     Map.keys(value) -- [:title, :preset_id, :option_ids] == [] and
       Enum.all?(value, fn
@@ -161,12 +172,14 @@ defmodule Beamlet.Agent.Display do
   defp label?(s), do: is_binary(s) and byte_size(s) in 1..128 and String.valid?(s)
 
   # Annotations contain no transcript copy, and are bounded by the source context.
+  @doc "为新增原生消息附上本实例内稳定的展示身份，不复制消息正文。"
   def annotate(s, messages) do
     additions = length(messages) - length(s.messages)
     annotations = for _ <- List.duplicate(nil, additions), do: %{id: make_ref(), turn: s.turn}
     %{s | messages: messages, display_entries: s.display_entries ++ annotations}
   end
 
+  @doc "生成替换展示并在预算内裁剪展示项；不改变模型上下文或基础 final/progress。"
   def project(base, s) do
     entries = Enum.zip_with(s.messages, s.display_entries, &entry/2)
     activities = activities(s)

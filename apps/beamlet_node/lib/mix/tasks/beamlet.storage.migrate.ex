@@ -2,6 +2,8 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
   @shortdoc "Explicitly install/migrate durable datasets (operator action)"
 
   @moduledoc """
+  显式安装 authority 与 journal 的运维命令。--storage 必须是绝对路径的可信 Elixir 文件，该文件会被求值；禁止把它当作不可信上传内容。宿主启动和 Agent 均不隐式调用。
+
   Installs the durable authority and executor-journal datasets for the roles you
   name, exactly once. Hosts, Agents and boot never run this implicitly.
 
@@ -27,6 +29,7 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
 
   @impl true
   @spec run([binary()]) :: :ok
+  @doc "求值可信配置文件并显式安装所选角色数据集；失败通过 Mix.raise 报安全原因。"
   def run(args) do
     {opts, rest, invalid} =
       OptionParser.parse(args, strict: [storage: :string, roles: :string])

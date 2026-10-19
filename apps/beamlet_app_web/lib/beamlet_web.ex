@@ -1,5 +1,7 @@
 defmodule Beamlet.Web do
   @moduledoc """
+  Phoenix 接口的 use 宏入口。共享引用片段只设置 imports/uses/aliases；额外运行函数应放在独立模块，避免在每个调用模块中重复定义。
+
   The entrypoint for defining your web interface, such
   as controllers, components, channels, and so on.
 
@@ -17,9 +19,11 @@ defmodule Beamlet.Web do
   those modules here.
   """
 
+  @doc "返回允许从 priv/static 服务的路径名称。"
   @spec static_paths() :: [binary()]
   def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
 
+  @doc "生成路由模块所需 imports 与 Phoenix.Router 设置。"
   @spec router() :: Macro.t()
   def router do
     quote do
@@ -32,6 +36,7 @@ defmodule Beamlet.Web do
     end
   end
 
+  @doc "生成 Phoenix.Channel 设置。"
   @spec channel() :: Macro.t()
   def channel do
     quote do
@@ -39,6 +44,7 @@ defmodule Beamlet.Web do
     end
   end
 
+  @doc "生成 HTML/JSON 控制器、Web 翻译与验证路由设置。"
   @spec controller() :: Macro.t()
   def controller do
     quote do
@@ -52,6 +58,7 @@ defmodule Beamlet.Web do
     end
   end
 
+  @doc "生成 LiveView 与共享 HTML 辅助引用。"
   @spec live_view() :: Macro.t()
   def live_view do
     quote do
@@ -61,6 +68,7 @@ defmodule Beamlet.Web do
     end
   end
 
+  @doc "生成 LiveComponent 与共享 HTML 辅助引用。"
   @spec live_component() :: Macro.t()
   def live_component do
     quote do
@@ -70,6 +78,7 @@ defmodule Beamlet.Web do
     end
   end
 
+  @doc "生成 Phoenix.Component 与共享 HTML 辅助引用。"
   @spec html() :: Macro.t()
   def html do
     quote do
@@ -104,6 +113,7 @@ defmodule Beamlet.Web do
     end
   end
 
+  @doc "生成绑定本 Endpoint/Router/静态路径的验证路由设置。"
   @spec verified_routes() :: Macro.t()
   def verified_routes do
     quote do
@@ -115,6 +125,8 @@ defmodule Beamlet.Web do
   end
 
   @doc """
+  按受信 atom 选择对应接口的引用片段。
+
   When used, dispatch to the appropriate controller/view/etc.
   """
   @spec __using__(atom()) :: Macro.t()

@@ -12,7 +12,11 @@ defmodule Beamlet.Agent.History do
   @spec known_operation?(object(), term()) :: boolean()
   @spec operations(module(), binary(), [object()], pos_integer()) :: result([object()])
   @spec operation_projection(module(), binary(), object(), pos_integer()) :: result(object())
-  @moduledoc "Read-only fixed-high-water facts and reference-derived context, independent of live providers."
+  @moduledoc """
+  独立于实时 provider 的只读历史投影。游标保留 Agent 高水位；steps/tools 仅展示该截止位已消费的输出，evidence 单独标记为 Operation 快照。
+
+  Read-only fixed-high-water facts and reference-derived context, independent of live providers.
+  """
   alias Beamlet.Agent.ContextBuilder
   alias Beamlet.Agent.Loader
   alias Beamlet.Agent.Storage.AgentRecords
@@ -21,6 +25,7 @@ defmodule Beamlet.Agent.History do
   alias Beamlet.Agent.Storage.Records
   @views ~w(turns facts context steps tools evidence decisions provenance)
 
+  @doc "按 view、as_of_seq 和固定游标读取历史；支持 facts/turns/context/steps/tools/evidence/decisions/provenance，非法参数返回 invalid_data。"
   def query(locator, filters \\ %{}, cursor \\ nil)
 
   def query(%{repo: repo, agent_id: id}, filters, cursor)
@@ -45,8 +50,10 @@ defmodule Beamlet.Agent.History do
 
   def query(_, _, _), do: {:error, :invalid_data}
 
+  @doc "以 turns 视图读取轮次列表。"
   def turns(locator, opts \\ []), do: query(locator, Map.put(Map.new(opts), :view, :turns))
 
+  @doc "以 facts 视图读取指定 turn 的事件。"
   def turn_events(locator, turn, opts \\ []),
     do: query(locator, Map.merge(Map.new(opts), %{view: :facts, turn_id: turn}))
 

@@ -1,5 +1,6 @@
 defmodule Beamlet.Storage.Schema.Artifact do
   @moduledoc false
+  # 隐藏的 SQL 记录：内容保持原始二进制，插入及读取复核 size 与 SHA-256，允许未插入结构但 changeset 要求完整字段。
   use Ecto.Schema
   alias Beamlet.Storage.ArtifactChangeset
   alias Beamlet.Storage.Codec
@@ -12,7 +13,9 @@ defmodule Beamlet.Storage.Schema.Artifact do
     field :recorded_at, :utc_datetime_usec
   end
 
-  @typedoc "Includes uninserted Ecto records; required identity/content fields are enforced by changeset validation."
+  @typedoc "包含尚未插入的记录，字段可为 nil；有效内容与必填约束由 changeset 校验。
+
+Includes uninserted Ecto records; required identity/content fields are enforced by changeset validation."
   @type t :: %__MODULE__{
           id: String.t() | nil,
           digest: String.t() | nil,

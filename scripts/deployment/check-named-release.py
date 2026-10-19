@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""One copied daemon, three named boots, bounded controls and a remote model turn."""
+"""同一个复制出的 server 产物：三种命名启动、有界控制与一次远程模型 turn。
+
+每个夹具只改自己副本里打包的 runtime.exs，不存在自定义外部配置读取器；
+控制仍用原生 Mix 启动器。失败/清理路径都保留原错误并追加说明，不遮掩。
+One copied daemon, three named boots, bounded controls and a remote model turn.
+"""
 import contextlib
 import os
 import secrets

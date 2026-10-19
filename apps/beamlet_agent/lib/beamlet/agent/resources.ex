@@ -31,6 +31,7 @@ defmodule Beamlet.Agent.Resources do
   @spec remember(state()) :: :ok
   @spec drain(monitors()) :: :ok
   @moduledoc false
+  # 资源组额度直到所有成员 DOWN 才释放；persistent_term 仅存 VM 内基础设施 PID 清单，不存业务历史或重放状态。
   use GenServer
   @generation {__MODULE__, :generation}
 
@@ -128,6 +129,7 @@ defmodule Beamlet.Agent.Resources do
       send(agent, {:resource_retired, pid})
     end
 
+    # 控制器退出仍可能留下已登记成员；整个组无成员后才能退还额度。
     groups = Map.delete(s.groups, mon)
     {retired, live} = Enum.split_with(s.slots, fn {slot, _} -> slot not in Map.values(groups) end)
     Enum.each(retired, fn {slot, pid} -> send(s.agents[slot], {:resource_retired, pid}) end)

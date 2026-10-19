@@ -1,9 +1,12 @@
 defmodule Beamlet.Agent.Storage.Migrations.AgentV1 do
-  @moduledoc "Agent-owned authority tables and read projection."
+  @moduledoc "Agent format3 初始表及只读联接视图的前向迁移。安装由显式描述符驱动；已安装迁移必须保持不变，down 不支持回滚。
+
+Agent-owned authority tables and read projection."
   @spec up() :: :ok
   @spec down() :: no_return()
   use Ecto.Migration
 
+  @doc "创建 Agent 表、约束与只读投影视图；仅供显式安装运行。"
   def up do
     execute(
       "CREATE TABLE agents (id VARCHAR(255) PRIMARY KEY NOT NULL, authority_id VARCHAR(255) NOT NULL, alias VARCHAR(255), definition TEXT NOT NULL, head_checkpoint_id VARCHAR(255) #{if repo().__adapter__() == Ecto.Adapters.SQLite3, do: "REFERENCES checkpoints(id)", else: ""}, generation BIGINT NOT NULL CHECK (generation >= 0), lock_version BIGINT NOT NULL CHECK (lock_version >= 0), history_seq BIGINT NOT NULL CHECK (history_seq >= 0), dispatch_scope_id VARCHAR(255) NOT NULL UNIQUE REFERENCES dispatch_scopes(id), forked_from_agent_id VARCHAR(255), forked_from_checkpoint_id VARCHAR(255))"
@@ -49,5 +52,6 @@ defmodule Beamlet.Agent.Storage.Migrations.AgentV1 do
     )
   end
 
+  @doc "拒绝逆向迁移并抛出异常；回滚须使用与旧代码匹配的未改动数据集。"
   def down, do: raise("forward only")
 end

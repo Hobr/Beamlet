@@ -1,5 +1,7 @@
 defmodule Beamlet.Storage.Admission do
   @moduledoc """
+  显式数据集的宿主准入门，与进程注册就绪分开。宿主提供 repo、完整 Dataset 选项及可选 resources: [{repo, opts}]、初始拒绝 reason。status 每次校验格式并执行回滚写探针；探针不提交，因此不证明提交或 fsync 成功。consult 保留已记录失败，直到 status 成功复查；未启动门时返回放行，由嵌入方负责策略。
+
   Host-level durable admission for one explicitly described dataset, distinct from process/Repo
   readiness.
 
@@ -19,13 +21,16 @@ defmodule Beamlet.Storage.Admission do
   alias Beamlet.Storage.{Codec, Dataset, Installation, Transaction}
   alias Ecto.Adapters.SQL
 
+  # 回滚探针可发现当前锁/写入失败，但不执行提交，不能证明 fsync 或未来写入一定成功。
   # A real write to the durable file, rolled back inside the same transaction:
   # nothing is committed, but lock acquisition and the page/WAL write path are
   # exercised. A read-only or unreachable dataset cannot pass it. Because the probe
   # always rolls back, no commit and therefore no fsync happens here.
   @probe_sql "UPDATE storage_metadata SET format_version = format_version WHERE id = 1"
 
-  @typedoc "Fresh admission observation, distinct from registration readiness."
+  @typedoc "当前准入观测；未配置门与拒绝必须区别于注册就绪。
+
+Fresh admission observation, distinct from registration readiness."
   @type status :: :admitted | :not_configured | {:refused, atom()}
   @typep state :: %{
            repo: module(),
@@ -34,12 +39,15 @@ defmodule Beamlet.Storage.Admission do
            resources: [{module(), Dataset.options()}],
            status: status() | nil
          }
+  @doc "启动显式准入门；默认注册为本模块，name 可指定原子名。repo、dataset_id 和 descriptor 无效时拒绝启动。"
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
   end
 
   @doc """
+  每次重新探测主资源和全部依赖，调用退出返回 refused/storage_unavailable。
+
   Fresh admission status: `:admitted | {:refused, reason} | :not_configured`
   (`:not_configured` means no admission process exists in this VM).
   """
@@ -53,10 +61,13 @@ defmodule Beamlet.Storage.Admission do
     :exit, _ -> {:refused, :storage_unavailable}
   end
 
+  @doc "重新探测，只有 status 返回 admitted 才为 true；未配置门为 false。"
   @spec admitted?(atom()) :: boolean()
   def admitted?(name \\ __MODULE__), do: status(name) == :admitted
 
   @doc """
+  提交/接受前检查；已记录拒绝不会被 consult 自行探测清除。未配置门返回 :ok。
+
   Durable submit/accept gate: `:ok`, or `{:error, :durable_not_admitted}` when a
   host admission process reports a refused dataset. Never consults a cached flag.
   """
@@ -81,7 +92,9 @@ defmodule Beamlet.Storage.Admission do
     :exit, _ -> {:refused, :storage_unavailable}
   end
 
-  @doc "Turns admission off after a durable write path failed; `reason` is a safe atom."
+  @doc "同步记录安全原子失败原因，使后续 consult 拒绝；门不存在时无操作。
+
+Turns admission off after a durable write path failed; `reason` is a safe atom."
   @spec failure(atom(), atom()) :: :ok
   def failure(reason, name \\ __MODULE__) when is_atom(reason) do
     case Process.whereis(name) do
@@ -95,6 +108,8 @@ defmodule Beamlet.Storage.Admission do
   end
 
   @doc """
+  对已运行 Repo 校验身份/清单并做回滚写探针，不修改业务数据。
+
   One admission probe against a running dataset: the format/migration check of
   `Beamlet.Storage.Dataset.verify/2` plus a real rolled-back write.
   Returns `:admitted` or `{:error, reason}`.
@@ -106,6 +121,7 @@ defmodule Beamlet.Storage.Admission do
          do: :admitted
   end
 
+  @doc "GenServer 初始化：校验可信门配置，保存主数据集、附加资源及初始拒绝原因；首次 consult/status 才探测。"
   @impl true
   @spec init(term()) :: {:ok, state()} | {:stop, :invalid_admission_configuration}
   def init(opts) do
@@ -130,6 +146,7 @@ defmodule Beamlet.Storage.Admission do
     end
   end
 
+  @doc "处理新鲜 status 探针、同步失败记录和 consult；consult 保留已记录拒绝，status 可用新探针结果更新它。"
   @impl true
   @spec handle_call(:status | :consult | {:failure, atom()}, GenServer.from(), state()) ::
           {:reply, status() | :ok, state()}
@@ -157,6 +174,7 @@ defmodule Beamlet.Storage.Admission do
     {:reply, status, state}
   end
 
+  @doc "接收内部异步失败记录并保留拒绝；需要与下一次准入有序时使用同步 failure/2。"
   @impl true
   @spec handle_cast({:failure, atom()}, state()) :: {:noreply, state()}
   def handle_cast({:failure, reason}, state),

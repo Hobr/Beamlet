@@ -1,5 +1,7 @@
 defmodule Beamlet.Agent.Storage.AgentRecords do
-  @moduledoc "Agent inputs and reference-only orchestration, atomically committed with prepared work."
+  @moduledoc "Agent 原始输入、控制事件、命令回执及 Operation 关联的事务门面。prepare 将 Actions 参与者、不可变来源、Agent 事件及命令响应放入同一 Repo 事务。position 先校验 generation 再校验 lock_version；同 command_id 与请求摘要返回原响应，改变请求则冲突。此层不执行模型或工具，完整策略预检属于 Agent/Core 调用方。
+
+Agent inputs and reference-only orchestration, atomically committed with prepared work."
   alias Beamlet.Agent.Storage.Read
   alias Beamlet.Agent.Storage.Schema.AgentOperation
   alias Beamlet.Storage.References
@@ -20,7 +22,9 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
   alias Beamlet.Agent.Storage.Schema.Operation
   alias Ecto.Adapters.SQL
 
-  @typedoc "Optimistic Agent position; generation fencing is checked before lock version."
+  @typedoc "Agent 乐观锁位置：generation 先于 lock_version 校验，阻止旧实例继续写入。
+
+Optimistic Agent position; generation fencing is checked before lock version."
   @type position :: %{
           agent_id: String.t(),
           lock_version: non_neg_integer(),
@@ -173,6 +177,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
   @spec read_command(module(), String.t(), String.t()) :: Records.result(Records.object())
   @spec history_page(module(), term(), term()) :: Records.result(Records.object())
 
+  @doc "要求 command_id/id/authority_id/definition（可选 alias），验证 authority 数据集身份，创建 Agent、独立派发 scope 和 created 事件；命令响应一并提交。"
   def create_agent(repo, attrs) do
     with {:ok, _} <-
            Records.fields(attrs, [:command_id, :id, :authority_id, :definition], [:alias]),
@@ -209,6 +214,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
     end
   end
 
+  @doc "按 command_id/position/turn_id 接受唯一原始输入，input 必须恰为字符串键 text 的 UTF-8 对象且不超过 64 KiB；同 turn 重复新命令冲突。"
   def accept_input(repo, attrs) do
     with {:ok, _} <- Records.fields(attrs, [:command_id, :position, :turn_id, :input], []),
          :ok <- validate_position(attrs.position),
@@ -237,6 +243,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
     end
   end
 
+  @doc "要求 command_id/position/turn_id/operations/orchestration；批量 1..8 个 operation/attempt，验证所有者、当前 turn、唯一 ordinal 和来源后原子准备。任一成员失败回滚全部 Actions 和 Agent 写入；仅提交后才可派发。"
   def prepare_operations(repo, attrs) do
     with {:ok, _} <-
            Records.fields(
@@ -344,6 +351,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
     )
   end
 
+  @doc "要求 command_id/position/turn_id/accepted_refs/join；验证 1..128 个已接受摘要引用、角色与当前 generation，追加唯一消费事件。只消费引用，不修改 accepted Result。消费次序由调用方提供。"
   def consume_results(repo, attrs) do
     with {:ok, _} <-
            Records.fields(attrs, [:command_id, :position, :turn_id, :accepted_refs, :join], []),
@@ -404,6 +412,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
   defp consumption_key(ref),
     do: "consume:" <> ref["operation_id"] <> ":" <> ref["consumption_kind"]
 
+  # 后续请求只能引用已消费的 accepted Result；执行证据或尚未消费的输出不能成为来源。
   # Source records are explicit, typed, bounded and same-authority. Only consumed
   # accepted Results can contribute to a later request.
   defp verify_sources(repo, agent, sources) do
@@ -480,6 +489,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
   defp consumption_role?(role, "model_result") when role in ~w(model summary), do: true
   defp consumption_role?(_, _), do: false
 
+  @doc "将仅含控制/引用的 projection 作为可选缓存写入，through_seq 须等于当前历史头；校验摘要与引用后 CAS 更新指针，不追加正文或执行工作。"
   def checkpoint(repo, attrs) do
     with {:ok, _} <-
            Records.fields(
@@ -607,6 +617,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
 
   defp control_digest(_, _), do: :ok
 
+  @doc "记录中断、显式继续、配置变化或上下文选择事件。继续可采用旧代已接受输出，或重授权未认领 prepared 工作；claimed 未决工作拒绝并回滚，不重写逻辑描述和来源。"
   def advance(repo, attrs) do
     with {:ok, _} <-
            Records.fields(attrs, [:command_id, :position, :turn_id, :type, :payload], []),
@@ -629,6 +640,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
     end
   end
 
+  # 只有显式继续事务能采用旧代输出或重授权 prepared；已认领但未决的工作继续受栅栏保护。
   # Only an explicit continuation transaction may authorize a prior generation's
   # still-prepared work or its accepted output. Claimed unresolved work stays fenced.
   defp resume_operations(_repo, _agent, %{
@@ -703,7 +715,9 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
     end
   end
 
-  @doc "Atomically materialize a same-authority reference manifest; source rows are never mutated."
+  @doc "按 position 与 through_seq 原子验证同 authority 的来源，创建独立子 Agent、scope 及三条初始事件和扁平继承清单；源行不修改，不复制执行/命令去重。调用方须先执行安全位置及环境风险策略检查。
+
+Atomically materialize a same-authority reference manifest; source rows are never mutated."
   def fork(repo, attrs) do
     with {:ok, _} <-
            Records.fields(
@@ -820,6 +834,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
          do: {:ok, Records.plain(stored)}
   end
 
+  @doc "按 position 原子轮换派发 epoch、递增 generation 并记录 interrupted 激活事件；仅建立暂停控制，不启动执行。活动实例与 helper 退役检查由 Agent 调用方完成。"
   def restore(repo, attrs) do
     with {:ok, _} <- Records.fields(attrs, [:command_id, :position], []),
          :ok <- validate_position(attrs.position) do
@@ -1013,6 +1028,7 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
     end
   end
 
+  @doc "读取 Agent 行并返回 head_checkpoint=nil；可选缓存应通过 History.checkpoint_at 单独读取。"
   def fetch(repo, id) do
     with {:ok, id} <- Records.uuid(id) do
       Read.read(fn -> read_agent(repo, id) end)
@@ -1025,7 +1041,9 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
     end
   end
 
-  @doc "Read a stable committed command response after an unknown write outcome."
+  @doc "按稳定 agent_id/command_id 读取原始已提交响应，用于核对未知写入结果；缺失返回 conflict，不授权自动重试。
+
+Read a stable committed command response after an unknown write outcome."
   def command_response(repo, agent_id, command_id) do
     with {:ok, _} <- Records.uuid(agent_id),
          {:ok, _} <- Records.uuid(command_id) do
@@ -1040,5 +1058,6 @@ defmodule Beamlet.Agent.Storage.AgentRecords do
     end
   end
 
+  @doc "委托 History.event_page 的有界只读分页，opts 可固定 through_seq，返回事件及 next_cursor。"
   def history_page(repo, id, opts \\ []), do: History.event_page(repo, id, opts)
 end

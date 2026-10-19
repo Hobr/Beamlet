@@ -1,5 +1,7 @@
 defmodule Beamlet.Web.Locale do
   @moduledoc """
+  Web 请求与 LiveView 的语言适配。有效查询参数优先于会话，再回退配置及 zh_CN；有效查询值写入签名会话，翻译语言只影响呈现，不改变业务状态。
+
   Web-surface locale resolution and switching.
 
   Canonicalisation is owned by `Beamlet.I18n.Locale`; this module only decides
@@ -26,7 +28,9 @@ defmodule Beamlet.Web.Locale do
   @session_key "locale"
 
   @impl Plug
-  @typedoc "Locale switcher projection; path retains the current query."
+  @typedoc "语言切换链接的规范语言、标签、路径与当前选择。
+
+Locale switcher projection; path retains the current query."
   @type option :: %{code: binary(), label: binary(), path: binary(), current: boolean()}
   @spec init(options) :: options when options: var
   def init(opts), do: opts
@@ -45,23 +49,37 @@ defmodule Beamlet.Web.Locale do
     |> Plug.Conn.assign(:locale_options, options(conn.request_path, locale))
   end
 
-  @doc "Resolves a locale from a session value and an optional request value."
+  @doc """
+  按请求参数、会话、配置/共享默认顺序选择规范语言。
+
+  Resolves a locale from a session value and an optional request value.
+  """
   @spec resolve(term(), term()) :: binary()
   def resolve(session_locale, param_locale \\ nil) do
     Shared.normalize(param_locale) || Shared.normalize(session_locale) || default()
   end
 
-  @doc "Configured Web default locale, falling back to the shared default."
+  @doc """
+  返回规范默认语言 zh_CN。
+
+  Configured Web default locale, falling back to the shared default.
+  """
   @spec default() :: binary()
   def default do
     Shared.normalize(Application.get_env(:beamlet_app_web, :default_locale)) || Shared.default()
   end
 
-  @doc "Value for the root layout `lang` attribute."
+  @doc """
+  返回 HTML lang 属性使用的语言标签，未知值回退中文。
+
+  Value for the root layout `lang` attribute.
+  """
   @spec html_lang(term()) :: binary()
   def html_lang(locale), do: Shared.html_lang(Shared.normalize(locale))
 
   @doc """
+  返回用于语言选择的规范值与自有语言标签。
+
   Switcher entries for a path: `%{code, label, path, current}`.
 
   `path` keeps the current path and only replaces the `locale` query value, so
@@ -75,7 +93,11 @@ defmodule Beamlet.Web.Locale do
     end
   end
 
-  @doc "Merges a canonical locale into an existing path/query."
+  @doc """
+  保留现有路径与查询，仅替换 locale 查询值；非字符串路径回退根路径。
+
+  Merges a canonical locale into an existing path/query.
+  """
   @spec path_for(term(), binary()) :: binary()
   def path_for(path, locale) when is_binary(path) and is_binary(locale) do
     uri = URI.parse(path)
@@ -91,7 +113,11 @@ defmodule Beamlet.Web.Locale do
 
   def path_for(_path, locale), do: path_for("/", locale)
 
-  @doc "LiveView `on_mount` hook: installs the locale for the LiveView process."
+  @doc """
+  在 LiveView 挂载时安装当前进程语言与切换器 assigns。
+
+  LiveView `on_mount` hook: installs the locale for the LiveView process.
+  """
   @spec on_mount(:default, map(), term(), Phoenix.LiveView.Socket.t()) ::
           {:cont, Phoenix.LiveView.Socket.t()}
   def on_mount(:default, params, session, socket) do
@@ -107,6 +133,8 @@ defmodule Beamlet.Web.Locale do
   end
 
   @doc """
+  参数变化时重新安装有效语言并记录当前路径，供完整页面切换链接使用。
+
   Re-resolves the locale on every `handle_params/3` so a `?locale=` change
   applies without remounting, and records the current path for the switcher.
   """

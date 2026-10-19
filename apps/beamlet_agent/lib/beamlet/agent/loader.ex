@@ -1,5 +1,9 @@
 defmodule Beamlet.Agent.Loader do
-  @typedoc "Fixed-high-water reconstruction. String-key record fields and reference relationships are runtime validated."
+  @typedoc """
+  固定高水位重建结果；agent 为持久化行，control 为已校验归约控制。
+
+  Fixed-high-water reconstruction. String-key record fields and reference relationships are runtime validated.
+  """
   @type loaded :: %{
           agent: Beamlet.Agent.Core.Data.object(),
           control: Beamlet.Agent.Core.Reducer.state()
@@ -23,7 +27,11 @@ defmodule Beamlet.Agent.Loader do
   @spec sources(module(), binary(), object()) :: check()
   @spec source(module(), binary(), pos_integer(), term()) :: check() | false
   @spec accepted_digest(module(), object(), object()) :: check()
-  @moduledoc "Bounded fixed-high-water history reconstruction. Reads never activate or dispatch."
+  @moduledoc """
+  固定历史高水位的有界重建。校验缓存对应的完整前缀再归约后缀；缓存无效回退历史，历史或引用损坏则阻塞，不修复也不执行。
+
+  Bounded fixed-high-water history reconstruction. Reads never activate or dispatch.
+  """
   alias Beamlet.Agent.Reducer
   alias Beamlet.Agent.Storage.AgentRecords
   alias Beamlet.Agent.Storage.Codec
@@ -34,6 +42,7 @@ defmodule Beamlet.Agent.Loader do
   @max_events 100_000
   @max_bytes 33_554_432
 
+  @doc "按 through_seq（默认当前历史头）重建并验证控制与引用；最多 100000 事件/32 MiB，缓存前后共享预算，不激活实例。"
   def load(repo, id, opts \\ []) do
     with {:ok, %{"agent" => agent}} <- AgentRecords.fetch(repo, id),
          :ok <- References.verify_read(repo, agent["definition"]),
@@ -97,6 +106,7 @@ defmodule Beamlet.Agent.Loader do
     end
   end
 
+  @doc "验证继承闭包及自有 pending/consumed 引用；内容损坏显式拒绝。"
   def references(repo, state) do
     with :ok <- Inheritance.verify(repo, state["inheritance"]) do
       owned_references(repo, state)
@@ -134,6 +144,7 @@ defmodule Beamlet.Agent.Loader do
       else: {:error, :limit}
   end
 
+  @doc "检查所属 Agent、准备事件、描述/接受摘要与有序来源后返回 Operation 行。"
   def operation(repo, agent_id, ref) when is_map(ref) do
     with {:ok, %{"operation" => op} = rows} <- OperationRecords.fetch(repo, ref["operation_id"]),
          true <- op["owner_agent_id"] == agent_id,

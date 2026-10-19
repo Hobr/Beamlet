@@ -1,5 +1,6 @@
 defmodule Beamlet.Actions.Storage.RecordChangeset do
   @moduledoc false
+  # 列级校验拒绝未知键和原子/字符串混用；事务级身份、来源和幂等性仍由记录门面校验。
   @spec build(struct(), term(), [atom()]) :: Ecto.Changeset.t()
   @spec homogeneous?([atom() | String.t()]) :: boolean()
   @spec invalid(struct()) :: Ecto.Changeset.t()

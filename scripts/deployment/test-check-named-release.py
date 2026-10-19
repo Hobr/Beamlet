@@ -1,4 +1,9 @@
-"""Bounded fault injection; no release or provider process is launched."""
+"""有界故障注入回归；不启动任何 release 或提供方进程。
+
+它只验证清理组合：首个错误保持为主错误，后续停止/等待失败作为 note 追加，
+日志句柄仍会关闭；不代表真实服务已停止或已验收。
+Bounded fault injection; no release or provider process is launched.
+"""
 import importlib.util
 import io
 import subprocess

@@ -2,6 +2,7 @@ defmodule Beamlet.Web.Application do
   # See https://elixir.hexdocs.pm/Application.html
   # for more information on OTP Applications
   @moduledoc false
+  # Host 与 Endpoint 分开监督；关闭后端角色仍可服务页面，更新配置只转交 Endpoint。
 
   use Application
 

@@ -28,6 +28,7 @@ defmodule Beamlet.Agent.Discovery do
   @spec fetch_ref(pid(), binary(), integer()) :: {:ok, Beamlet.Agent.Ref.t()} | {:error, atom()}
   @spec call_ref(pid(), binary(), integer()) :: {:ok, Beamlet.Agent.Ref.t()} | {:error, atom()}
   @moduledoc false
+  # 身份读取与 authority 监督岛隔离；lookup 校验真实 Ref，不构造替代实例；初始连接预检不能阻止后续 OTP 重连。
   alias Beamlet.Agent.Ref
   @budget 5000
   @bytes 1_048_576

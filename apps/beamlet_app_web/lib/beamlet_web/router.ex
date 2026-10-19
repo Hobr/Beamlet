@@ -1,4 +1,5 @@
 defmodule Beamlet.Web.Router do
+  @moduledoc "浏览器管线与工作台、只读管理路由。先取会话再解析语言；CSRF、源检查及每响应 CSP nonce 保持安全边界，API 管线尚无路由。"
   use Beamlet.Web, :router
 
   @live_debugger_sources (if Mix.env() == :dev do

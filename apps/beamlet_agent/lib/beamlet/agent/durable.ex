@@ -1,5 +1,9 @@
 defmodule Beamlet.Agent.Durable do
-  @typedoc "Committed control plus optional live dispatch wiring; freshly opened instances have nil generation/turn/runtime fields."
+  @typedoc """
+  已提交控制及可选执行接线；未开始 turn 或未接线时相关字段可为 nil。
+
+  Committed control plus optional live dispatch wiring; freshly opened instances have nil generation/turn/runtime fields.
+  """
   @type t :: %__MODULE__{
           repo: module(),
           authority_id: binary(),
@@ -12,17 +16,20 @@ defmodule Beamlet.Agent.Durable do
           runtime: runtime() | nil,
           control: Beamlet.Agent.Core.Reducer.state() | nil
         }
+  @typedoc "同 authority Repo、独立 journal 及 executor/boot 身份，不携带凭证。"
   @type runtime :: %{
           authority_repo: module(),
           journal_repo: module(),
           executor_id: binary(),
           executor_boot_id: binary()
         }
+  @typedoc "恢复后的暂停控制、实时 alias 与 Durable 接线，不含自动执行许可。"
   @type restored :: %{
           durable: t(),
           alias: binary() | nil,
           control: Beamlet.Agent.Core.Reducer.state()
         }
+  @typedoc "暂停子实例定位与源截止位；risk 可为 unconfirmed，默认不授权后续执行。"
   @type forked :: %{
           agent_id: binary(),
           locator: Beamlet.Agent.locator(),
@@ -88,7 +95,11 @@ defmodule Beamlet.Agent.Durable do
   @spec preflight(t(), [{binary(), object(), binary() | nil}]) :: :ok | Beamlet.Agent.error()
   @spec preparation_events([%{operation: map()}]) :: [{binary(), object(), binary() | nil}]
   @spec write(t(), atom(), map()) :: result(object())
-  @moduledoc "Agent-owned input and reference orchestration over Agent authority format 3."
+  @moduledoc """
+  Agent 拥有的输入、准备与结果引用消费编排，使用 format3 authority。只把已提交事件归约到控制状态；未知写入按命令 ID 读取原响应，不重发写入或业务工作。恢复会提升 generation 并暂停，已声明发送而未解决的尝试不可再次发送。
+
+  Agent-owned input and reference orchestration over Agent authority format 3.
+  """
   import Kernel, except: [inspect: 1, inspect: 2]
   alias Beamlet.Agent.ContextBuilder
   alias Beamlet.Agent.Core.Decision
@@ -112,11 +123,15 @@ defmodule Beamlet.Agent.Durable do
     :control
   ]
 
+  @doc "读取当前归约控制的模型步骤。"
   def step(d), do: d.control["step"]
+  @doc "返回 Agent/CAS version/generation 位置，供事务验证。"
   def position(d), do: %{agent_id: d.agent_id, lock_version: d.version, generation: d.generation}
+  @doc "读取可选执行接线，缺失返回 missing_durable_runtime。"
   def runtime(%{runtime: nil}), do: {:error, :missing_durable_runtime}
   def runtime(d), do: {:ok, d.runtime}
 
+  @doc "附加与当前 Repo 一致的运行时接线和有效 executor/boot UUID，不启动资源。"
   def with_runtime(d, runtime) when is_map(runtime) do
     if runtime[:authority_repo] == d.repo and runtime[:journal_repo] != nil and
          Codec.uuid?(runtime[:executor_id]) and Codec.uuid?(runtime[:executor_boot_id]),
@@ -124,6 +139,7 @@ defmodule Beamlet.Agent.Durable do
        else: {:error, :invalid_data}
   end
 
+  @doc "为既有 prepared 的 scope/epoch 构造 Runtime 接线，缺少 runtime 拒绝。"
   def persistence(d, prepared) do
     with {:ok, r} <- runtime(d) do
       {:ok,
@@ -139,6 +155,7 @@ defmodule Beamlet.Agent.Durable do
     end
   end
 
+  @doc "显式创建持久化 Agent 并归约返回的提交事件；definition 不应包含凭证。"
   def open(repo, attrs) do
     args = %{
       command_id: attrs.command_id,
@@ -165,8 +182,10 @@ defmodule Beamlet.Agent.Durable do
     end
   end
 
+  @doc "只读固定高水位重建，无需模型绑定、provider 或 executor。"
   def inspect(locator, opts \\ []), do: Loader.load(locator.repo, locator.agent_id, opts)
 
+  @doc "先校验风险、continuation 与事件语义，再以命令 ID 原子接受输入。"
   def accept_input(d, attrs) do
     args = %{
       command_id: attrs.command_id,
@@ -187,6 +206,7 @@ defmodule Beamlet.Agent.Durable do
     end
   end
 
+  @doc "模型或工具批次原子准备，先 preflight 再提交；返回 durable 与有序 prepared，提交后才可执行。"
   def prepare(d, operations, role, sources, _policy \\ %{}) do
     with true <- role in ~w(model tool),
          {:ok, r} <- runtime(d),
@@ -234,6 +254,7 @@ defmodule Beamlet.Agent.Durable do
     end
   end
 
+  @doc "按输入顺序读取完整已接受结果并提交消费引用与 join 位置，不触发执行。"
   def consume(d, ids, position) do
     with {:ok, refs} <- accepted_refs(d, ids),
          specs =
@@ -255,6 +276,7 @@ defmodule Beamlet.Agent.Durable do
     end
   end
 
+  @doc "取得有序接受摘要引用；不确定结果未明确解决时返回 unresolved_execution。"
   def accepted_refs(d, ids) do
     Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, refs} ->
       with {:ok, %{"operation" => op}} <-
@@ -283,10 +305,12 @@ defmodule Beamlet.Agent.Durable do
       else: if(op["role"] == "model", do: "model_result", else: "tool_result")
   end
 
+  @doc "记录 turn.interrupted 并更新归约控制，不证明远端停止。"
   def block(d, reason) do
     advance(d, "turn.interrupted", %{"reason" => to_string(reason)})
   end
 
+  @doc "验证风险或逐 Operation 决策后提交继续事实；claimed unresolved 不允许再次发送。"
   def decide(d, attrs) do
     ids = Enum.map(d.control["pending"], & &1["operation_id"])
 
@@ -381,7 +405,11 @@ defmodule Beamlet.Agent.Durable do
       else: :ok
   end
 
-  @doc "Fork a safe committed sequence into paused, independent direct references."
+  @doc """
+  安全位置同 authority 引用分叉，command UUID 是稳定子 ID；注册源拒绝，默认环境风险未确认。
+
+  Fork a safe committed sequence into paused, independent direct references.
+  """
   def fork(locator, through, expected, command) do
     with {:ok, source} <- fork_source(Map.get(locator, :source, %{})) do
       request = %{"through_seq" => through, "expected_version" => expected, "source" => source}
@@ -476,6 +504,7 @@ defmodule Beamlet.Agent.Durable do
       else: {:error, :unsafe_position}
   end
 
+  @doc "验证历史、清退旧本地发送者，再激活新 generation 并暂停；不调用模型/工具。"
   def restore(locator, expected, command) when is_integer(expected) and expected >= 0 do
     with {:ok, loaded} <- inspect(locator),
          :ok <- inactive(loaded.agent),
@@ -527,6 +556,7 @@ defmodule Beamlet.Agent.Durable do
     }
   end
 
+  @doc "按当前已提交控制与 catalogue 构造来源校验后的原生上下文。"
   def context(d, catalogue), do: ContextBuilder.build(d.repo, d.control, catalogue)
 
   defp committed(d, response) do

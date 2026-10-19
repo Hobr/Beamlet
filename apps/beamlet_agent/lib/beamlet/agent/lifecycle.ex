@@ -12,6 +12,7 @@ defmodule Beamlet.Agent.Lifecycle do
   @spec retire(resources()) :: :ok
   @spec await_down(resources()) :: :ok
   @moduledoc false
+  # 控制器不直接调用阻塞基础设施；登记/准入 5 秒及总生命周期 65 秒定时器运行在阻塞 worker 之外。
 
   # The controller never calls infrastructure. Every blocking call belongs to its
   # linked worker; killing the controller also kills that worker.

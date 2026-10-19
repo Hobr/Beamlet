@@ -1,5 +1,9 @@
 defmodule Beamlet.Agent.TraceSnapshot do
-  @typedoc "Fixed high waters plus explicit missing closure members; no execution permission."
+  @typedoc """
+  固定高水位与显式缺失闭包项，仅用于只读轨迹，不授予执行权限。
+
+  Fixed high waters plus explicit missing closure members; no execution permission.
+  """
   @type t :: %{
           agent: Beamlet.Agent.Core.Data.object(),
           events: [Beamlet.Agent.Core.Data.object()],
@@ -39,6 +43,7 @@ defmodule Beamlet.Agent.TraceSnapshot do
   @spec charge(state(), term()) :: {:ok, state()} | {:error, :limit}
   @spec missing(state(), binary(), binary() | nil, atom() | binary()) :: state()
   @moduledoc false
+  # 写页前捕获固定 Operation 向量与内容闭包；缺失记录显式标记，不能把截断轨迹称为完整。
   alias Beamlet.Agent.Reducer
   alias Beamlet.Agent.Storage.AgentRecords
   alias Beamlet.Agent.Storage.Codec

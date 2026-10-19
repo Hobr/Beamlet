@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# 复制产物检查：同一个 server 产物三种启动配置、三个独立前台 CLI 会话与 Web 的
+# 复制运行。所有检查都针对复制出源码/deps 之外的目录，并录制文件指纹与日志。
+# 这些是同主机证据，不是物理部署、跨机或付费提供方验收。
 set -euo pipefail
 # One copied artifact, three startup configurations; library tests own seven roles.
 script_dir=$(cd "$(dirname "$0")" && pwd)
@@ -22,6 +25,7 @@ for artifact, expected in zip(sys.argv[1:], ["beamlet_app_server", "beamlet_cli"
     assert not (root / "bin/beamlet_daemon").exists(), artifact
 PY
 trap 'rm -rf "$work"' EXIT
+# 先复制再检查：检查不得改到原始构建目录；复制树指纹供证据比对。
 cp -a "$release" "$work/release"
 printf 'Release evidence: %s\n' "$logs"
 (

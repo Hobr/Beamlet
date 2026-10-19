@@ -1,5 +1,6 @@
 defmodule Beamlet.Server.Application do
   @moduledoc false
+  # 先启动角色，再按显式存储配置打开数据集及准入；普通加载保持空树。
   use Application
 
   @impl true

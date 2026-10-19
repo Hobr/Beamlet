@@ -1,5 +1,8 @@
 import Config
 
+# 应用设置示例：在共享配置或打包 runtime.exs 中改写；示例不会被自动加载。
+# 启动不需要模型凭据；每次 Agent 创建才提供一份不可变 model 绑定。
+# 省略 roles 即默认 [:authority, :executor]；仅权威/仅执行也受支持。
 # Application settings example: adapt in shared config or bundled runtime.exs.
 # Mix does not discover or automatically load this example.
 # Boot needs no model credentials. Agent creation supplies one immutable binding.

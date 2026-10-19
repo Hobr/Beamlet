@@ -1,5 +1,6 @@
 defmodule Beamlet.Web.WorkbenchCommands do
   @moduledoc false
+  # 私有解析只留在调用者内；由同一守护者顺序报告身份、确认 Ref、输入与导航，不因不确定反馈重发。
   alias Beamlet.Node.Cluster
   alias Beamlet.Web.{Agents, Handles, OwnedCall, Presets}
 

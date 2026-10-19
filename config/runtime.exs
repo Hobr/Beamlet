@@ -1,5 +1,9 @@
 import Config
 
+# 发布与源码启动共用这一份运行时配置。Mix 会把它随每个 release 复制，
+# 并在应用启动前求值；只有匹配的 RELEASE_NAME 才启用对应宿主
+# （每 VM 一个 Node）。源码方式启动时 RELEASE_NAME 通常为空，走 `_ -> :ok`。
+#
 # Mix bundles this script for every release. Ordinary source/library loading stays
 # opt-in; only the selected release activates its host (one Node per VM).
 release = System.get_env("RELEASE_NAME")
@@ -19,6 +23,8 @@ case release do
     :ok
 end
 
+# 后端 release 不包含 Phoenix，也不需要 Web 签名密钥；但生产源码方式启动的 Web
+# 仍需检查密钥，所以不能只看 release 名就把检查删掉。
 # Backend releases do not ship Phoenix or need a Web signing secret. Keep the
 # production source-run Web check as well as the packaged Web check.
 if config_env() == :prod and release not in ["beamlet_server", "beamlet_cli"] do

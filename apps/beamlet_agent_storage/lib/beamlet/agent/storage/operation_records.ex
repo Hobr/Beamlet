@@ -1,9 +1,13 @@
 defmodule Beamlet.Agent.Storage.OperationRecords do
-  @moduledoc "Agent-owned operation projections and association validation."
+  @moduledoc "Agent 关联校验及只读 Operation 投影。owner/turn/step/role/ordinal/generation/prepared_seq/sources 属于 agent_operations；描述、attempt、证据及 accepted Result 属于 Actions。不能通过投影视图写入中立 Operation。
+
+Agent-owned operation projections and association validation."
   alias Beamlet.Agent.Storage.Records
   alias Beamlet.Agent.Storage.Schema.Operation
 
-  @typedoc "Validated association input. Unowned intermediate operations may have nil owner/turn/step/role."
+  @typedoc "经门面校验的不可变 Operation/关联输入；可选字段不代表已取得执行许可。
+
+Validated association input. Unowned intermediate operations may have nil owner/turn/step/role."
   @type operation :: %{
           id: String.t(),
           description: Records.object(),
@@ -16,6 +20,7 @@ defmodule Beamlet.Agent.Storage.OperationRecords do
           ordinal: non_neg_integer() | nil,
           tool_call_id: String.t() | nil
         }
+  @typedoc "准备执行身份与预算，关联执行端及 boot；不代表 worker 已启动。"
   @type attempt :: Beamlet.Actions.Storage.OperationRecords.attempt()
   @spec validate_operation(term()) :: Records.result(operation())
   @spec role(term(), String.t() | nil) :: Records.result(String.t() | nil)
@@ -106,6 +111,7 @@ defmodule Beamlet.Agent.Storage.OperationRecords do
          do: {:ok, attrs}
   end
 
+  @doc "校验 UUID 后返回字符串键 Operation 只读联接投影及 Actions attempt；没有 Agent 关联时返回 conflict。"
   def fetch(repo, id) do
     with {:ok, _} <- Records.uuid(id), do: Read.read(fn -> read_operation(repo, id) end)
   end

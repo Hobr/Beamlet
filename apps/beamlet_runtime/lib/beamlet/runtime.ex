@@ -1,5 +1,7 @@
 defmodule Beamlet.Runtime do
   @moduledoc """
+  显式监督的一次尝试分布式执行入口。先在宿主监督树安装 `{Beamlet.Runtime, options}`；默认仅发现，`execution: true` 才启动执行器。提交成功仅表示取得协调器 Ref，执行结果异步投递；不自动重试或重放。取消请求、超时和本地 worker 退出均不能证明外部副作用回滚。
+
   Opt-in, one-attempt distributed operations, ephemeral by default.
 
   Supplying `persistence: %Beamlet.Runtime.Persistence{}` keeps the existing
@@ -12,7 +14,11 @@ defmodule Beamlet.Runtime do
   alias Beamlet.Runtime.{Directory, Observation, Persistence, SharedSupervisor}
   alias Beamlet.Storage.Admission
 
-  @typedoc "Startup configuration: handlers and settings are trusted local registrations."
+  @typedoc """
+  启动配置；handlers/settings 为本地可信注册，execution 默认为 false。
+
+  Startup configuration: handlers and settings are trusted local registrations.
+  """
   @type options :: [
           execution: boolean(),
           handlers: Beamlet.Runtime.Report.registrations(),
@@ -23,6 +29,7 @@ defmodule Beamlet.Runtime do
           limits: [{atom(), pos_integer()}],
           persistence: Persistence.t() | keyword() | nil
         ]
+  @typedoc "提交时的生命周期 owner、事件 sink 及可选持久化身份；实时 owner 守卫仅接受本地 PID。"
   @type submit_options :: [
           owner: pid(),
           sink: pid(),
@@ -30,6 +37,7 @@ defmodule Beamlet.Runtime do
           persistence: Persistence.t() | keyword() | nil,
           prepared: Persistence.prepared()
         ]
+  @typedoc "协调器的瞬时快照；execution/result 可尚未出现，持久化接受失败时隐藏 result。"
   @type snapshot :: %{
           execution: Beamlet.Actions.Execution.t() | nil,
           result: Beamlet.Actions.Result.t() | nil,
@@ -37,6 +45,7 @@ defmodule Beamlet.Runtime do
           progress_dropped: boolean(),
           durable: Beamlet.Runtime.OperationCoordinator.durable_status() | nil
         }
+  @typedoc "按本 VM 接收时间投影的报告；未收到时 age_ms 为 unknown，容量为建议值。"
   @type observed_report ::
           %{node: node(), status: :not_reported, age_ms: :unknown}
           | %{
@@ -49,6 +58,7 @@ defmodule Beamlet.Runtime do
               environments: [binary()],
               available: Beamlet.Runtime.Report.pools()
             }
+  @typedoc "只读报告集合；complete 表示数量覆盖，source 标识接收时间所在 VM。"
   @type observation :: %{
           version: 1,
           source: node(),
@@ -56,7 +66,9 @@ defmodule Beamlet.Runtime do
           reports: [observed_report()],
           complete: boolean()
         }
+  @typedoc "协调器内部控制请求，不执行新尝试。"
   @type command :: :status | :cancel | {:ack, term()}
+  @typedoc "控制响应或已失效 Ref 的 unavailable。"
   @type control_result :: :ok | {:ok, snapshot()} | {:error, :unavailable}
   @spec observation() :: {:ok, observation()} | {:error, :timeout | :unavailable | :limit}
   @spec child_spec(options()) :: Supervisor.child_spec()
@@ -89,6 +101,8 @@ defmodule Beamlet.Runtime do
   @spec control(OperationRef.t(), command()) :: control_result()
 
   @doc """
+  只读报告，年龄来自本 VM 接收时间。最多 256 条，缺失不表示节点死亡，容量只是建议值。
+
   Safe Directory-owned report observation, `{:ok, %{version: 1, source: node,
   expiry_ms: integer, reports: list, complete: boolean}}`.
 
@@ -105,9 +119,12 @@ defmodule Beamlet.Runtime do
   """
   def observation, do: Observation.read(Directory, :observation, 5000)
 
+  @doc "返回共享监督树 child spec；execution 默认为 false。"
   def child_spec(opts), do: SharedSupervisor.child_spec(opts)
 
   @doc """
+  按当前部署上限提交一次尝试，返回协调器 Ref 或 invalid_operation/unavailable/capacity；owner、sink 默认调用者，结果异步投递。
+
   Submits one operation using the current deployment limits.
 
   Owner and sink default to the caller. Optional `require_live_owner: true`
@@ -166,6 +183,8 @@ defmodule Beamlet.Runtime do
   end
 
   @doc """
+  按稳定 ID 读取 authority 与 journal；not_found 和 unavailable 都不能证明未执行。
+
   Read-only Evidence query using stable IDs only: the authority Operation and one
   attempt, plus the executor journal row when this attempt was claimed there.
 
@@ -286,8 +305,11 @@ defmodule Beamlet.Runtime do
     end
   end
 
+  @doc "读取保留期内协调器快照；持久化接受失败时 result 隐藏，durable 显示接受错误。过期 Ref 返回 unavailable。"
   def status(%OperationRef{} = ref), do: control(ref, :status)
+  @doc "请求尽力停止；:ok 只确认协调器处理请求，不证明 worker 或外部 provider 已停止。终态可能仍为 uncertain。"
   def cancel(%OperationRef{} = ref), do: control(ref, :cancel)
+  @doc "确认已消费的进度序号并释放 sink 额度；终态投递不依赖进度额度。"
   def ack(%OperationRef{} = ref, sequence), do: control(ref, {:ack, sequence})
 
   defp control(ref, command) do

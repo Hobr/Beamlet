@@ -1,5 +1,9 @@
 defmodule Beamlet.Node.Routes do
-  @moduledoc "Public portable routes and data-only catalogue, independent of executor settings."
+  @moduledoc """
+  公开可移植工具路由及纯数据 catalogue，独立于执行器设置。仅保留声明角色与公开数据，不复制完整启动配置。
+
+  Public portable routes and data-only catalogue, independent of executor settings.
+  """
   use GenServer
 
   @typep options :: [
@@ -8,6 +12,7 @@ defmodule Beamlet.Node.Routes do
            | {:catalogue, Beamlet.Harness.Catalogue.t()}
          ]
   @spec start_link(options()) :: GenServer.on_start()
+  @doc "保存公开 routes/catalogue 和声明 roles；调用方先经 Node 配置验证。"
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   @impl true
   @spec init(options()) :: {:ok, options()}

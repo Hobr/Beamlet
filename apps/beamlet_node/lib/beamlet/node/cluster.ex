@@ -1,5 +1,7 @@
 defmodule Beamlet.Node.Cluster do
   @moduledoc """
+  受信部署名称解析、单次连接与已连接节点过滤。仅 allowlist 内经验证的 ASCII node@host 名称转换为 atom；最多 32 个、每个 255 字节。5 秒等待不代表 OTP 握手立即停止。
+
   Trusted deployment names and explicit distribution connections, independent of hosts.
 
   All names must be ASCII node@host strings of at most 255 bytes in an allowlist
@@ -8,7 +10,11 @@ defmodule Beamlet.Node.Cluster do
   work is submitted or retried. OTP may finish a handshake after that budget.
   """
 
-  @doc "Resolve an explicit node from a trusted, bounded deployment allowlist."
+  @doc """
+  只将可信 allowlist 内经验证的名称解析为 node atom，非法返回 invalid_authority。
+
+  Resolve an explicit node from a trusted, bounded deployment allowlist.
+  """
   @spec authority(term(), term()) :: {:ok, node()} | {:error, :invalid_authority}
   def authority(name, allowed) do
     if valid_allowlist?(allowed) and valid_name?(name) and name in allowed,
@@ -16,7 +22,11 @@ defmodule Beamlet.Node.Cluster do
       else: {:error, :invalid_authority}
   end
 
-  @doc "Attempt one connection; failure or timeout returns unavailable."
+  @doc """
+  单次连接，有限 5 秒等待；失败返回 unavailable，不重试业务。
+
+  Attempt one connection; failure or timeout returns unavailable.
+  """
   @spec connect(term(), term()) :: :ok | {:error, :invalid_authority | :unavailable}
   def connect(name, allowed) do
     with {:ok, target} <- authority(name, allowed) do
@@ -36,6 +46,8 @@ defmodule Beamlet.Node.Cluster do
   end
 
   @doc """
+  返回已连接且在 allowlist 内的节点；本 VM 需 alive 且在表内，不建立连接或转换新 atom。
+
   Return already connected trusted nodes, including this VM only if alive and
   allowlisted. Does not atomize the allowlist or establish any connections.
   """

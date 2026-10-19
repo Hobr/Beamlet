@@ -2,11 +2,17 @@ defmodule Beamlet.Agent.Integration.Handler do
   @spec run(term(), Beamlet.Actions.Handler.context()) :: {:ok, term()} | {:error, term()}
   @spec native(Beamlet.Actions.Handler.context()) :: Beamlet.Harness.Context.t()
   alias Beamlet.Agent.ModelBinding
-  @moduledoc "Executor adapter resolving only locally installed trusted providers and Tools."
+
+  @moduledoc """
+  执行端适配层，只解析本地安装的可信模型 provider 与工具。重新校验模型请求和 invocation；工具拒绝非空凭证，原生 Context 只收到进度和取消钩子。
+
+  Executor adapter resolving only locally installed trusted providers and Tools.
+  """
   @behaviour Beamlet.Actions.Handler
   alias Beamlet.Harness.Model
 
   @impl true
+  @doc "按精确 payload 形状解析本地模型或工具；模型请求重新校验，provider 异常归为 provider_failure，工具拒绝非空 credentials。"
   def run(
         %{"type" => "model", "provider" => provider, "config" => config, "request" => request} =
           payload,

@@ -1,5 +1,7 @@
 defmodule Beamlet.I18n do
   @moduledoc """
+  Web 与 CLI 的共享翻译后端，仅依赖 Gettext。界面通过运行时函数查询共享 msgid，提取宏仅由 Catalogue 声明；当前进程的 Gettext 语言同时覆盖共享与界面后端。
+
   Shared translation backend for the product surfaces (Web and CLI).
 
   Catalogues live in `apps/beamlet_i18n/priv/gettext/{en,zh_CN}/LC_MESSAGES`.
@@ -20,13 +22,21 @@ defmodule Beamlet.I18n do
   """
   use Gettext.Backend, otp_app: :beamlet_i18n
 
-  @doc "Runtime lookup of a shared msgid in the default domain."
+  @doc """
+  在共享默认域执行运行时查询，可传插值绑定；不向调用方目录登记提取项。
+
+  Runtime lookup of a shared msgid in the default domain.
+  """
   @spec gettext(String.t(), Gettext.bindings()) :: String.t()
   def gettext(msgid, bindings \\ %{}) do
     Gettext.gettext(__MODULE__, msgid, bindings)
   end
 
-  @doc "Runtime lookup of a shared msgid in an explicit domain."
+  @doc """
+  在指定共享域执行运行时查询，可传插值绑定。
+
+  Runtime lookup of a shared msgid in an explicit domain.
+  """
   @spec dgettext(String.t(), String.t(), Gettext.bindings()) :: String.t()
   def dgettext(domain, msgid, bindings \\ %{}) do
     Gettext.dgettext(__MODULE__, domain, msgid, bindings)

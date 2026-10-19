@@ -1,11 +1,17 @@
 defmodule Beamlet.CLI.Session do
-  @moduledoc "Single dispatcher with at most128 local aliases to immutable real Refs."
+  @moduledoc """
+  维护最多 128 个本地别名和一次保留的发现结果。别名绑定真实 Ref，不随同名 ID 替换；detach/quit 只丢弃本地引用，成功 close 才移除同 Ref 的所有别名。
+
+  Single dispatcher with at most128 local aliases to immutable real Refs.
+  """
   alias Beamlet.Agent
   alias Beamlet.CLI.{Client, Command, Renderer}
   alias Beamlet.Node.{Agents, Cluster}
   defstruct aliases: %{}, allowed_nodes: [], discovery: nil
 
-  @typedoc "Local aliases and one retained eventual discovery result."
+  @typedoc "会话状态：本地别名到真实 Ref 的映射、允许节点名及一次保留的发现结果。
+
+Local aliases and one retained eventual discovery result."
   @type t :: %__MODULE__{
           aliases: %{optional(binary()) => Agent.Ref.t()},
           allowed_nodes: [binary()],
@@ -13,9 +19,11 @@ defmodule Beamlet.CLI.Session do
         }
   @typep output :: (binary() -> term())
   @typep identity :: %{authority: node(), id: binary(), pid: pid(), incarnation: reference()}
+  @doc "创建只含本地会话数据的状态；允许节点名保持字符串，后续通过 Cluster 验证，不隐式连接。"
   @spec new([binary()]) :: t()
   def new(allowed \\ []), do: %__MODULE__{allowed_nodes: allowed}
 
+  @doc "解析并派发一条固定命令，使用 output 输出结果，返回 continue 或 quit 与会话状态；不是任意 Elixir 求值接口。"
   @spec execute(t(), term(), output()) :: {:quit | :continue, t()}
   def execute(session, line, output \\ &Owl.IO.puts/1) do
     result = with {:ok, command} <- Command.parse(line), do: dispatch(session, command, output)

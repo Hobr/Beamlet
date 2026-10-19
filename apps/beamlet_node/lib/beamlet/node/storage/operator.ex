@@ -1,5 +1,7 @@
 defmodule Beamlet.Node.Storage.Operator do
   @moduledoc """
+  可信运维者显式安装角色所需数据集。已有数据集拒绝，不覆盖或自动升级；成功后停止自己启动的 Repo，不停止宿主已有资源。多数据集顺序安装并非跨库原子事务。
+
   Explicit operator actions for a durable dataset. Installing/migrating is never
   done by an Agent, by host boot or by `Beamlet.Storage.Dataset.open/2`: this
   module is invoked deliberately, once, by a trusted operator command.
@@ -18,6 +20,8 @@ defmodule Beamlet.Node.Storage.Operator do
   alias Beamlet.Node.Storage, as: Host
 
   @doc """
+  顺序安装角色需要的数据集；返回各角色 installed/nil 或带角色错误，不覆盖已有数据，不自动重试。
+
   Installs the datasets `roles` need from a trusted `:storage` block (same shape
   as `Beamlet.Node.Storage.configuration/2`).
 

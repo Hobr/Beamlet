@@ -1,11 +1,18 @@
 defmodule Beamlet.Harness.Models.OpenAICompatible do
-  @moduledoc "Nonstreaming text Chat Completions adapter using Agent-owned invocation config and credentials. Never retries."
+  @moduledoc """
+  非流式文本 Chat Completions 适配器；请求 n=1、stream=false，禁止重试与重定向，验证 HTTPS 对端。取消仅在调用前检查，阻塞期间的生命周期由宿主负责；本地退出不证明上游未执行或未计费。
+
+  Nonstreaming text Chat Completions adapter using Agent-owned invocation config and credentials. Never retries.
+  """
   @behaviour Beamlet.Harness.Model
   alias Beamlet.Harness.{Catalogue, Context, Model}
   @limit 1_048_576
 
   @impl true
   @typep completion :: {:ok, Model.reply()} | {:error, atom()}
+  @doc """
+  校验取消、配置与中立请求后完成一次调用；默认使用空本地 Context。返回中立回复或安全原子错误，不把凭据/原始响应附到错误。
+  """
   @spec complete(term(), term(), Context.t()) :: completion()
   def complete(request, settings, context \\ %Context{}) do
     with false <- Context.cancelled?(context),
@@ -24,6 +31,9 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
   end
 
   @impl true
+  @doc """
+  校验通用 invocation 和适配器字段；非法配置返回 invalid_profile，不发起请求。
+  """
   @spec validate_invocation(term()) :: :ok | {:error, :invalid_profile}
   def validate_invocation(invocation) do
     with :ok <- Model.validate_invocation(invocation), {:ok, _, _} <- profile(invocation) do
@@ -166,6 +176,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     if not is_integer(timeout) or timeout not in 1..60_000 do
       {:error, :invalid_profile}
     else
+      # 从全新请求附加固定步骤，避免全局 Req 默认值注入插件或传输设置。
       request = Req.Request.new() |> Req.Steps.attach()
 
       Req.post(request,
@@ -205,6 +216,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
   @spec decode(Req.Response.t(), Catalogue.t()) :: completion()
   defp decode(response, catalogue) do
     cond do
+      # 流回调 halt 也可能被视为成功，必须先检查溢出再解码有效 JSON 前缀。
       response.private[:body_overflow] ->
         {:error, :response_limit}
 
@@ -251,6 +263,9 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
 
   defp normalize_reply(_, _), do: {:error, :invalid_reply}
 
+  @doc """
+  把已解码的供应商 envelope 转为中立回复；只接受一个 choice 和受支持字段。拒绝 refusal、截断与未知动作；完整输入/输出 JSON 各最多 1 MiB，不访问网络。
+  """
   @spec normalize(term(), term()) :: completion()
   def normalize(reply, catalogue) do
     with :ok <- Catalogue.validate(catalogue),
@@ -264,6 +279,7 @@ defmodule Beamlet.Harness.Models.OpenAICompatible do
     end
   end
 
+  # 直接调用方能传入解码 JSON 不会产生的非法项，编码边界需独立防护。
   # Direct callers can supply terms that cannot occur in decoded JSON.
   @spec encode_reply(term()) :: {:ok, binary()} | {:error, term()}
   defp encode_reply(reply) do

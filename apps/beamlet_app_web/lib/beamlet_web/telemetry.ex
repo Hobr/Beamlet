@@ -1,7 +1,9 @@
 defmodule Beamlet.Web.Telemetry do
+  @moduledoc "Phoenix 与 VM 指标定义及轮询监督树。当前周期测量列表为空；这里只提供度量定义，不持久保存诊断或业务轨迹。"
   use Supervisor
   import Telemetry.Metrics
 
+  @doc "由监督树启动本模块的具名进程；同一 VM 不应重复启动。"
   @spec start_link(term()) :: Supervisor.on_start()
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
@@ -21,6 +23,7 @@ defmodule Beamlet.Web.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  @doc "返回 Phoenix 与 VM 的 telemetry 指标定义，未配置持久化导出器。"
   @spec metrics() :: [Telemetry.Metrics.Summary.t() | Telemetry.Metrics.Sum.t()]
   def metrics do
     [

@@ -1,5 +1,7 @@
 defmodule Beamlet.Storage.Codec do
   @moduledoc """
+  与领域大小策略无关的严格持久化 JSON 编解码。默认上限 4MiB，可传正整数字节上限；深度上限 32、节点预算 100000。对象键按序输出，整数与浮点拼写保留。拒绝重复键、无效 UTF-8、结构体、进程等运行时值及结构化凭据字段；普通字符串内容仍由调用方审查。
+
   Strict persisted JSON, independent of Erlang wire limits. Strings are not
   secret-scanned: callers must enforce their content policy. Structured credential
   fields are rejected recursively. Numbers retain integer versus float spelling.
@@ -15,16 +17,23 @@ defmodule Beamlet.Storage.Codec do
   @secret_segments ~w(credential credentials password passwd secret secrets token)
   @reference_suffixes ~w(ref refs id ids name names path)
 
-  @typedoc "Persistable JSON. Exact string keys, credential policy and resource bounds require runtime validation."
+  @typedoc "可持久化 JSON 值；字符串键、凭据策略及资源预算由运行时校验。
+
+Persistable JSON. Exact string keys, credential policy and resource bounds require runtime validation."
   @type value :: nil | boolean() | number() | String.t() | [value()] | object()
+  @typedoc "仅允许 UTF-8 字符串键的 JSON 对象，可为空；运行时继续拒绝凭据字段。"
   @type object :: %{optional(String.t()) => value()}
+  @typedoc "invalid_data 表示内容/形状不合法，limit 表示超出资源预算。"
   @type error :: :invalid_data | :limit
   @typep budget :: {integer(), integer()}
   @typep walk_result :: {:ok, budget()} | {:error, error()}
+  @doc "原样返回正整数字节预算；调用方必须提供正整数，其他输入不在此函数契约内。"
   @spec limit(pos_integer()) :: pos_integer()
   def limit(bytes) when is_integer(bytes) and bytes > 0, do: bytes
 
-  @doc "Validates and emits sorted-key UTF-8 JSON, never ETF or inspected terms."
+  @doc "校验并输出键排序的 UTF-8 JSON；无效输入返回 invalid_data，超过字节/深度/节点预算返回 limit。
+
+Validates and emits sorted-key UTF-8 JSON, never ETF or inspected terms."
   @spec encode(term(), pos_integer()) :: {:ok, binary()} | {:error, error()}
   def encode(value, kind \\ 4_194_304) do
     with {:ok, _} <- walk(value, 0, {@nodes, limit(kind)}),
@@ -37,6 +46,7 @@ defmodule Beamlet.Storage.Codec do
     end
   end
 
+  @doc "在解析前限制字节和嵌套深度，拒绝重复对象键，再执行与 encode 相同的内容/预算校验；返回解码值或 invalid_data/limit。"
   @spec decode(term(), pos_integer()) :: {:ok, value()} | {:error, error()}
   def decode(bytes, kind \\ 4_194_304)
 
@@ -58,14 +68,17 @@ defmodule Beamlet.Storage.Codec do
 
   def decode(_, _), do: {:error, :invalid_data}
 
+  @doc "对规范 JSON 字节计算小写 SHA-256；先执行 encode 的全部校验。"
   @spec digest(term(), pos_integer()) :: {:ok, String.t()} | {:error, error()}
   def digest(value, kind \\ 4_194_304) do
     with {:ok, bytes} <- encode(value, kind), do: {:ok, hash(bytes)}
   end
 
+  @doc "对原始 iodata 计算小写 SHA-256 十六进制摘要；不执行 JSON 校验。"
   @spec hash(iodata()) :: String.t()
   def hash(bytes), do: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
 
+  @doc "判断输入是否已经是 Ecto.UUID.cast 接受的规范 UUID 字符串；不进行转换。"
   @spec uuid?(term()) :: boolean()
   def uuid?(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do
@@ -161,6 +174,7 @@ defmodule Beamlet.Storage.Codec do
 
   defp walk_list(_, _, _, _), do: {:error, :invalid_data}
 
+  # 解析前先限制递归，避免解码树分配后才发现深度超限。
   # Bound parser recursion before Jason allocates a decoded tree.
   @spec scan_depth(binary(), integer(), boolean(), boolean()) :: :ok | {:error, :limit}
   defp scan_depth(_, depth, _, _) when depth > @depth + 1, do: {:error, :limit}

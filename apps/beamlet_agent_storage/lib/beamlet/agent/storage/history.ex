@@ -1,5 +1,7 @@
 defmodule Beamlet.Agent.Storage.History do
   @moduledoc """
+  只读查询已提交事实，不启动 Agent 或访问 Runtime。事件分页默认 100 行、上限 500 行与 4 MiB 正文字节预算；完整超预算单行标记 over_budget，不截断。固定 through_seq 需由调用方持续传入，各页没有跨页读事务；Operation 接受进度与 Agent 序列独立。
+
   Read-only queries over committed authority facts. Nothing here starts an Agent,
   consults a coordinator or depends on Runtime retention; the current runtime
   observation stays with Runtime/Node and is deliberately not part of this module.
@@ -103,6 +105,12 @@ defmodule Beamlet.Agent.Storage.History do
   @view_max 50
 
   @doc """
+  按 recorded_at/id 对缓存分页，支持 after 与 through_recorded_at 固定范围及字节预算。
+
+  选择 through_seq 不超过给定 seq 的最新可选缓存，nil 选择最新；缺失或摘要/控制校验失败返回 checkpoint=nil，允许回放原始历史。
+
+  对单 Agent scope 做有界 keyset 分页；支持 after_seq/through_seq、type/types、turn_id、operation_id、origin。返回 events/next_cursor/over_budget，满页可需再读空页确认结束。
+
   Bounded event page for one scope, optionally capped at a fixed high-water
   sequence and filtered by type/turn/operation/origin. `origin` distinguishes
   records this scope performed from records inherited with a source marker.
@@ -114,7 +122,9 @@ defmodule Beamlet.Agent.Storage.History do
     end
   end
 
-  @doc "One recorded event by scope and sequence, `:conflict` when absent."
+  @doc "按 scope UUID 与序列读取单条 Agent 事件，缺失返回 conflict。
+
+One recorded event by scope and sequence, `:conflict` when absent."
   def event(repo, scope_id, seq) do
     with {:ok, scope} <- Records.uuid(scope_id),
          {:ok, seq} <- Records.count(seq) do
@@ -135,6 +145,7 @@ defmodule Beamlet.Agent.Storage.History do
     end
   end
 
+  @doc "只读投影指定 Operation 序列的 Actions 事件，为 trace 将 operation_id 映射成 scope_id；不把它并入 Agent 日志。"
   def operation_event(repo, id, seq) do
     Read.read(fn ->
       query =
@@ -154,6 +165,8 @@ defmodule Beamlet.Agent.Storage.History do
   end
 
   @doc """
+  按显式 `through_seq` 读取可选控制缓存；缺失或损坏返回 nil，让 Loader 回退原始历史。`nil` 取其最新一条，返回的 checkpoint 不代替历史验证。
+
   The optional control cache as of `seq`, selected by explicit `through_seq`.
   Missing or corrupt caches return nil so a loader can reduce raw history.
   `nil` selects the newest cache.
@@ -205,6 +218,8 @@ defmodule Beamlet.Agent.Storage.History do
   end
 
   @doc """
+  按提交顺序分页读取检查点，可用固定高水位时间戳限制范围，使后续提交不能进入已固定区间；检查点仅为缓存，不承担跨页事务。
+
   Bounded checkpoint page in commit order, optionally capped at a fixed
   high-water timestamp so a later commit cannot enter an already fixed range.
   """
@@ -215,7 +230,9 @@ defmodule Beamlet.Agent.Storage.History do
     end
   end
 
-  @doc "Turn summaries ordered by first recorded sequence, keyset on that sequence."
+  @doc "按首个事件序列对 turn 分组分页，游标 after_first_seq；可用 through_seq 截止事件，返回摘要不是完整对话。
+
+Turn summaries ordered by first recorded sequence, keyset on that sequence."
   def turns(repo, agent_id, opts \\ []) do
     with {:ok, id} <- Records.uuid(agent_id),
          {:ok, through} <- optional_seq(Keyword.get(opts, :through_seq)),
@@ -225,7 +242,9 @@ defmodule Beamlet.Agent.Storage.History do
     end
   end
 
-  @doc "Owned Operation rows ordered by immutable Agent prepared_seq (cursor after_history_seq)."
+  @doc "按不可变 prepared_seq 分页当前 Agent 自有 Operation（after_history_seq 游标）；接受 Result 不改变该游标。此列表不是固定的 Result 快照。
+
+Owned Operation rows ordered by immutable Agent prepared_seq (cursor after_history_seq)."
   def operations(repo, agent_id, opts \\ []) do
     with {:ok, id} <- Records.uuid(agent_id),
          {:ok, after_seq, limit} <- list_bounds(opts, :after_history_seq) do
@@ -233,7 +252,9 @@ defmodule Beamlet.Agent.Storage.History do
     end
   end
 
-  @doc "One Operation with its attempt and receipt evidence rows."
+  @doc "只读返回一条 Agent Operation 投影、attempt 及最多 32 条证据；缺失返回 conflict。完整导出需用 evidence 检测溢出。
+
+One Operation with its attempt and receipt evidence rows."
   def operation(repo, operation_id) do
     with {:ok, id} <- Records.uuid(operation_id) do
       Read.read(fn -> read_operation(repo, id) end)
@@ -257,7 +278,9 @@ defmodule Beamlet.Agent.Storage.History do
     end
   end
 
-  @doc "Receipt evidence rows for one Operation, newest first, bounded."
+  @doc "只读返回最多 32 条执行证据，新记录优先；探测第 33 条并在溢出时返回 limit，避免把截断当完整。
+
+Receipt evidence rows for one Operation, newest first, bounded."
   def evidence(repo, operation_id) do
     with {:ok, id} <- Records.uuid(operation_id) do
       Read.read(fn -> bounded_evidence(repo, id) end)
@@ -440,6 +463,7 @@ defmodule Beamlet.Agent.Storage.History do
   defp oversized?([], _budget), do: false
   defp oversized?([row | _], budget), do: byte_size(row.raw) > budget
 
+  # 不拆分单条事实：超预算首行完整返回并标记，不能以截断正文伪装成功。
   # A page never splits a record: a single record over the byte budget is kept
   # whole and flagged, and stays bounded by the record's own codec limit.
   defp take_rows([], _limit, _budget, acc, _bytes, _get), do: {Enum.reverse(acc), false}
@@ -553,6 +577,7 @@ defmodule Beamlet.Agent.Storage.History do
     {:ok, %{"turns" => turns, "next_cursor" => next}}
   end
 
+  # prepared_seq 属于不可变 Agent 准备位置；Result 接受仅改变 Operation 序列，不能移动分页游标。
   # Preparation allocates a distinct committed Agent event per member. Acceptance
   # changes only Operation history_seq, never this immutable pagination position.
   defp read_operations(repo, agent_id, after_seq, limit) do

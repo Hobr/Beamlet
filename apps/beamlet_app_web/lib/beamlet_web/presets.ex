@@ -1,5 +1,9 @@
 defmodule Beamlet.Web.Presets do
-  @moduledoc "Immutable trusted startup catalogue. Public descriptors never include resolved bindings."
+  @moduledoc """
+  启动时验证并保持不变的受信选项目录。describe/reset 只暴露公开选择；resolve 含绑定、凭据与路由，只能留在服务端调用者内，不能进入浏览器、会话、URL 或日志。
+
+  Immutable trusted startup catalogue. Public descriptors never include resolved bindings.
+  """
   use GenServer
   alias Beamlet.Actions.Operation
   alias Beamlet.Agent.{Display, ModelBinding}
@@ -7,7 +11,9 @@ defmodule Beamlet.Web.Presets do
   alias Beamlet.Harness.{Catalogue, Model}
   alias Beamlet.Node.Cluster
 
-  @typedoc "Trusted private catalogue; environment values are opaque bounded placement data, validated by Operation."
+  @typedoc "受信私有目录中的预设条目；环境值为经 Operation 验证的不透明有限放置数据。
+
+Trusted private catalogue; environment values are opaque bounded placement data, validated by Operation."
   @type preset :: %{
           required(:title) => binary(),
           required(:model) => binary(),
@@ -15,11 +21,13 @@ defmodule Beamlet.Web.Presets do
           optional(:environment) => binary() | nil,
           optional(:description) => binary()
         }
+  @typedoc "受信模型标签与私有不可变绑定。"
   @type model :: %{
           required(:title) => binary(),
           required(:binding) => ModelBinding.t(),
           optional(:description) => binary()
         }
+  @typedoc "受信工具路由、匹配描述符及允许环境引用。"
   @type tool :: %{
           required(:title) => binary(),
           required(:route) => Caller.profile(),
@@ -27,17 +35,21 @@ defmodule Beamlet.Web.Presets do
           required(:environments) => [binary()],
           optional(:description) => binary()
         }
+  @typedoc "公开环境标签与私有不透明核心值，不是工作区根目录。"
   @type environment :: %{
           required(:title) => binary(),
           required(:value) => term(),
           optional(:description) => binary()
         }
+  @typedoc "公开 authority 标签与受信本地/允许节点目标。"
   @type authority :: %{
           required(:title) => binary(),
           required(:target) => :local | binary(),
           optional(:description) => binary()
         }
+  @typedoc "受信目录的一种条目，运行时严格检查各类字段。"
   @type entry :: preset() | model() | tool() | environment() | authority()
+  @typedoc "完整私有启动目录，仅在服务端保存。"
   @type configuration :: %{
           presets: %{optional(binary()) => preset()},
           models: %{optional(binary()) => model()},
@@ -46,7 +58,9 @@ defmodule Beamlet.Web.Presets do
           authorities: %{optional(binary()) => authority()},
           default_authority: binary() | nil
         }
-  @typedoc "Public descriptors omit bindings, credentials, routes and resolved environment values."
+  @typedoc "安全公开标签与引用，不含绑定、路由、凭据及实际环境值。
+
+Public descriptors omit bindings, credentials, routes and resolved environment values."
   @type public_entry :: %{
           required(:title) => binary(),
           optional(:description) => binary(),
@@ -55,7 +69,9 @@ defmodule Beamlet.Web.Presets do
           optional(:environment) => binary() | nil,
           optional(:environments) => [binary()]
         }
+  @typedoc "以公开字符串 ID 为键的安全条目映射。"
   @type public_entries :: %{optional(binary()) => public_entry()}
+  @typedoc "创建与管理共享的公开目录投影。"
   @type description :: %{
           presets: public_entries(),
           models: public_entries(),
@@ -64,8 +80,11 @@ defmodule Beamlet.Web.Presets do
           authorities: public_entries(),
           default_authority: binary() | nil
         }
-  @typedoc "String-key draft; exact fields and selections are checked at runtime."
+  @typedoc "字符串键草稿；合法字段、选择、UTF-8 与大小在运行时验证。
+
+String-key draft; exact fields and selections are checked at runtime."
   @type draft :: %{optional(binary()) => binary() | [binary()] | nil}
+  @typedoc "含私有模型绑定与 Agent 选项的解析结果，禁止渲染或写入会话/URL/日志。"
   @type resolved :: %{
           authority: :local | binary(),
           task: binary(),
@@ -77,18 +96,23 @@ defmodule Beamlet.Web.Presets do
           ]
         }
   @typep resolution :: {:ok, resolved()} | {:error, :invalid_draft}
+  @doc "由监督树启动本模块的具名进程；同一 VM 不应重复启动。"
   @spec start_link(configuration()) :: GenServer.on_start()
   def start_link(config), do: GenServer.start_link(__MODULE__, config, name: __MODULE__)
   @impl true
   @spec init(configuration()) :: {:ok, configuration()}
   def init(config), do: {:ok, config}
+  @doc "返回公开标签、预设引用与环境选择；省略 binding、credentials、route、环境实际值及目标节点。"
   @spec describe() :: description()
   def describe, do: GenServer.call(__MODULE__, :describe)
+  @doc "从指定公开预设生成新草稿，task 为空；不修改目录或现有实例，未知预设返回 invalid_draft。"
   @spec reset(term()) :: {:ok, draft()} | {:error, :invalid_draft}
   def reset(id), do: GenServer.call(__MODULE__, {:reset, id})
+  @doc "校验公开草稿并解析为服务端私有 Agent 选项。任务最多 65536 UTF-8 字节，展示元数据最多 4096 序列化字节；非法选择返回 invalid_draft。"
   @spec resolve(term()) :: resolution()
   def resolve(draft), do: GenServer.call(__MODULE__, {:resolve, draft})
 
+  @doc "验证启动配置并返回规范化值或静态配置错误；不启动角色、连接节点或调用提供方。"
   @spec configuration(term(), term(), %{optional(binary()) => module()}) ::
           {:ok, configuration()} | {:error, :invalid_web_catalogue}
   def configuration(config, allowed, providers \\ Model.default_providers()) do
@@ -205,6 +229,7 @@ defmodule Beamlet.Web.Presets do
   defp ids?(v, max),
     do: is_list(v) and length(v) <= max and Enum.all?(v, &label?/1) and Enum.uniq(v) == v
 
+  @doc "对给定私有目录做公开投影；纯函数，供启动校验与测试，不读取运行进程状态。"
   @spec describe(configuration()) :: description()
   def describe(c) do
     Map.new([:presets, :models, :tools, :environments, :authorities], fn kind ->
@@ -223,6 +248,7 @@ defmodule Beamlet.Web.Presets do
     |> Map.put(:default_authority, c.default_authority)
   end
 
+  @doc "从给定目录的预设生成新草稿；纯函数，不修改目录或现有实例。"
   @spec reset(configuration(), term()) :: {:ok, draft()} | {:error, :invalid_draft}
   def reset(c, id) do
     with true <- label?(id),
@@ -243,6 +269,7 @@ defmodule Beamlet.Web.Presets do
     end
   end
 
+  @doc "对给定目录校验草稿并解析为私有 Agent 选项；纯函数，供启动校验与测试。"
   @spec resolve(configuration(), term()) :: resolution()
   def resolve(c, d) do
     with true <- plain?(d),

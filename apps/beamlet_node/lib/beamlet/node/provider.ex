@@ -1,9 +1,14 @@
 defmodule Beamlet.Node.Provider do
   alias Beamlet.Harness.Tools.WorkspaceRead
 
-  @moduledoc "Executor-local profile ownership. Provider loss couples Runtime teardown before fresh readiness."
+  @moduledoc """
+  执行器本地工具设置所有者；WorkspaceRead 启动时检查根与读取上限。Provider 丢失耦合 Runtime 拆除；注册不调用模型网络接口。
+
+  Executor-local profile ownership. Provider loss couples Runtime teardown before fresh readiness.
+  """
   use GenServer
   @spec start_link(Beamlet.Node.profiles()) :: GenServer.on_start()
+  @doc "启动工具设置所有者；WorkspaceRead 根无效时返回 provider_unavailable 启动失败。"
   def start_link(profiles), do: GenServer.start_link(__MODULE__, profiles, name: __MODULE__)
   @impl true
   @spec init(Beamlet.Node.profiles()) ::

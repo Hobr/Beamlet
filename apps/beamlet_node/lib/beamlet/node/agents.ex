@@ -1,5 +1,7 @@
 defmodule Beamlet.Node.Agents do
   @moduledoc """
+  对显式可信节点集合聚合最终观察到的 Agent 身份。最多 32 节点、8 并发、一个 5 秒接收预算及完整 1 MiB 信封；complete 仅针对请求集合，失败逐节点列出。初始断连拒绝，预检后 OTP 仍可能重连。
+
   Eventual observed identities from an explicit set of trusted node atoms.
 
   Targets are already-resolved trusted nodes (use Cluster.authority/2); no string
@@ -12,7 +14,11 @@ defmodule Beamlet.Node.Agents do
   alias Beamlet.Agent.Discovery, as: D
   alias Beamlet.Node.Cluster
 
-  @typedoc "Bounded eventual identities; completeness covers requested targets only."
+  @typedoc """
+  请求集合的有界身份聚合；每个失败节点显式列入 failures，complete 不覆盖未请求节点。
+
+  Bounded eventual identities; completeness covers requested targets only.
+  """
   @type result :: %{
           agents: [D.descriptor()],
           failures: %{optional(node()) => atom()},
@@ -20,6 +26,7 @@ defmodule Beamlet.Node.Agents do
         }
   @typep active :: %{optional(pid()) => node()}
   @spec discover(term()) :: {:ok, result()} | {:error, :invalid_query}
+  @doc "聚合可信已连接节点的安全身份，返回 agents/failures/complete；非法、重复或超量目标整体拒绝。"
   def discover(nodes) do
     with true <- valid_nodes?(nodes),
          {:ok, connected} <- Cluster.connected(Enum.map(nodes, &Atom.to_string/1)) do

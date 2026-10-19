@@ -1,5 +1,9 @@
 defmodule Beamlet.Harness.Tools.WorkspaceRead do
-  @moduledoc "Read-only trusted-tree text Tool. Component checks are not atomic OS confinement."
+  @moduledoc """
+  从受信本地树读取有界 UTF-8 文本。逐级 lstat 与打开后身份核对不构成原子 OS 沙箱；必须控制祖先目录、挂载和写入者，防止竞态、硬链接或阻塞存储。
+
+  Read-only trusted-tree text Tool. Component checks are not atomic OS confinement.
+  """
   @behaviour Beamlet.Harness.Tool
   alias Beamlet.Harness.{Arguments, Context}
   @impl true
@@ -7,6 +11,9 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
            {:ok, %{text: binary(), truncated: boolean(), bytes: non_neg_integer()}}
            | {:error, :invalid_utf8}
   @typep read_result :: text_result() | {:error, :workspace_unavailable}
+  @doc """
+  返回静态数据描述；不访问本地设置、文件或认证。
+  """
   @spec descriptor() :: Beamlet.Harness.Catalogue.descriptor()
   def descriptor do
     %{
@@ -21,6 +28,9 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
     }
   end
 
+  @doc """
+  检查绝对、规范化、无 NUL 的根路径及其全部祖先均为非符号链接目录；成功返回 File.Stat，失败为 invalid_root 或 unsafe_path。
+  """
   @spec validate_root(term()) :: {:ok, File.Stat.t()} | {:error, :invalid_root | :unsafe_path}
   def validate_root(root) when is_binary(root) do
     if String.valid?(root) and Path.type(root) == :absolute and
@@ -34,6 +44,9 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
   def validate_root(_), do: {:error, :invalid_root}
 
   @impl true
+  @doc """
+  参数仅含相对 path；本地 settings 仅含 root 和可选 max_bytes（1..65536，默认 65536）。拒绝路径穿越、符号链接和非普通文件，读取 max+1 哨兵后总会关闭文件。返回 text/bytes/truncated；路径与设置错误为 workspace_unavailable，已观察文本非法为 invalid_utf8，调用前取消为 cancelled。截断时可丢弃不完整码点，不扫描哨兵以后的内容。
+  """
   @spec invoke(term(), term(), Context.t()) :: read_result() | {:error, :cancelled}
   def invoke(args, settings, context \\ %Context{}) do
     with false <- Context.cancelled?(context),
@@ -93,6 +106,8 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
           else
             _ -> {:error, :workspace_unavailable}
           end
+
+          # 即使身份、读取或 UTF-8 校验失败也释放文件描述符。
         after
           :file.close(fd)
         end
@@ -142,6 +157,7 @@ defmodule Beamlet.Harness.Tools.WorkspaceRead do
 
   defp truncated_result(_, false), do: {:error, :invalid_utf8}
 
+  # 即便 OTP 暂缓校验短码点，也要校验已经观察到的哨兵字节。
   # Validate observed bytes even when OTP postpones validation of a short codepoint.
   @spec completable?(binary()) :: boolean()
   defp completable?(<<lead, _::binary>> = tail) do

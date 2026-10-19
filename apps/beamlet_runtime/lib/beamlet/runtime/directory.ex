@@ -1,5 +1,6 @@
 defmodule Beamlet.Runtime.Directory do
   @moduledoc false
+  # 报告只按本 VM 接收时间老化；发现与排序不预留容量，Gateway 必须再次验证并原子扣减池。
   use GenServer
   alias Beamlet.Runtime.{ExecutorGateway, Groups, Report}
   @type selection :: :none | {:ok, pid(), Report.t()}

@@ -1,5 +1,6 @@
 defmodule Beamlet.Runtime.ExecutorGateway do
   @moduledoc false
+  # 本 Gateway 首个处理的停止触发决定来源；只有匹配 shutdown 或请求 kill 后的 DOWN 才是本地停止证据，不能推断上游回滚。
   use GenServer
   alias Beamlet.Actions.{ExecutionHandle, Operation, Result}
   alias Beamlet.Actions.Storage.{Codec, ExecutorJournal}
@@ -301,6 +302,7 @@ defmodule Beamlet.Runtime.ExecutorGateway do
       (reason == :shutdown or (reason == :killed and entry.kill_requested))
   end
 
+  # 这里先处理的停止触发拥有来源，后来的触发不能改写 kill 升级后的分类。
   # The first trigger processed here owns provenance, including kill escalation.
   defp stop_worker(s, key, source) do
     case s.attempts[key] do

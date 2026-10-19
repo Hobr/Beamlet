@@ -1,5 +1,6 @@
 defmodule Beamlet.Agent.Storage.JSON do
   @moduledoc false
+  # 严格 JSON 列边界：cast/dump/load 均复用领域预算；不能将损坏字节当普通字符串加载。
   @type params :: %{kind: atom()}
   @spec init(keyword()) :: params()
   @spec type(term()) :: :string

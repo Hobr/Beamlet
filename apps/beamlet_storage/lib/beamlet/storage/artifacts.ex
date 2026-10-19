@@ -1,5 +1,7 @@
 defmodule Beamlet.Storage.Artifacts do
   @moduledoc """
+  同一数据集内的二进制制品存储。写入及事务内引用校验共享调用方事务；只存 SQL 内容，不访问外部对象存储，不做 GC。digest 唯一约束拒绝重复内容；按摘要复用已有记录由调用方负责。
+
   Dataset-local artifact content. `put/2` and `verify_references/2` must run
   inside the caller's dataset transaction (e.g. Ecto.Multi.run), so references
   and content roll back together. No filesystem/object-store effects or GC.
@@ -7,8 +9,10 @@ defmodule Beamlet.Storage.Artifacts do
   alias Beamlet.Storage.{Codec, Transaction}
   alias Beamlet.Storage.Schema.Artifact
 
+  @typedoc "制品验证及读取的安全错误；事务外调用错误仍为 invalid_data。"
   @type error :: :invalid_data | :limit | :conflict | :artifact_missing | :storage_unavailable
   @typep fetched :: {:ok, Artifact.t()} | {:error, error()}
+  @doc "构建制品插入校验：规范 UUID、摘要、大小与内容须一致，内容最多 16MiB；附加主键及摘要唯一约束。"
   @spec changeset(term()) :: Ecto.Changeset.t(Artifact.t())
   def changeset(attrs) do
     Artifact.changeset(%Artifact{}, attrs)
@@ -17,6 +21,7 @@ defmodule Beamlet.Storage.Artifacts do
     |> Ecto.Changeset.unique_constraint(:digest)
   end
 
+  @doc "在调用方事务内插入制品；无事务返回 invalid_data，重复 ID/摘要返回 conflict，不自动复用已有内容。驱动异常由外层 Transaction.write 分类。"
   @spec put(module(), term()) ::
           {:ok, Artifact.t()} | {:error, :invalid_data | :limit | :conflict}
   def put(repo, attrs) do
@@ -45,6 +50,7 @@ defmodule Beamlet.Storage.Artifacts do
     end
   end
 
+  @doc "按规范 UUID 读取并复核内容摘要及大小；不存在返回 artifact_missing，读失败返回 storage_unavailable，损坏返回 invalid_data。"
   @spec fetch(module(), term()) :: fetched()
   def fetch(repo, id) do
     if Codec.uuid?(id) do
@@ -68,6 +74,7 @@ defmodule Beamlet.Storage.Artifacts do
     if changeset(attrs).valid?, do: {:ok, artifact}, else: {:error, :invalid_data}
   end
 
+  @doc "在调用方事务内逐项读取校验最多 1024 个制品 ID；无事务返回 invalid_data，超量返回 limit，遇首个失败停止。"
   @spec verify_references(module(), term()) :: :ok | {:error, error()}
   def verify_references(repo, ids) when is_list(ids) and length(ids) <= 1024 do
     if repo.in_transaction?() do

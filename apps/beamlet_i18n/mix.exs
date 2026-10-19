@@ -1,6 +1,8 @@
 defmodule Beamlet.I18n.MixProject do
   use Mix.Project
 
+  # 共享文案叶子库：只依赖 Gettext，无兄弟应用依赖，也没有 Application 回调。
+  # Web 与 CLI 都引用它，所以它不能反向依赖任何宿主。测试环境额外编译 test/support。
   def project do
     [
       app: :beamlet_i18n,
@@ -29,6 +31,7 @@ defmodule Beamlet.I18n.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      # 仅 Gettext：共享后端与语言规范化，不引入 Expo 或界库。
       {:gettext, "~> 1.0"}
     ]
   end

@@ -1,5 +1,6 @@
 defmodule Beamlet.CLI.Application do
   @moduledoc false
+  # 只将宿主键交给严格验证器；创建选项和呈现语言独立归属，避免误判为未知配置。
   use Application
 
   # Host settings are validated strictly, so only the host keys are handed to

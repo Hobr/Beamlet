@@ -1,5 +1,6 @@
 defmodule Beamlet.Storage.Connections do
   @moduledoc false
+  # 每条物理连接（含重连）都验证持久化设置，不能以 Repo 已注册替代验证。SQLite 保留 Exqlite 可中断 busy handler，PRAGMA busy_timeout=0 是预期值。
   @spec sqlite(keyword()) :: keyword()
   def sqlite(config) do
     Keyword.merge(config,

@@ -1,5 +1,6 @@
 defmodule Beamlet.Storage.JSON do
   @moduledoc false
+  # 隐藏的 Ecto 参数化类型；schema 必须显式提供 max_bytes，cast/dump/load 均使用基础 Codec，损坏字节拒绝加载而非宽松解码。
   use Ecto.ParameterizedType
   alias Beamlet.Storage.Codec
 

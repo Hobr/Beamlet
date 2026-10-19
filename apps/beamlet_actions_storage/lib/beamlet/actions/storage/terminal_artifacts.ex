@@ -1,5 +1,7 @@
 defmodule Beamlet.Actions.Storage.TerminalArtifacts do
   @moduledoc """
+  执行端日志终态附件容器 version=1。最多 64 项，单项与解码总量各不超过 16 MiB，规范编码不超过 24 MiB；校验 UUID、base64、大小与摘要。这里只证明内容完整性，authority artifact 是否存在由 authority 事务验证。
+
   Executor-journal terminal attachment container (version 1). The container is
   data, never live references: `%{"version" => 1, "items" => %{artifact_id =>
   %{"digest", "media_type", "size_bytes", "content_base64"}}}`. Every item is
@@ -8,7 +10,9 @@ defmodule Beamlet.Actions.Storage.TerminalArtifacts do
   authority artifact rows, so it verifies identity shape and content integrity,
   not authority existence (that stays in the authority transaction).
   """
-  @typedoc "Version-one string-key container; item fields, UUID keys and digest integrity are validated at runtime."
+  @typedoc "version=1 的字符串键附件容器，UUID、完整性及大小须通过运行时校验。
+
+Version-one string-key container; item fields, UUID keys and digest integrity are validated at runtime."
   @type container :: Beamlet.Actions.Storage.Records.object()
   @typep result(value) :: {:ok, value} | {:error, :invalid_data | :limit | :artifact_missing}
   @spec encode(term()) :: result(container())
@@ -34,7 +38,9 @@ defmodule Beamlet.Actions.Storage.TerminalArtifacts do
   @base64 ~r/\A(?:[A-Za-z0-9+\/]{4})*(?:[A-Za-z0-9+\/]{2}==|[A-Za-z0-9+\/]{3}=)?\z/
   @digest ~r/\A[0-9a-f]{64}\z/
 
-  @doc "Validates and returns the container unchanged, or a stage-A error atom."
+  @doc "校验附件容器及所有内容，成功原样返回；超限或非法数据明确拒绝，不截断。
+
+Validates and returns the container unchanged, or a stage-A error atom."
   def encode(container) do
     with {:ok, items} <- container_items(container),
          {:ok, decoded_total} <- validate_items(items),
@@ -47,7 +53,9 @@ defmodule Beamlet.Actions.Storage.TerminalArtifacts do
     end
   end
 
-  @doc "Byte size of the canonical stored representation; used by the 32 MiB transaction budget."
+  @doc "返回规范持久化表示的字节数，供日志 32 MiB 事务总预算使用；不是解码内容总量。
+
+Byte size of the canonical stored representation; used by the 32 MiB transaction budget."
   def encoded_size(value) do
     case Codec.encode(value, :journal_artifacts) do
       {:ok, bytes} -> {:ok, byte_size(bytes)}
@@ -55,7 +63,9 @@ defmodule Beamlet.Actions.Storage.TerminalArtifacts do
     end
   end
 
-  @doc "Decoded bytes of one validated item, or a stage-A error atom."
+  @doc "读取指定 artifact_id 的附件并校验 base64、长度和摘要；缺失返回 artifact_missing。
+
+Decoded bytes of one validated item, or a stage-A error atom."
   def content(container, artifact_id) do
     with {:ok, items} <- container_items(container),
          {:ok, item} <- fetch_item(items, artifact_id) do

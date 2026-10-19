@@ -1,11 +1,19 @@
 defmodule Beamlet.Agent.Core.Context do
-  @moduledoc "Pure conversation policy over ordered, source-bound verified materials."
+  @moduledoc """
+  纯上下文策略，按 control.timeline 的已验证来源逐项转换，不读取存储、不散列或验证归属。调用者先核对摘要、所有权及继承闭包。历史模型回复按原操作目录验证，最终请求按当前目录验证。
+
+  Pure conversation policy over ordered, source-bound verified materials.
+  """
   alias Beamlet.Agent.Core.Data
   alias Beamlet.Harness.Model
 
   @typep object :: Data.object()
   @typep message :: Model.json_object()
-  @typedoc "Ordered material cursor; messages are retained in reverse order until messages/1."
+  @typedoc """
+  有界游标；消息逆序暂存，计数包括 JSON 列表括号与逗号。
+
+  Ordered material cursor; messages are retained in reverse order until messages/1.
+  """
   @type accumulator :: %{
           control: object(),
           remaining: [Data.value()],
@@ -13,13 +21,20 @@ defmodule Beamlet.Agent.Core.Context do
           count: non_neg_integer(),
           bytes: non_neg_integer()
         }
+  @typedoc """
+  完成的字符串键请求、来源列表及固定策略版本元数据。
+  """
   @type built :: %{request: object(), sources: [Data.value()], policy: object()}
   @typep failure :: {:error, atom() | Jason.EncodeError.t() | Exception.t()}
   @typep accumulated :: {:ok, accumulator()} | failure()
   @typep message_result :: {:ok, message()} | failure()
   @typep pairing :: {:ok, [binary()]} | {:error, :unsafe_position}
   @typep pair_step :: {:cont, {:ok, [binary()]}} | {:halt, {:error, :unsafe_position}}
-  @typedoc "Decoded reply before semantic Model validation; malformed field values intentionally remain representable."
+  @typedoc """
+  语义验证前的已转换回复，仍允许字段值非法。
+
+  Decoded reply before semantic Model validation; malformed field values intentionally remain representable.
+  """
   @type decoded_reply :: %{
           kind: :text | :tool_calls,
           content: Data.value(),
@@ -53,6 +68,9 @@ defmodule Beamlet.Agent.Core.Context do
   @spec reply(term()) :: {:ok, decoded_reply()} | {:error, :invalid_reply}
   @spec native_call(term()) :: %{id: Data.value(), name: Data.value(), arguments: Data.value()}
 
+  @doc """
+  从 control.timeline 创建空游标，不读取来源；形状非法返回 invalid_reference。
+  """
   def start(control) do
     if is_map(control) and Data.plain?(control) and Data.proper_list?(control["timeline"]),
       do:
@@ -61,7 +79,11 @@ defmodule Beamlet.Agent.Core.Context do
       else: {:error, :invalid_reference}
   end
 
-  @doc "Convert exactly the next selected occurrence, retaining only bounded messages."
+  @doc """
+  只接受下一次精确选中出现的材料，转换后立即检查 128 条/1 MiB 消息 JSON 限制；超限停止，不能预读后续来源。
+
+  Convert exactly the next selected occurrence, retaining only bounded messages.
+  """
   def append(%{remaining: [source | rest]} = acc, %{"source" => selected} = material) do
     if selected == source and valid_data?(material) and bound_material?(acc.control, material) do
       append_message(acc, rest, material)
@@ -94,9 +116,15 @@ defmodule Beamlet.Agent.Core.Context do
     end
   end
 
+  @doc """
+  只在全部来源消费完后按原顺序返回消息；不完整游标返回 invalid_reference。
+  """
   def messages(%{remaining: [], messages: messages}), do: {:ok, Enum.reverse(messages)}
   def messages(_), do: {:error, :invalid_reference}
 
+  @doc """
+  来源完成后校验当前目录和完整请求，返回 request/sources/policy；不把工具批次前缀当完整历史验证。
+  """
   def finish(%{control: control} = acc, catalogue) do
     with {:ok, messages} <- messages(acc),
          :ok <- Model.validate_request(%{messages: messages, catalogue: catalogue}) do
@@ -114,6 +142,9 @@ defmodule Beamlet.Agent.Core.Context do
     end
   end
 
+  @doc """
+  批量构建上下文，使用相同增量游标；timeline 超过 128 返回 context_limit，材料缺失、额外、替换或乱序返回 invalid_reference。
+  """
   def build(control, catalogue, materials) do
     if is_map(control) and Data.proper_list?(control["timeline"]) and
          length(control["timeline"]) <= 128 do
@@ -123,6 +154,9 @@ defmodule Beamlet.Agent.Core.Context do
     end
   end
 
+  @doc """
+  按绑定顺序转换全部材料为消息；不执行 finish/2 的当前目录/请求验证。
+  """
   def materialize(control, materials) do
     with {:ok, acc} <- accumulate(control, materials), do: messages(acc)
   end
@@ -205,7 +239,11 @@ defmodule Beamlet.Agent.Core.Context do
     end
   end
 
-  @doc "Check complete call pairing without revalidating old arguments against a newer catalogue."
+  @doc """
+  只检查完整工具配对边界，不按新目录重验旧参数；失败为 unsafe_position。
+
+  Check complete call pairing without revalidating old arguments against a newer catalogue.
+  """
   def complete_boundary(messages) do
     case pair_messages(messages) do
       {:ok, []} -> :ok
@@ -234,6 +272,9 @@ defmodule Beamlet.Agent.Core.Context do
       else: {:halt, {:error, :unsafe_position}}
   end
 
+  @doc """
+  编码接受结果的 status/value/reason；不确定、取消、期限或 unknown 状态缺少明确 resolution 时返回 unresolved_execution。显式决定与原 accepted_status 一起编码，不修改原结果。
+  """
   def observation(result, resolution) when is_map(result) and not is_struct(result) do
     encode_observation(result, resolution)
   rescue
@@ -312,6 +353,9 @@ defmodule Beamlet.Agent.Core.Context do
 
   defp model_message(_, _), do: {:error, :unresolved_execution}
 
+  @doc """
+  转换精确字符串键存储回复为原生字段，不做完整语义校验；后续必须调用 Model.validate_reply/2。
+  """
   def reply(%{"kind" => kind, "content" => content, "calls" => calls} = value)
       when map_size(value) == 3 and kind in ~w(text tool_calls) and is_list(calls) do
     if Data.plain?(value) and

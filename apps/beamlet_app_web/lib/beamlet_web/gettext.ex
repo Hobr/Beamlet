@@ -1,5 +1,7 @@
 defmodule Beamlet.Web.Gettext do
   @moduledoc """
+  Web 专用文案的 Gettext 后端，共享词汇由 Beamlet.I18n 拥有。每个模块只导入一个后端宏集合，避免提取重复所有权。
+
   A module providing Internationalization with a gettext-based API.
 
   By using [Gettext](https://gettext.hexdocs.pm), your module compiles translations

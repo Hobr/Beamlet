@@ -1,5 +1,6 @@
 defmodule Beamlet.Agent.Storage.Schema.Operation do
   @moduledoc false
+  # 只读联接视图：Agent 关联与 Actions 事实各归原层所有；changeset 不代表允许通过视图写入 Operation。
   use Ecto.Schema
   alias Beamlet.Agent.Storage.RecordChangeset
   @primary_key {:id, :string, autogenerate: false}

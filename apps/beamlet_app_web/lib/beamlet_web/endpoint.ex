@@ -1,4 +1,5 @@
 defmodule Beamlet.Web.Endpoint do
+  @moduledoc "HTTP 与 LiveView 入口。签名 cookie 会话可读但不可篡改，不能放凭据或私有解析结果；开发运行时工具保持仅开发启用。"
   use Phoenix.Endpoint, otp_app: :beamlet_app_web
 
   # The session will be stored in the cookie and signed,

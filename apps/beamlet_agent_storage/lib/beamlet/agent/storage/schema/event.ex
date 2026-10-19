@@ -1,5 +1,6 @@
 defmodule Beamlet.Agent.Storage.Schema.Event do
   @moduledoc false
+  # 内部 Ecto 行映射，包含尚未插入的 nil 构造状态；对外通过记录门面校验身份和事务约束。
   use Ecto.Schema
   alias Beamlet.Agent.Storage.RecordChangeset
   @primary_key {:id, :string, autogenerate: false}

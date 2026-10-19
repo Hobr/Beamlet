@@ -1,5 +1,7 @@
 defmodule Beamlet.Actions.Storage.OperationRecords do
-  @moduledoc "Immutable requests, single dispatch claims, evidence and Operation-scoped acceptance."
+  @moduledoc "中立 Operation 的不可变描述、单次派发认领、执行证据和唯一 accepted Result。输入采用原子键属性，返回字符串键数据。prepare 与接受分别追加 Operation 事件；不读写 Agent 控制，也不自动重试未知结果。
+
+Immutable requests, single dispatch claims, evidence and Operation-scoped acceptance."
   import Ecto.Query
   alias Beamlet.Actions.Storage.Codec
   alias Beamlet.Actions.Storage.DispatchScopes
@@ -13,7 +15,9 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
   alias Beamlet.Storage.References
   alias Beamlet.Storage.Transaction
 
-  @typedoc "Validated immutable request, including the optional paired scope binding."
+  @typedoc "经门面校验的不可变 Operation/关联输入；可选字段不代表已取得执行许可。
+
+Validated immutable request, including the optional paired scope binding."
   @type operation :: %{
           id: String.t(),
           description: Records.object(),
@@ -21,6 +25,7 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
           dispatch_scope_id: String.t() | nil,
           dispatch_epoch: non_neg_integer() | nil
         }
+  @typedoc "准备执行身份与预算，关联执行端及 boot；不代表 worker 已启动。"
   @type attempt :: %{
           attempt_id: String.t(),
           executor_id: String.t(),
@@ -84,9 +89,11 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
 
   @description_keys ~w(kind protocol_version payload refs budget claims safety)
 
+  @doc "以独立事务准备 operation/attempt；相同不可变身份可重放，描述或执行端身份变化返回 conflict。成功返回已提交派发绑定，不启动执行。"
   def prepare(repo, attrs),
     do: Records.transact(repo, fn -> prepare_in_transaction(repo, attrs) end)
 
+  @doc "在同一 Repo 已打开的事务中准备中立 Operation、attempt 与准备事件；事务外返回 transaction_required。调用方必须将任何错误传播为外层回滚。"
   def prepare_in_transaction(repo, attrs) do
     Transaction.participate(repo, fn ->
       with {:ok, _} <- Records.fields(attrs, [:operation, :attempt], []),
@@ -206,6 +213,7 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
     }
   end
 
+  @doc "校验 operation_id/attempt_id/expected_version 与可选 expected_operation，单次将 prepared 改为 send_claimed；旧 epoch、已接受结果或重复认领拒绝。许可不证明执行成功。"
   def claim_dispatch(repo, attrs) do
     with {:ok, _} <-
            Records.fields(attrs, [:operation_id, :attempt_id, :expected_version], [
@@ -278,6 +286,7 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
     end
   end
 
+  # SQLite 即时事务已串行化写者；PostgreSQL 必须持锁至提交，避免接受或恢复改变已检查事实。
   # SQLite's immediate transaction already serializes writers. PostgreSQL must
   # hold the checked facts until claim commit, against acceptance and restore.
   defp claim_record(repo, schema, id, lock) do
@@ -295,6 +304,7 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
   defp claim_lock(query, "FOR UPDATE"), do: Ecto.Query.lock(query, "FOR UPDATE")
   defp claim_lock(query, "FOR SHARE"), do: Ecto.Query.lock(query, "FOR SHARE")
 
+  @doc "按 executor_id/evidence_id 去重记录证据，核对 attempt 所属 Operation 与执行端；相同摘要和身份返回已存事实，变化返回 conflict，不替代接受 Result。"
   def record_evidence(repo, attrs) do
     with {:ok, _} <-
            Records.fields(
@@ -350,6 +360,7 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
     with {:ok, stored} <- Records.insert(repo, changeset), do: {:ok, Records.plain(stored)}
   end
 
+  @doc "按 Operation expected_version CAS 接受唯一 Result，同时校验证据与 artifact 引用并追加接受事件。相同 Result/证据可重放，不同终态冲突；不推进 Agent 序列。"
   def accept_result(repo, attrs) do
     with {:ok, _} <-
            Records.fields(attrs, [:operation_id, :expected_version, :result], [
@@ -445,6 +456,7 @@ defmodule Beamlet.Actions.Storage.OperationRecords do
     }
   end
 
+  @doc "返回字符串键 operation 与 attempt；UUID 非法拒绝，Operation 缺失返回 conflict，数据库不可用不伪装成缺失。"
   def fetch(repo, id) do
     with {:ok, id} <- Records.uuid(id) do
       Read.read(fn -> read_operation(repo, id) end)

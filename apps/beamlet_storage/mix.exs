@@ -1,6 +1,9 @@
 defmodule Beamlet.Storage.MixProject do
   use Mix.Project
 
+  # 通用存储库：不依赖任何兄弟应用，也没有 Application 回调；
+  # 加载库不会启动 Repo、建库或迁移。
+  # Ecto/SQL 与两种驱动固定精确版本，SQLite/PostgreSQL 共享同一套约束。
   def project do
     [
       app: :beamlet_storage,

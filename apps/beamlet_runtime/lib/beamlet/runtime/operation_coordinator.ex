@@ -1,5 +1,6 @@
 defmodule Beamlet.Runtime.OperationCoordinator do
   @moduledoc false
+  # 每个协调器只发送一次；接受终态后迟到回执只能补证据，不能替换 Result 或再次通知 sink。
   use GenServer, restart: :temporary
   alias Beamlet.Actions.{Execution, ExecutionHandle, OperationRef, Result}
   alias Beamlet.Actions.Storage.{Codec, OperationRecords}
@@ -526,6 +527,7 @@ defmodule Beamlet.Runtime.OperationCoordinator do
     end
   end
 
+  # 提交确认丢失只按原身份读取接受事实，不重写、更不授权重发业务。
   # A lost commit acknowledgement is reconciled by identity; never retry a write.
   defp reconcile_accept(persistence, attrs) do
     with {:ok, stored} <- OperationRecords.fetch(persistence.authority_repo, attrs.operation_id),

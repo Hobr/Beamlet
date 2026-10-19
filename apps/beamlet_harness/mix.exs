@@ -1,6 +1,8 @@
 defmodule Beamlet.Harness.MixProject do
   use Mix.Project
 
+  # 原生 Harness：没有兄弟应用依赖，也没有 Application 回调；
+  # 加载库不会启动进程、沙箱或读取凭据。
   def project do
     [
       app: :beamlet_harness,
@@ -25,6 +27,7 @@ defmodule Beamlet.Harness.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      # 固定精确版本：HTTP 实现不在内部重试/重定向，升级需单独审阅。
       {:req, "== 0.7.5"},
       {:jason, "~> 1.4"}
     ]

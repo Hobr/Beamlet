@@ -68,6 +68,31 @@ passing baseline; report actual results, including dependency/tool failures.
 For documentation-only edits, check whitespace, links/source paths, and example
 accuracy; application tests need not run solely because Markdown changed.
 
+## Documentation Conventions
+
+Product documentation is Chinese-first. Existing English text is preserved in place,
+but do not add new English translations or create English files that do not exist;
+link only to files that exist in the same commit. Use the `_zh.md` suffix next to an
+existing English file (`HOST_zh.md` / `HOST.md`) and keep both navigable when both
+exist. Do not manufacture a placeholder English README for an application that has
+none.
+
+Source documentation states ownership, startup/prerequisite boundaries, public
+input/output, error tags and lifecycle limits; it may name identifiers, error atoms
+and persisted keys in their original spelling. Internal modules keep
+`@moduledoc false` / `@doc false` and gain ordinary Chinese comments where the
+reasoning is non-obvious. Never annotate a private `defp` with `@doc`, and keep one
+`@doc` per function/arity so a later attribute cannot silently replace an earlier
+one.
+
+Documentation work must not change executable expressions, specs, signatures,
+config values, Gettext copy or visibility markers. Verify behaviour preservation by
+comparing the Elixir AST against the base commit after stripping location metadata
+and only `@doc`/`@moduledoc`/`@typedoc`. Inserting comments shifts Gettext call
+line numbers, so after documentation edits run `mix gettext.extract --merge` and
+confirm the `.po`/`.pot` diff contains only `#:` reference lines; then require
+`mix gettext.extract --check-up-to-date` to pass.
+
 ## Credo Gate for the Merged Durable Code
 
 The durable/storage merge (Agent, Runtime, Storage plus their tests) is now

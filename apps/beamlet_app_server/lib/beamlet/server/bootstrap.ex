@@ -1,5 +1,6 @@
 defmodule Beamlet.Server.Bootstrap do
   @moduledoc false
+  # 临时任务在监督启动确认后逐个连接一次；失败继续本地服务，宿主消失时清理连接调用者，不重试。
   use Task, restart: :temporary
   alias Beamlet.Node.Cluster
   require Logger

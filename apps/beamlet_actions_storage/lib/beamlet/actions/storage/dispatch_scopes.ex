@@ -1,5 +1,7 @@
 defmodule Beamlet.Actions.Storage.DispatchScopes do
-  @moduledoc "Opaque dispatch epochs. Lock order is scope then Operation; acceptance never locks a scope."
+  @moduledoc "不透明派发作用域及 epoch 栅栏。先锁 scope 再锁 Operation；接受 Result 不锁 scope。轮换使旧 epoch 无法取得新派发许可，不代表已经派发的外部工作已停止。
+
+Opaque dispatch epochs. Lock order is scope then Operation; acceptance never locks a scope."
   alias Beamlet.Actions.Storage.Records
   alias Beamlet.Actions.Storage.Schema.DispatchScope
   alias Beamlet.Actions.Storage.Schema.Execution
@@ -32,12 +34,15 @@ defmodule Beamlet.Actions.Storage.DispatchScopes do
   alias Beamlet.Actions.Storage.Read
   alias Beamlet.Storage.Transaction
 
+  @doc "以独立事务创建 id 对应的 epoch=0 作用域。"
   def create(repo, attrs),
     do: Records.transact(repo, fn -> create_in_transaction(repo, attrs) end)
 
+  @doc "以独立事务按 id/expected_epoch 轮换，旧版本返回 stale_epoch。"
   def rotate(repo, attrs),
     do: Records.transact(repo, fn -> rotate_in_transaction(repo, attrs) end)
 
+  @doc "在调用方同 Repo 事务中创建 epoch=0 作用域；事务外拒绝，不独立提交。"
   def create_in_transaction(repo, attrs) do
     Transaction.participate(repo, fn ->
       with {:ok, _} <- Records.fields(attrs, [:id], []),
@@ -52,6 +57,7 @@ defmodule Beamlet.Actions.Storage.DispatchScopes do
     end)
   end
 
+  @doc "校验 UUID 后读取作用域当前 id/epoch；缺失返回 conflict。"
   def current(repo, id) do
     with {:ok, _} <- Records.uuid(id) do
       Read.read(fn -> read_current(repo, id) end)
@@ -62,6 +68,7 @@ defmodule Beamlet.Actions.Storage.DispatchScopes do
     with {:ok, record} <- Records.get(repo, DispatchScope, id), do: {:ok, Records.plain(record)}
   end
 
+  @doc "在同 Repo 事务内锁定作用域并按 expected_epoch 加一；调用方负责错误回滚。"
   def rotate_in_transaction(repo, attrs) do
     Transaction.participate(repo, fn ->
       with {:ok, _} <- Records.fields(attrs, [:id, :expected_epoch], []),
@@ -84,6 +91,7 @@ defmodule Beamlet.Actions.Storage.DispatchScopes do
     end)
   end
 
+  @doc "scope id 与 epoch 须同时为空或同时有效；epoch 是非负整数。"
   def validate_binding(nil, nil), do: :ok
 
   def validate_binding(id, epoch) when not is_nil(id) and not is_nil(epoch) do
@@ -92,6 +100,7 @@ defmodule Beamlet.Actions.Storage.DispatchScopes do
 
   def validate_binding(_, _), do: {:error, :invalid_data}
 
+  @doc "事务内以共享锁核对 scope/epoch；无绑定时通过，旧 epoch 返回 stale_epoch。"
   def check(_repo, nil, nil), do: :ok
 
   def check(repo, id, epoch) do
@@ -101,7 +110,9 @@ defmodule Beamlet.Actions.Storage.DispatchScopes do
     end
   end
 
-  @doc "Explicit continuation only: rebind a pending prepared identity after a rotation, in the caller transaction."
+  @doc "仅供显式继续：在外层事务中将仍 prepared、未接受且版本/摘要匹配的工作绑定到更高 epoch；已认领的未决工作拒绝。
+
+Explicit continuation only: rebind a pending prepared identity after a rotation, in the caller transaction."
   def reauthorize_in_transaction(repo, attrs) do
     Transaction.participate(repo, fn ->
       with {:ok, _} <-

@@ -1,4 +1,5 @@
 defmodule Beamlet.Web.ManagementLive do
+  @moduledoc "只读节点、预设及诊断页面。只响应 refresh，其他事件忽略；读取由受页面拥有的有限调用者执行，失败保留上次观测并声明当前事实未知。导航不提供授权。"
   use Beamlet.Web, :live_view
   import Beamlet.Web.ObservationComponents
   alias Beamlet.I18n.Vocabulary
@@ -161,6 +162,7 @@ defmodule Beamlet.Web.ManagementLive do
     do: Enum.find(display[:activities] || [], &(turn(&1[:id]) == key))
 
   @impl true
+  @doc "呈现只读页面：管理范围、读取状态、上次观测与当前事实是否未知；不提供命令入口。"
   @spec render(assigns()) :: Phoenix.LiveView.Rendered.t()
   def render(assigns) do
     ~H"""
@@ -242,6 +244,7 @@ defmodule Beamlet.Web.ManagementLive do
 
   attr :data, :map, required: true
 
+  @doc "呈现目标范围、失败与公开节点事实，超范围目标显式未知。"
   @spec node_results(%{required(:data) => ManagementReads.result(), optional(atom()) => term()}) ::
           Phoenix.LiveView.Rendered.t()
   def node_results(assigns) do
@@ -316,6 +319,7 @@ defmodule Beamlet.Web.ManagementLive do
 
   attr :runtime, :any, required: true
 
+  @doc "呈现源报告年龄、新鲜度及建议可用量；不推算总量/利用率或将缺报告解释为节点死亡。"
   @spec runtime_reports(%{
           required(:runtime) => {:ok, Beamlet.Runtime.observation()} | {:error, atom()},
           optional(atom()) => term()
@@ -368,6 +372,7 @@ defmodule Beamlet.Web.ManagementLive do
 
   attr :data, :map, required: true
 
+  @doc "仅呈现与创建表单一致的公开目录，不探测提供方或暴露绑定。"
   @spec preset_results(%{required(:data) => Presets.description(), optional(atom()) => term()}) ::
           Phoenix.LiveView.Rendered.t()
   def preset_results(assigns) do

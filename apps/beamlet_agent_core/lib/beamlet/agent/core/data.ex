@@ -2,8 +2,14 @@ defmodule Beamlet.Agent.Core.Data do
   @moduledoc false
   @body_keys ~w(messages assistant request reply result output payload content text arguments prompt tools schema)
 
-  @typedoc "String-key JSON. Literal string keys, UUID spelling, UTF-8 and depth limits remain runtime checks."
+  # 内部校验工具保持隐藏：只检查规范数据和引用形状，不访问存储或证明摘要内容。
+  @typedoc """
+  字符串键 JSON；UUID、UTF-8 和深度由运行时检查。
+
+  String-key JSON. Literal string keys, UUID spelling, UTF-8 and depth limits remain runtime checks.
+  """
   @type value :: nil | boolean() | number() | binary() | [value()] | object()
+  @typedoc "字符串键对象；字面字段约束仍由各领域校验器负责。"
   @type object :: %{optional(binary()) => value()}
   @spec uuid?(term()) :: boolean()
   @spec digest?(term()) :: boolean()
@@ -15,6 +21,7 @@ defmodule Beamlet.Agent.Core.Data do
   @spec control?(term()) :: boolean()
   @spec reference_only?(term()) :: boolean()
 
+  # 使用小写规范 UUID，与存储适配器的强制转换结果一致。
   # Canonical spelling accepted by the storage adapter's Ecto.UUID.cast equality check.
   def uuid?(
         <<a::binary-size(8), "-", b::binary-size(4), "-", c::binary-size(4), "-",
@@ -48,6 +55,7 @@ defmodule Beamlet.Agent.Core.Data do
   defp list?([head | tail], depth), do: plain?(head, depth + 1) and list?(tail, depth)
   defp list?(_, _), do: false
 
+  # 容器形状检查不消耗领域正文自己的深度预算。
   # Container checks do not spend a domain payload's depth budget.
   def proper_list?([]), do: true
   def proper_list?([_ | tail]), do: proper_list?(tail)

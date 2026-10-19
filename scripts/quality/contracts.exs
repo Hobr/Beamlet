@@ -1,5 +1,9 @@
 defmodule Beamlet.Quality.Contracts do
   @moduledoc """
+  只做解析、不展开宏也不求值源码的契约清单工具。它只证明声明是否存在，
+  不判断 typespec 本身是否合理；编译、Dialyzer 与人工审阅仍然是必需的。
+  没有应用/模块豁免机制，动态定义无法归属时会判为失败。
+
   Parse-only source contract inventory. Never expands macros or evaluates source.
 
   Run `elixir scripts/quality/check-contracts.exs [--inventory] [PATH ...]`.
@@ -238,6 +242,8 @@ defmodule Beamlet.Quality.Contracts do
 
   defp walk({kind, meta, [head | rest]}, ctx)
        when kind in [:def, :defp, :defdelegate, :defmacro, :defmacrop] do
+    # 函数头可能带 guard；只取真实定义身份（名/元数/默认值个数），
+    # guard 内的调用不算定义。设错静态模块或出现在函数体/动态生成里则报错。
     case signature(head) do
       {:ok, name, arity, defaults} ->
         issues =

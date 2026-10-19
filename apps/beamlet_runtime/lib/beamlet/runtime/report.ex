@@ -1,10 +1,15 @@
 defmodule Beamlet.Runtime.Report do
   @moduledoc false
+  # 报告不携带 settings/provider PID；完整信封预算与注册验证共同限制广播内容。
   @keys ~w(node incarnation gateway lease ready execution_ready handlers capabilities environments available utilization)a
 
   @type pools :: %{optional(binary()) => non_neg_integer()}
   @type registrations :: %{optional(binary()) => {module(), term()}}
-  @typedoc "Selection view accepts either public handler flags or local registrations. Settings remain executor-local."
+  @typedoc """
+  选择视图可含公开 handler 标记或本地注册；settings 只留在执行器。
+
+  Selection view accepts either public handler flags or local registrations. Settings remain executor-local.
+  """
   @type placement :: %{
           ready: boolean(),
           handlers: %{optional(binary()) => true | {module(), term()}},

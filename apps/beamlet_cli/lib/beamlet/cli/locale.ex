@@ -1,5 +1,7 @@
 defmodule Beamlet.CLI.Locale do
   @moduledoc """
+  终端语言来源按有效值依次选择：locale 配置、BEAMLET_LANG、default_locale 配置、共享默认 zh_CN。规范化委托给共享模块；Runner 在读取前为当前进程安装一次语言。
+
   CLI locale resolution.
 
   Canonicalisation and the default live in `Beamlet.I18n.Locale`; this module
@@ -22,15 +24,27 @@ defmodule Beamlet.CLI.Locale do
 
   @env "BEAMLET_LANG"
 
-  @doc "Canonical locales in display order."
+  @doc """
+  返回用于语言选择的规范值与自有语言标签。
+
+  Canonical locales in display order.
+  """
   @spec options() :: [{binary(), binary()}]
   def options, do: Shared.options()
 
-  @doc "Canonicalises a locale, or `nil` when unknown."
+  @doc """
+  将支持的语言别名规范化，未知或非字符串返回 nil。
+
+  Canonicalises a locale, or `nil` when unknown.
+  """
   @spec normalize(term()) :: binary() | nil
   def normalize(locale), do: Shared.normalize(locale)
 
-  @doc "Configured/environment locale, falling back to the shared default."
+  @doc """
+  依次跳过无效配置与环境值，返回可用的 CLI 语言；默认 zh_CN。
+
+  Configured/environment locale, falling back to the shared default.
+  """
   @spec locale() :: binary()
   def locale do
     Shared.normalize(config_value(:locale)) ||
@@ -40,6 +54,8 @@ defmodule Beamlet.CLI.Locale do
   end
 
   @doc """
+  为当前进程安装规范化语言并返回该值；影响共享及界面后端，不改变 Agent 行为。
+
   Sets the locale for the current CLI process.
 
   The runner calls this once before reading stdin, so every later render in the

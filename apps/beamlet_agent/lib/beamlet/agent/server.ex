@@ -1,5 +1,9 @@
 defmodule Beamlet.Agent.Server do
-  @typedoc "Live private orchestration state, including empty startup and paused restored states. Payloads/final reasons stay open because native providers and peer messages are extensible."
+  @typedoc """
+  实时内部编排状态，含初始空状态及暂停恢复态；provider 与 peer 的 final/reason 保持开放。
+
+  Live private orchestration state, including empty startup and paused restored states. Payloads/final reasons stay open because native providers and peer messages are extensible.
+  """
   @type state :: %{
           ref: Beamlet.Agent.Ref.t(),
           catalogue: Beamlet.Harness.Catalogue.t(),
@@ -204,6 +208,7 @@ defmodule Beamlet.Agent.Server do
   alias Beamlet.Agent.Loader
   alias Beamlet.Agent.ModelBinding
   @moduledoc false
+  # 业务终态不等于资源退出：owners/helpers 保留到 Resources 观察整组 DOWN 后，才允许后续调度或 continue。
   use GenServer, restart: :temporary
   alias Beamlet.Actions.Operation
   alias Beamlet.Actions.Result
@@ -848,6 +853,7 @@ defmodule Beamlet.Agent.Server do
 
   def handle_info(_, s), do: {:noreply, s}
 
+  # 只标记业务完成，不能提前删除 owner；实际退休由 Resources 的整组 DOWN 通知。
   defp completed_owner(owners, pid) do
     Map.new(owners, fn {token, owner} ->
       {token, if(owner.pid == pid, do: Map.put(owner, :completed, true), else: owner)}

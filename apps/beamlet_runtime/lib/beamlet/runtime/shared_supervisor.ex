@@ -1,5 +1,9 @@
 defmodule Beamlet.Runtime.SharedSupervisor do
-  @moduledoc "Opt-in node infrastructure. Restart invalidates all live references."
+  @moduledoc """
+  显式启动的共享基础设施，one_for_all 重启使已有 Ref 失效；临时协调器不恢复业务工作。
+
+  Opt-in node infrastructure. Restart invalidates all live references.
+  """
   use Supervisor
 
   alias Beamlet.Runtime.{
@@ -15,6 +19,7 @@ defmodule Beamlet.Runtime.SharedSupervisor do
   @typep options :: Beamlet.Runtime.options()
   @spec start_link(options()) :: Supervisor.on_start()
   @spec init(options()) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}} | :ignore
+  @doc "显式启动共享 one_for_all 树，按 execution 选项组合执行子树。"
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   @impl true
   def init(opts) do

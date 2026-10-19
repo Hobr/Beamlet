@@ -1,5 +1,6 @@
 defmodule Beamlet.Runtime.ExecutionSupervisor do
   @moduledoc false
+  # Workers 与 Gateway 以 one_for_all 共存亡，旧任务不能跨越新一代容量账本。
   use Supervisor
 
   @spec start_link({Beamlet.Runtime.options(), Beamlet.Runtime.Limits.t()}) ::

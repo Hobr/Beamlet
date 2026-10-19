@@ -1,9 +1,16 @@
 defmodule Beamlet.CLI do
-  @moduledoc "Opt-in interaction host. No stdin or Node startup on ordinary loading."
+  @moduledoc """
+  显式启用的交互宿主。普通应用加载不启动 Node 或终端读取；配置只接受 enabled 与 allowed_nodes。
+
+  Opt-in interaction host. No stdin or Node startup on ordinary loading.
+  """
   alias Beamlet.Node.Cluster
 
-  @typedoc "Validated opt-in interaction host settings."
+  @typedoc "通过启动验证的宿主策略；字符串节点名须经 Cluster 验证。
+
+Validated opt-in interaction host settings."
   @type settings :: [{:enabled, boolean()} | {:allowed_nodes, [binary()]}]
+  @doc "验证启动配置并返回规范化值或静态配置错误；不启动角色、连接节点或调用提供方。"
   @spec configuration(term()) :: {:ok, settings()} | {:error, :invalid_configuration}
   def configuration(settings) do
     with true <- is_list(settings) and Keyword.keyword?(settings),

@@ -27,6 +27,7 @@ defmodule Beamlet.Agent.Delegation do
         ) :: tuple()
   @spec cleanup(Beamlet.Agent.Ref.t()) :: :ok | Beamlet.Agent.error()
   @moduledoc false
+  # 每个子项有独立所有权控制器；父级授权 startup 后才输入，停止/失联触发清理但不证明外部执行回滚。
   alias Beamlet.Agent.Lifecycle
   # One bounded helper per owned child, never one per subscriber or event.
   # All waits occur here, outside the Agent callback. Each child monitors its delegator.

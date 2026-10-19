@@ -1,5 +1,7 @@
 defmodule Beamlet.Node.Storage do
   @moduledoc """
+  宿主显式启动的持久化资源接线，打开已有数据集并管理 Admission；不自动初始化、迁移或修复。拒绝数据集时保留安全原因并关闭持久化准入。runtime 返回句柄不授予准入，每次提交与接受仍咨询实时 gate。
+
   Explicit durable-storage wiring for one VM host, started only by a host that
   configures storage. Interaction-only and library loading start nothing.
 
@@ -47,6 +49,8 @@ defmodule Beamlet.Node.Storage do
   @journal_keys [:database, :dataset_id, :peer_database]
 
   @doc """
+  验证角色所需数据集及 executor UUID，返回标准化配置；不打开数据库。
+
   Validates a trusted operator `:storage` keyword for `roles`:
 
       storage: [
@@ -63,18 +67,24 @@ defmodule Beamlet.Node.Storage do
   The authority block is required for `:authority`; the journal block for
   `:executor`. `executor_id` is the durable executor identity of this VM.
   """
-  @typedoc "Validated dataset wiring, independent of admission/readiness."
+  @typedoc """
+  经验证的角色数据集参数；无相应角色时为 nil，不表示已打开或准入。
+
+  Validated dataset wiring, independent of admission/readiness.
+  """
   @type datasets :: %{
           adapter: :sqlite | :postgres,
           authority: keyword() | nil,
           journal: keyword() | nil
         }
+  @typedoc "经验证的数据集接线及稳定 executor UUID，不表示资源可用。"
   @type configuration :: %{
           adapter: :sqlite | :postgres,
           authority: keyword() | nil,
           journal: keyword() | nil,
           executor_id: binary()
         }
+  @typedoc "返回给 Agent/Runtime 的 Repo 与 executor/boot 身份；准入仍独立检查。"
   @type wiring :: %{
           authority_repo: module(),
           journal_repo: module(),
@@ -106,7 +116,11 @@ defmodule Beamlet.Node.Storage do
     end
   end
 
-  @doc "Dataset options the roles need, without requiring the executor identity."
+  @doc """
+  计算数据集参数，不要求 executor 身份；完整路径/适配器参数仍需通过校验。
+
+  Dataset options the roles need, without requiring the executor identity.
+  """
   @spec datasets(term(), term()) :: {:ok, datasets()} | error()
   def datasets(roles, storage) when is_list(roles) and is_list(storage) do
     with true <- Keyword.keyword?(storage),
@@ -125,10 +139,13 @@ defmodule Beamlet.Node.Storage do
   def datasets(_, _), do: {:error, :invalid_storage_configuration}
 
   @spec start_link(keyword()) :: GenServer.on_start()
+  @doc "使用 configuration/2 的标准化 storage 显式启动资源进程及准入 gate。"
   def start_link(opts),
     do: GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
 
   @doc """
+  返回 authority/journal 句柄与 executor/boot 身份；缺配置或进程不可用返回显式错误，不代表已获准入。
+
   Durable wiring for Agent/Runtime callers:
   `{:ok, %{authority_repo:, journal_repo:, executor_id:, executor_boot_id:}}`, or
   `{:error, :storage_not_configured | :authority_not_configured |
@@ -151,7 +168,11 @@ defmodule Beamlet.Node.Storage do
     :exit, reason -> host_exit(reason)
   end
 
-  @doc "Admission status plus each configured dataset's open state."
+  @doc """
+  刷新资源及 Admission 状态，返回 boot_id；超时/已停止返回 storage_unavailable。
+
+  Admission status plus each configured dataset's open state.
+  """
   @spec status(atom()) :: status() | {:error, :storage_not_configured | :storage_unavailable}
   def status(name \\ __MODULE__) do
     case Process.whereis(name) do

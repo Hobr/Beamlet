@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# 本地完整门禁：契约扫描器回归 → 生产契约覆盖 → 格式/编译/测试/静态分析
+# → 三个 release 构建 → 复制产物检查 → durable 两进程 E2E。
+# 每个步骤的日志分别写入证据目录；任何一步失败即停止并保留日志。
+# 本地通过不等于部署/物理跨机/付费服务验收，也不代表父任务已接受。
 set -euo pipefail
 export ERL_FLAGS='+S 2:2'
 logs=$(mktemp -d /tmp/beamlet-acceptance.XXXXXX)
@@ -24,6 +28,8 @@ release_root=$(mktemp -d "$PWD/_build/host-naming.XXXXXX")
 BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release --path "$release_root/server-default" >"$logs/build-default.log" 2>&1
 test -x "$release_root/server-default/bin/beamlet_server"
 BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_server --path "$release_root/server" >"$logs/build.log" 2>&1
+# 下面两个是预期的负例：退役的 release 名称与缺失 Web 密钥都必须失败，
+# 若它们意外成功（退出码 0）则整个门禁中止，不能把错误当成通过。
 if BEAMLET_BACKEND_BUILD=1 MIX_ENV=prod mix release beamlet_daemon >"$logs/old-release.log" 2>&1; then
   echo 'Removed release unexpectedly built' >&2
   exit 1

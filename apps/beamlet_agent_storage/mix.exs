@@ -1,6 +1,9 @@
 defmodule Beamlet.Agent.Storage.MixProject do
   use Mix.Project
 
+  # Agent 领域持久化：只依赖 Actions Storage 与通用 Storage，
+  # 永不依赖 Agent/Core/Runtime/Node 或宿主；没有 Application 回调。
+  # Ecto/SQL 与两种驱动固定精确版本；加载本库不会启动 Repo。
   def project do
     [
       app: :beamlet_agent_storage,

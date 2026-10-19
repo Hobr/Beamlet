@@ -2,7 +2,12 @@ defmodule Beamlet.Node do
   alias Beamlet.Harness.Model
   alias Beamlet.Runtime.Limits
   alias Beamlet.Runtime.Report
-  @moduledoc "Trusted role composition, started explicitly by an embedding supervisor."
+
+  @moduledoc """
+  由宿主监督树显式启动的可信角色组合，每 VM 一棵树。支持 interaction/authority/executor 的七种非空组合；没有 Application 回调，不读取宿主配置或自动建库。one_for_all 将角色资源故障耦合，重启不重放业务。
+
+  Trusted role composition, started explicitly by an embedding supervisor.
+  """
   use Supervisor
   alias Beamlet.Agent.Integration.{Caller, Handler}
   alias Beamlet.Harness.Catalogue
@@ -10,13 +15,23 @@ defmodule Beamlet.Node do
   @tools [Beamlet.Harness.Tools.Deterministic, Beamlet.Harness.Tools.WorkspaceRead]
 
   @doc """
+  读取本地安全事实，支持非分布 VM；ready 仅表示注册存在，不证明服务响应或 provider 健康。
+
   Returns the safe local version1 observation; see `observe/1` for schema/bounds.
   Explicitly supports the local non-distributed VM. No Node tree is represented
   by configured=false, roles=unknown and services=not_configured.
   """
-  @typedoc "Trusted roles selected once at startup."
+  @typedoc """
+  启动时选定的可信角色，非空且不可重复。
+
+  Trusted roles selected once at startup.
+  """
   @type role :: :interaction | :authority | :executor
-  @typedoc "Executor-local tool registration; adapter settings and bounded placement labels are open data."
+  @typedoc """
+  执行器本地工具注册，settings 不进入公开路由或报告。
+
+  Executor-local tool registration; adapter settings and bounded placement labels are open data.
+  """
   @type profile :: %{
           optional(:environment) => term(),
           :type => :tool,
@@ -24,7 +39,9 @@ defmodule Beamlet.Node do
           :settings => map(),
           :capability => binary()
         }
+  @typedoc "以不透明 profile ID 索引的本地工具注册表，最多 32 项。"
   @type profiles :: %{optional(binary()) => profile()}
+  @typedoc "显式角色组合配置；model_providers 为可信模块注册，providers 为受监控进程，两者独立。"
   @type options :: [
           {:roles, [role()]}
           | {:profiles, profiles()}
@@ -41,6 +58,8 @@ defmodule Beamlet.Node do
   def observation, do: Observation.local()
 
   @doc """
+  最多聚合 32 个可信 atom 节点，8 并发共享 5 秒预算；逐节点保留失败，complete 只覆盖请求集合。
+
   Observes at most32 distinct trusted atom targets, including local node().
   Returns `{:ok, %{nodes: %{target => observation}, failures: %{target => reason},
   complete: boolean}}`; malformed/duplicate/excess targets return invalid_query.
@@ -66,10 +85,13 @@ defmodule Beamlet.Node do
   def observe(nodes), do: Observation.observe(nodes)
 
   @spec profile(binary()) :: {:ok, Beamlet.Agent.Integration.Caller.profile()} | :error
+  @doc "查找公开工具路由；返回 {:ok, route} 或 :error，不包含本地 settings。"
   def profile(id), do: GenServer.call(Routes, {:profile, id})
   @spec catalogue() :: {:ok, Beamlet.Harness.Catalogue.t()}
+  @doc "读取启动时的公开纯数据工具目录。"
   def catalogue, do: GenServer.call(Routes, :catalogue)
   @spec start_link(options()) :: Supervisor.on_start()
+  @doc "显式启动本 VM 唯一角色监督树，非法配置使启动失败。"
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   @impl true
   @spec init(options()) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}}
@@ -83,6 +105,7 @@ defmodule Beamlet.Node do
   @spec configuration(term()) ::
           {:ok, [Supervisor.child_spec() | {module(), term()}]}
           | {:error, :invalid_node_configuration}
+  @doc "预检可信配置并返回子树描述或 invalid_node_configuration，不启动子进程；所有角色组合均校验 Runtime limits。"
   def configuration(opts) when is_list(opts) do
     if Keyword.keyword?(opts), do: configure(opts), else: {:error, :invalid_node_configuration}
   end

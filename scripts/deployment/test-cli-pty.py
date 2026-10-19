@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Real Unicode terminal IO, finite deadlines and process-group cleanup."""
+"""真实 Unicode 终端 IO、有限等待与进程组清理。
+
+`terminal()` 通过真实 PTY 喂入字节并收集输出；无论断言是否通过，finally 都会
+关闭描述符并杀共享进程组，避免遗留子进程。
+Real Unicode terminal IO, finite deadlines and process-group cleanup.
+"""
 import errno
 import os
 import pty

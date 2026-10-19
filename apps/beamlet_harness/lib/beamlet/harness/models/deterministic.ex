@@ -1,9 +1,16 @@
 defmodule Beamlet.Harness.Models.Deterministic do
-  @moduledoc "Deterministic neutral reply fixtures; no external calls. Config is JSON data."
+  @moduledoc """
+  以字符串键 JSON reply fixture 产生确定回复，不访问外部服务。
+
+  Deterministic neutral reply fixtures; no external calls. Config is JSON data.
+  """
   @behaviour Beamlet.Harness.Model
   alias Beamlet.Harness.{Context, Model}
 
   @impl true
+  @doc """
+  校验通用 invocation 和适配器字段；非法配置返回 invalid_profile，不发起请求。
+  """
   @spec validate_invocation(term()) :: :ok | {:error, :invalid_profile}
   def validate_invocation(invocation) do
     with :ok <- Model.validate_invocation(invocation),
@@ -17,6 +24,9 @@ defmodule Beamlet.Harness.Models.Deterministic do
   end
 
   @impl true
+  @doc """
+  校验取消、配置与中立请求后完成一次调用；默认使用空本地 Context。返回中立回复或安全原子错误，不把凭据/原始响应附到错误。
+  """
   @spec complete(term(), term(), Context.t()) :: {:ok, Model.reply()} | {:error, atom()}
   def complete(request, invocation, context \\ %Context{}) do
     with false <- Context.cancelled?(context),

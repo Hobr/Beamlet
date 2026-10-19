@@ -1,5 +1,9 @@
 defmodule Beamlet.Web.Handles do
-  @moduledoc "VM-local navigation only: 4096 entries, one-hour idle expiry. Never owns Agents."
+  @moduledoc """
+  VM 内临时导航映射，不拥有或关闭 Agent，也不是授权凭证。最多 4096 条、一小时空闲过期；每次 fetch 重新核对精确描述符与完整 Ref，同名替换不重绑定。
+
+  VM-local navigation only: 4096 entries, one-hour idle expiry. Never owns Agents.
+  """
   use GenServer
   alias Beamlet.Agent
   @idle 3_600_000
@@ -9,10 +13,13 @@ defmodule Beamlet.Web.Handles do
            touched: integer()
          }
   @typep state :: %{optional(binary()) => entry()}
+  @typedoc "临时导航句柄或静态错误；句柄不等同授权。"
   @type navigation :: {:ok, binary()} | Agent.error()
+  @doc "由监督树启动本模块的具名进程；同一 VM 不应重复启动。"
   @spec start_link(term()) :: GenServer.on_start()
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
 
+  @doc "核对描述符后保留 Ref 导航映射；容量满返回 handle_limit，进程调用失败返回 unavailable，不关闭实例。"
   @spec remember(term()) :: navigation()
   def remember(descriptor) do
     with {:ok, ref} <- Agent.lookup(descriptor) do
@@ -22,6 +29,7 @@ defmodule Beamlet.Web.Handles do
     :exit, _ -> {:error, :unavailable}
   end
 
+  @doc "读取句柄并重新核对完整 Ref；过期、无效或同名替换返回 stale_handle，导航进程不可用返回 unavailable。"
   @spec fetch(term()) :: Agent.result(Agent.Ref.t())
   def fetch(handle) when is_binary(handle) and byte_size(handle) == 32 do
     with {:ok, %{descriptor: descriptor, ref: expected}} <-

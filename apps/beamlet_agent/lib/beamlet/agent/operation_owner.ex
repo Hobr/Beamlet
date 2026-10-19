@@ -4,6 +4,7 @@ defmodule Beamlet.Agent.OperationOwner do
           {:operation_failed, reference(), {:error, atom()}}
   @spec await(Beamlet.Actions.OperationRef.t()) :: no_return()
   @moduledoc false
+  # 阻塞 submit/ack 位于 Lifecycle 的 linked worker，控制器可在基础设施挂起时独立响应所有权丢失。
   alias Beamlet.Agent.Lifecycle
 
   def run(agent, token, operation, authority, dispatch \\ []) do

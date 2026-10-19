@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Copied foreground CLI sessions retain one live Agent across quit and EOF."""
+"""复制出的前台 CLI 会话：quit 与 EOF 后仍指向同一个存活 Agent。
+
+`BEAMLET_LANG=en` 是为让英文文案断言在中文默认下仍确定；语言切换本身由
+CLI 自己的 i18n 测试覆盖。
+Copied foreground CLI sessions retain one live Agent across quit and EOF.
+"""
 import base64
 import hashlib
 import importlib.util

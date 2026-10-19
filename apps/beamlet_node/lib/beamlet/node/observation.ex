@@ -1,9 +1,14 @@
 defmodule Beamlet.Node.Observation do
   @moduledoc false
+  # 一次性 linked 读取隔离迟到回复；远端预算从执行 VM 的入口开始，调用者放弃不等于远端立即取消。
   alias Beamlet.Runtime.Directory
   alias Beamlet.Runtime.Observation, as: Read
 
-  @typedoc "Advisory source-local facts; readiness means registration only."
+  @typedoc """
+  来源 VM 的建议性事实；ready 仅指所需注册存在。
+
+  Advisory source-local facts; readiness means registration only.
+  """
   @type local_observation :: %{
           version: 1,
           node: node(),

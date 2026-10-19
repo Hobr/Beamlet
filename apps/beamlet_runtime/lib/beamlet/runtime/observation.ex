@@ -1,5 +1,6 @@
 defmodule Beamlet.Runtime.Observation do
   @moduledoc false
+  # 一次性 linked 读取隔离迟到回复；远端预算从执行 VM 的入口开始，调用者放弃不等于远端立即取消。
   @type failure :: {:error, :timeout | :unavailable}
   @spec now() :: integer()
   @spec remaining(integer()) :: non_neg_integer()

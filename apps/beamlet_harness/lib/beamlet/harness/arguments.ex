@@ -1,8 +1,19 @@
 defmodule Beamlet.Harness.Arguments do
-  @moduledoc "Explicit shallow object schema subset; unsupported keywords fail registration."
+  @moduledoc """
+  显式浅层对象 schema 子集，不是完整 JSON Schema。只支持原始字符串、整数、数值、布尔值及 enum/长度/数值约束；数组、嵌套对象与未知关键词拒绝注册。
+
+  Explicit shallow object schema subset; unsupported keywords fail registration.
+  """
   @primitive ~w(string integer number boolean)
-  @typedoc "Native Tool schema object; supported string-key fields and constraint relations are runtime validated."
+  @typedoc """
+  浅层对象 schema；字面键与约束关系依赖运行时校验。
+
+  Native Tool schema object; supported string-key fields and constraint relations are runtime validated.
+  """
   @type schema :: Beamlet.Harness.Model.json_object()
+  @doc """
+  检查 schema 结构、支持关键词和约束值类型；不承诺检测最小值大于最大值等不可满足组合。
+  """
   @spec schema?(term()) :: boolean()
   def schema?(%{"type" => "object", "properties" => properties} = schema)
       when is_map(properties) do
@@ -48,6 +59,9 @@ defmodule Beamlet.Harness.Arguments do
   defp constraint_schema?({k, v}, _) when k in ["minimum", "maximum"], do: is_number(v)
   defp constraint_schema?(_, _), do: true
 
+  @doc """
+  按 schema 检查必填项和每个属性。默认拒绝额外属性；显式允许时额外值限 JSON 原始值。字符串长度按 Unicode 码点计算，失败返回 invalid_arguments。
+  """
   @spec validate(term(), term()) :: :ok | {:error, :invalid_arguments}
   def validate(value, schema) do
     if schema?(schema) and is_map(value) and

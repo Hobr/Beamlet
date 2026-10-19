@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# 数据集 format3 / 轨迹 format2 的端到端验证：全新测试文件 + 两个独立 OS 进程。
+# 阶段一用显式运维动作安装数据集、启动宿主接线、用确定性模型与 Tool 提交一次
+# durable turn，然后退出（宿主进程已消失）；阶段二是新的 OS 进程，重新打开同
+# 一套文件、证明持久化准入、暂停恢复、显式继续、导出并校验轨迹，并按不可变
+# 引用从安全位置 fork（不是复制检查点）。这里不包含断电保障，也不跨主机。
+#
 # Dataset format3 / trace format2 end-to-end verification over fresh test files and two OS processes.
 #
 #   scripts/deployment/durable-e2e.sh            # isolated temp directory

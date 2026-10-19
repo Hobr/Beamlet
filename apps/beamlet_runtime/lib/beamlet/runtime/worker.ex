@@ -1,6 +1,14 @@
 defmodule Beamlet.Runtime.Worker do
-  @moduledoc "MFA wrapper with finite producer credits. Auxiliary callbacks marshal through the wrapper."
-  @typedoc "Handler results are validated by the gateway; arbitrary replies must remain representable here."
+  @moduledoc """
+  在受监督任务内调用 Handler，独立转发辅助进度并限制生产额度。Handler 自行拥有其额外子进程及外部资源；协作取消标记不证明外部停止。
+
+  MFA wrapper with finite producer credits. Auxiliary callbacks marshal through the wrapper.
+  """
+  @typedoc """
+  Handler 原始返回与生产端进度丢弃计数；Gateway 随后验证业务返回。
+
+  Handler results are validated by the gateway; arbitrary replies must remain representable here.
+  """
   @type result :: {:worker_result, term(), %{producer_progress_dropped: non_neg_integer()}}
   @spec run(
           module(),
@@ -23,6 +31,7 @@ defmodule Beamlet.Runtime.Worker do
   @spec rate?(:atomics.atomics_ref(), non_neg_integer(), pos_integer(), non_neg_integer()) ::
           boolean()
   @spec marshal(pid()) :: :ok | {:marshaled, pid()}
+  @doc "调用 Handler 并合并生产端进度丢弃计数；payload、credentials 与本地 settings 分开传递。"
   def run(module, payload, credentials, settings, gateway, remaining, limits, cancellation) do
     wrapper = self()
     counters = :atomics.new(4, [])

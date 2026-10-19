@@ -1,12 +1,27 @@
 defmodule Beamlet.Server do
   @moduledoc """
+  启动时验证服务宿主策略，默认关闭；启用后默认组合 authority 与 executor，也支持任一单角色。每个 VM 仅允许一棵 Node 树，配置更新不在线切换角色。
+
   Opt-in server host configuration. Roles are selected once at startup, with
   authority and executor enabled by default. One Node tree is supported per VM.
   """
   alias Beamlet.Node.Cluster
   alias Beamlet.Node.Storage, as: Host
 
+  @typedoc "通过启动验证的宿主策略；字符串节点名须经 Cluster 验证。
+
+Validated startup policy; connection names stay strings until Cluster validates them."
+  @type settings :: [
+          {:enabled, boolean()}
+          | {:node, Beamlet.Node.options()}
+          | {:allowed_nodes, [binary()]}
+          | {:peers, [binary()]}
+          | {:storage, Host.configuration() | nil}
+        ]
+
   @doc """
+  验证启动配置并返回规范化值或静态配置错误；不启动角色、连接节点或调用提供方。
+
   Validate host policy, delegate resource/provider validation to Node, and
   validate the optional durable-storage block for the configured roles.
 
@@ -17,14 +32,6 @@ defmodule Beamlet.Server do
   that needs none. `storage:` itself never implies durable admission; admission
   comes from a live probe of the opened dataset.
   """
-  @typedoc "Validated startup policy; connection names stay strings until Cluster validates them."
-  @type settings :: [
-          {:enabled, boolean()}
-          | {:node, Beamlet.Node.options()}
-          | {:allowed_nodes, [binary()]}
-          | {:peers, [binary()]}
-          | {:storage, Host.configuration() | nil}
-        ]
   @spec configuration(term()) :: {:ok, settings()} | {:error, :invalid_server_configuration}
   def configuration(settings) do
     with true <- keyword?(settings, [:enabled, :node, :allowed_nodes, :peers, :storage]),

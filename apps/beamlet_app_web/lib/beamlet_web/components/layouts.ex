@@ -1,5 +1,7 @@
 defmodule Beamlet.Web.Layouts do
   @moduledoc """
+  布局与通知、语言及主题组件。语言切换使用完整页面链接，让 Locale plug 写入签名会话；根布局消费 router 生成的 CSP nonce。
+
   This module holds layouts and related functionality
   used by your application.
   """
@@ -12,6 +14,8 @@ defmodule Beamlet.Web.Layouts do
   embed_templates "layouts/*"
 
   @doc """
+  呈现脚手架布局与通知，实际工作台由独立 LiveView 提供。
+
   Renders your app layout.
 
   This function is typically invoked from every template,
@@ -78,6 +82,8 @@ defmodule Beamlet.Web.Layouts do
   end
 
   @doc """
+  呈现 info/error 通知及连接中断反馈；这些提示不代表业务停止。
+
   Shows the flash group with standard titles and content.
 
   ## Examples
@@ -129,6 +135,8 @@ defmodule Beamlet.Web.Layouts do
   end
 
   @doc """
+  呈现保留当前路径的完整页面语言链接，使 plug 将选择写入签名会话。
+
   Language switcher for the product surfaces.
 
   Each entry is a plain link (full page load) so the locale plug can persist the
@@ -157,6 +165,8 @@ defmodule Beamlet.Web.Layouts do
   end
 
   @doc """
+  派发主题切换 DOM 事件，主题集合与 app.css 保持一致。
+
   Provides dark vs light theme toggle based on themes defined in app.css.
 
   See <head> in root.html.heex which applies the theme before page load.

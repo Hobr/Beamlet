@@ -1,6 +1,10 @@
 defmodule Beamlet.Agent.TraceExport do
   @typep object :: Beamlet.Agent.Core.Data.object()
-  @typedoc "Snapshot with stable Agent/Operation high waters, captured before filesystem writes."
+  @typedoc """
+  文件写入前捕获的 Agent/Operation 高水位及内容闭包，后续追加不改变该快照。
+
+  Snapshot with stable Agent/Operation high waters, captured before filesystem writes.
+  """
   @type fixed :: %{
           repo: module(),
           agent_id: binary(),
@@ -66,7 +70,11 @@ defmodule Beamlet.Agent.TraceExport do
   @spec read_file(binary(), pos_integer()) :: result(binary())
   @spec decode(binary()) :: result(object())
   @spec digest(:crypto.hash_state()) :: binary()
-  @moduledoc "Format-2, bounded offline trace packages. Begin captures fixed Agent/Operation high waters before writing pages."
+  @moduledoc """
+  有界 format2 离线轨迹。begin 先捕获 Agent 与各 Operation 高水位和引用闭包，再向空目录写入；缺失内容明确列出，不宣称完整。校验不授予导入或执行权限，文件哈希不是签名。
+
+  Format-2, bounded offline trace packages. Begin captures fixed Agent/Operation high waters before writing pages.
+  """
   alias Beamlet.Agent.Reducer
   alias Beamlet.Agent.Storage.Codec
   alias Beamlet.Agent.Storage.Records
@@ -77,6 +85,7 @@ defmodule Beamlet.Agent.TraceExport do
   @files ~w(events inputs operations definition)
   @max_bytes 33_554_432
 
+  @doc "先捕获固定 Agent/Operation 高水位及完整引用内容，返回 fixed 或显式错误，不写文件。"
   def begin(repo, scope) do
     id = if is_map(scope), do: scope[:agent_id], else: scope
 
@@ -87,10 +96,12 @@ defmodule Beamlet.Agent.TraceExport do
     end
   end
 
+  @doc "依次捕获 fixed 并按 policy 写出轨迹。"
   def export(repo, scope, policy) do
     with {:ok, fixed} <- begin(repo, scope), do: write(fixed, policy)
   end
 
+  @doc "向空目录写固定快照与 manifest；page 为 1..500，page_bytes 为 4096..4 MiB，整条超页记录标记而不截断；drop_content 不可恢复。"
   def write(fixed, policy) do
     with {:ok, policy} <- policy(policy),
          :ok <- empty_directory(policy.dir),
@@ -284,6 +295,7 @@ defmodule Beamlet.Agent.TraceExport do
     }
   end
 
+  @doc "离线校验文件、内容摘要和引用归属；返回完整性与 execution_authority=none，不提供签名真实性。"
   def verify(dir) do
     with {:ok, bytes} <- read_file(Path.join(dir, "manifest.json"), 4_194_304),
          {:ok, manifest} <- decode(bytes),

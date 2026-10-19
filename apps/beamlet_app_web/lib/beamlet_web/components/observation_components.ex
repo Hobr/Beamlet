@@ -1,5 +1,9 @@
 defmodule Beamlet.Web.ObservationComponents do
-  @moduledoc "Escaped, bounded source projections shared by Web inspectors."
+  @moduledoc """
+  工作台与诊断共用的实时投影组件。以转义文本展示当前活动；源引用散列为不透明关联标签，不据到达顺序猜测轮次，也不重建历史。
+
+  Escaped, bounded source projections shared by Web inspectors.
+  """
   use Beamlet.Web, :html
 
   alias Beamlet.I18n.Vocabulary
@@ -9,6 +13,7 @@ defmodule Beamlet.Web.ObservationComponents do
 
   attr :diagnostic_handle, :string, default: nil
 
+  @doc "呈现当前并发活动、缺失/截断与诊断链接；完成活动可能消失，不表示持久事件历史。"
   @spec activities(%{
           optional(:display) => map() | nil,
           optional(:pending) => boolean(),
@@ -71,11 +76,13 @@ defmodule Beamlet.Web.ObservationComponents do
     """
   end
 
+  @doc "只输出文本、状态词汇或静态省略提示，不 inspect 任意项。"
   @spec text(term()) :: binary()
   def text(nil), do: gettext("Unknown / omitted")
   def text(v) when is_binary(v), do: v
   def text(v) when is_atom(v), do: Vocabulary.status(v)
   def text(_), do: gettext("Unsupported content omitted")
+  @doc "将源关联项散列成不透明展示标签；不从标签还原源引用或历史。"
   @spec turn(term()) :: binary()
   def turn(nil), do: gettext("Turn unknown")
 

@@ -1,5 +1,9 @@
 defmodule Beamlet.CLI.Renderer do
-  @moduledoc "Bounded terminal projection; errors never render arbitrary terms."
+  @moduledoc """
+  使用 Owl 呈现有界终端投影。发现结果每页八条，身份用可复制的 id64 标记；错误仅显示允许列表中的静态原因，未知值走有界展示。
+
+  Bounded terminal projection; errors never render arbitrary terms.
+  """
   alias Beamlet.CLI.Command
   alias Beamlet.I18n.Vocabulary
 
@@ -53,6 +57,7 @@ defmodule Beamlet.CLI.Renderer do
   end
 
   # Unknown values intentionally use the bounded inspect fallback.
+  @doc "按参数形态呈现帮助、发现、身份、快照、节点或错误；错误仅使用允许列表中的原因词，其他值走有界 inspect。"
   @spec render(term()) :: binary()
   def render(:help) do
     header = gettext("commands / policy")

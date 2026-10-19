@@ -1,5 +1,6 @@
 defmodule Beamlet.Actions.Storage.Migrations.JournalV1 do
   @moduledoc false
+  # 已安装的 format3 前向迁移，描述符绑定模块身份；打开数据集不会运行或修复迁移。
   # flush returns the adapter-specific DDL results; the migration runner ignores them.
   @spec up() :: [term()]
   @spec down() :: no_return()

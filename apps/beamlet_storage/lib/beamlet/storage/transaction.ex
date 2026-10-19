@@ -1,5 +1,7 @@
 defmodule Beamlet.Storage.Transaction do
   @moduledoc """
+  存储事务与安全错误分类边界。SQLite 写事务使用 immediate 锁，普通读保持 deferred。write 拥有提交/回滚，participate 仅参与同 Repo 的已有事务。未分类驱动写失败保守返回 storage_outcome_unknown；调用方须按稳定身份核对结果，不得自动重试外部副作用。
+
   Internal storage transaction boundary. Writes take SQLite's immediate lock;
   ordinary Repo reads remain deferred. No retries or external effects are added.
   A driver failure during a write is conservatively outcome-unknown: reconcile
@@ -18,12 +20,16 @@ defmodule Beamlet.Storage.Transaction do
   ]
 
   @doc """
+  只在同 Repo 已有事务中调用参与者，否则返回 transaction_required。返回值原样传递：参与者返回错误不会自动回滚，调用方必须 rollback 或通过 Ecto.Multi 组合。
+
   Run a participant only within an existing caller-owned transaction.
   The participant validates its domain inputs and must not commit or perform
   external effects. Return values are passed through; callers must rollback on
   participant failure (or compose via Ecto.Multi). No nested transaction is made.
   """
-  @typedoc "Safe write classification; an unknown outcome permits no automatic retry."
+  @typedoc "写入错误分类；storage_outcome_unknown 不代表确定未提交，不允许自动重试。
+
+Safe write classification; an unknown outcome permits no automatic retry."
   @type write_error :: :conflict | :invalid_data | :storage_outcome_unknown
   @typep load_error :: %ArgumentError{message: String.t()}
   @typep repo_error :: %RuntimeError{message: String.t()}
@@ -33,6 +39,7 @@ defmodule Beamlet.Storage.Transaction do
     if repo.in_transaction?(), do: fun.(), else: {:error, :transaction_required}
   end
 
+  @doc "运行拥有提交/回滚权的事务函数或 Ecto.Multi，保留 Ecto 的成功及 rollback/Multi 失败结果。函数返回 {:error, reason} 本身仍可提交，要求回滚时必须 repo.rollback/1。驱动写失败分类为 conflict、invalid_data 或 storage_outcome_unknown。"
   @spec write(module(), (-> value) | (module() -> value)) :: {:ok, value} | {:error, term()}
         when value: var
   @spec write(module(), Ecto.Multi.t()) ::
@@ -57,6 +64,7 @@ defmodule Beamlet.Storage.Transaction do
     end
   end
 
+  # 只有确定的约束拒绝才可确认回滚；断连可能发生在提交前后，必须保留结果未知。
   # A rejected statement aborts and rolls back the whole transaction, so the write
   # set is provably absent. Connection loss and unclassified driver errors stay
   # outcome-unknown: the client cannot prove the commit did not happen.
@@ -92,6 +100,7 @@ defmodule Beamlet.Storage.Transaction do
 
   defp classify_postgres(_), do: :storage_outcome_unknown
 
+  @doc "执行读取并将驱动/Repo 不可用规范为 storage_unavailable；仅精确匹配基础 JSON 类型的 Ecto struct_load! 失败转 invalid_data，其他编程异常保留。"
   @spec read((-> value)) :: value | {:error, :storage_unavailable | :invalid_data} when value: var
   def read(fun) do
     fun.()

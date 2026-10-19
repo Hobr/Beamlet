@@ -1,8 +1,14 @@
 defmodule Beamlet.Agent.Core.Reducer do
-  @moduledoc "Versioned, effect-free reduction of committed Agent orchestration events."
+  @moduledoc """
+  归约版本 1 的已提交、规范化 Agent 事件；不读写存储、不执行模型或工具。控制状态只留来源与结果引用，不留正文。input_digest 由存储适配器按其编码器提供；这里检查形状，不重新散列。
+
+  Versioned, effect-free reduction of committed Agent orchestration events.
+  """
   alias Beamlet.Agent.Core.Data
 
   @typedoc """
+  只含引用的字符串键控制状态，包含初始/暂停状态；引用不等于正文已验证，归约时仍检查顺序和转换合法性。
+
   Reference-only string-key control, including initial and paused states.
 
   `agent_id` and `turn_id` carry UUIDs (nil before a turn); `through_seq`,
@@ -20,12 +26,15 @@ defmodule Beamlet.Agent.Core.Reducer do
   """
   @type state :: Data.object()
   @typedoc """
+  版本化事件 envelope；decode 检查形状，reduce 另检查连续序号、scope 和控制位置。
+
   Versioned string-key event envelope with id, scope_id, seq, schema_version,
   type and payload, plus turn/Operation/input digest bindings when applicable.
   decode/1 validates the event name and per-event payload. Reduction additionally
   checks contiguous sequence numbers, matching scope and legal control position.
   """
   @type event :: Data.object()
+  @typedoc "非法历史或不支持的版本；不会触发修复、重试或外部副作用。"
   @type error :: {:error, :invalid_history | :schema_unsupported}
   @typep reduction :: {:ok, state()} | error()
   @spec version() :: 1
@@ -55,8 +64,14 @@ defmodule Beamlet.Agent.Core.Reducer do
   @spec consumption_position?(state(), Data.object()) :: boolean()
   @spec continue_decided(state(), event()) :: reduction()
 
+  @doc """
+  返回纯归约器支持的事件版本 1，不改变持久化格式版本。
+  """
   def version, do: 1
 
+  @doc """
+  创建初始控制状态；identity 原样保留，调用者负责提供规范 Agent UUID。
+  """
   def new(id) do
     %{
       "agent_id" => id,
@@ -79,6 +94,9 @@ defmodule Beamlet.Agent.Core.Reducer do
     }
   end
 
+  @doc """
+  校验状态、事件、同 scope 与连续序号后纯计算下一状态；首条必须是 agent.created。非法历史为 invalid_history，不支持版本为 schema_unsupported。
+  """
   def reduce(state, event) do
     with true <- valid_state?(state),
          :ok <- decode(event),
@@ -93,6 +111,9 @@ defmodule Beamlet.Agent.Core.Reducer do
     end
   end
 
+  @doc """
+  按输入顺序逐条归约并在首个错误停止，不排序、不补缺口、不恢复执行。
+  """
   def replay(state, events) do
     if valid_state?(state) and Data.proper_list?(events),
       do: replay_events(state, events),
@@ -108,6 +129,9 @@ defmodule Beamlet.Agent.Core.Reducer do
     end)
   end
 
+  @doc """
+  校验规范事件 envelope 和事件 payload，包括 UUID、摘要、输入及继承引用形状；不检查当前控制位置，需由 reduce/2 检查。payload 从自己的根计算深度 32。
+  """
   def decode(%{"schema_version" => 1, "type" => type, "payload" => payload} = event) do
     with true <- Data.plain?(Map.delete(event, "payload")) and is_map(payload),
          true <-
@@ -260,6 +284,10 @@ defmodule Beamlet.Agent.Core.Reducer do
   defp positive_seq?(seq), do: is_integer(seq) and seq > 0
 
   defp keys?(p, keys), do: Enum.sort(Map.keys(p)) == Enum.sort(keys)
+
+  @doc """
+  将 resolutions 列表、空决定或单个决定规范为列表；只是形状转换，合法性由事件/状态校验负责。
+  """
   def decisions(%{"resolutions" => list}) when is_list(list), do: list
   def decisions(p) when p == %{}, do: []
   def decisions(p), do: [p]

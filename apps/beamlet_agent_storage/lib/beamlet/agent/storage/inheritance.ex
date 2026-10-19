@@ -1,5 +1,7 @@
 defmodule Beamlet.Agent.Storage.Inheritance do
-  @moduledoc "Direct immutable content manifests. No parent history is read when verifying a manifest."
+  @moduledoc "同 authority 内的直接、不可变引用清单。构建时验证源位置，输入正文转为摘要去重 artifact，Result 保留原 Operation 所有者；验证清单不递归读取父 Agent 历史。最多 128 个有序来源、1024 个闭包引用，遍历有 5 秒期限。缺失内容明确失败，不把摘要当正文。
+
+Direct immutable content manifests. No parent history is read when verifying a manifest."
   alias Beamlet.Storage.Artifacts
   alias Beamlet.Storage.References
   import Ecto.Query
@@ -44,6 +46,7 @@ defmodule Beamlet.Agent.Storage.Inheritance do
 
   @max_refs 1024
 
+  @doc "在调用方事务中核对截止 through_seq 的有序 timeline、既有继承及显式决策来源；不一致返回 conflict。"
   def source_position(repo, agent, attrs) do
     events =
       repo.all(
@@ -103,6 +106,7 @@ defmodule Beamlet.Agent.Storage.Inheritance do
        ), do: {:cont, :ok}, else: {:halt, {:error, :conflict}}
   end
 
+  @doc "在外层分叉事务中构建并验证扁平 sources/closure，必要时写入摘要去重输入 artifact；来源仍归原 Agent，失败应回滚。"
   def build(repo, agent_id, timeline, previous, resolutions) do
     initial = %{
       sources: [],
@@ -235,6 +239,7 @@ defmodule Beamlet.Agent.Storage.Inheritance do
     end
   end
 
+  @doc "只读验证清单成员、闭包、正文/准备/接受摘要及原所有者；不读取父 Agent 历史。超预算返回 limit，损坏或缺失引用拒绝。"
   def verify(repo, %{"sources" => sources, "closure" => closure} = manifest)
       when map_size(manifest) == 2 and is_list(sources) and is_list(closure) and
              length(sources) <= 128 and length(closure) <= @max_refs do
@@ -261,6 +266,7 @@ defmodule Beamlet.Agent.Storage.Inheritance do
     end)
   end
 
+  @doc "读取并校验继承输入 artifact 摘要，解码为唯一 text 字段且不超过 64 KiB 的对象。"
   def input(repo, ref) do
     with {:ok, artifact} <- Artifacts.fetch(repo, ref["artifact_id"]),
          true <- artifact.digest == ref["digest"],
@@ -306,6 +312,7 @@ defmodule Beamlet.Agent.Storage.Inheritance do
 
   defp verify_entry(_, _, _), do: {:error, :invalid_reference}
 
+  @doc "验证 Operation 描述与准备事件、accepted Result 与接受事件摘要，同时验证 artifact 引用；只读，不授予执行权限。"
   def operation(repo, op, ref) do
     with {:ok, digest} <- Codec.digest(op["description"], :operation),
          true <- digest == op["description_digest"],
@@ -350,6 +357,7 @@ defmodule Beamlet.Agent.Storage.Inheritance do
 
   defp covered?(_, _), do: false
 
+  @doc "检查来源属于指定截止序列前的 context.inherited 清单，并验证整个清单；失败返回 false。"
   def authorized?(repo, agent_id, source, through) do
     case repo.one(
            from(e in Event,

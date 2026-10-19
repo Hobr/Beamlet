@@ -1,4 +1,5 @@
 defmodule Beamlet.Web.WorkbenchLive do
+  @moduledoc "实时工作台：公开草稿创建、精确身份打开与单个选中 Agent 的订阅。代际与 pending 锁隔离旧结果和重复操作；显示为替换快照，不构建持久历史，离开只退订。"
   use Beamlet.Web, :live_view
   import Beamlet.Web.ObservationComponents, only: [activities: 1, text: 1, turn: 1]
   alias Beamlet.I18n.Vocabulary

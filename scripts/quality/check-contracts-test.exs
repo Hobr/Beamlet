@@ -1,3 +1,5 @@
+# 扫描器回归测试：先证明分类规则本身正确，再用它检查生产源码。
+# 这里的夹具（生成/缺 spec/嵌套/quote 等）不作为生产模块的 API 承诺。
 Code.require_file("contracts.exs", __DIR__)
 ExUnit.start(seed: 631_927)
 

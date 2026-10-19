@@ -8,7 +8,16 @@ Beamlet 是一个使用 Elixir/OTP 开发,可跨可信 BEAM 集群运行 AI Agen
 
 架构将三个关注点分开:**决定做什么,执行具体工作,呈现交互过程**.其中的分布式执行层是通用的,也可以服务于与 AI 无关的调用方.
 
-后续[Agent / Operation 持久化设计](docs/architecture/agent-operation-persistence.md)已修订为事件优先：Agent 保存自身输入、配置和编排引用，确定的 LLM/Tool 请求归 Operation，输出归权威采纳的 Result；上下文按策略构建，检查点仅加速控制状态归约，fork 继承内容引用。该设计已由独立重构任务实现，authority 使用格式 2，不兼容旧格式；下文保留早期内存架构基线，不作为当前实现清单。
+后续[Agent / Operation 持久化设计](docs/architecture/agent-operation-persistence_zh.md)已修订为事件优先：Agent 保存自身输入、配置和编排引用，确定的 LLM/Tool 请求归 Operation，输出归权威采纳的 Result；上下文按策略构建，检查点仅加速控制状态归约，fork 继承内容引用。该设计已由独立重构任务实现：数据集统一 format3，轨迹包保持 format2，旧 authority2/journal1 只拒绝、不迁移；下文保留早期内存架构基线，不作为当前实现清单。
+
+### 与当前实现的关系
+
+本文只描述首版职责划分与取舍，具体能力以源码、测试和 `.trellis/spec/backend/` 为准：
+
+- **已实现**：通用 Operation/Execution/Result 契约与 Runtime 执行、原生 Harness 模型/工具、Agent 事件归约编排与按引用恢复、Node 角色组合、可选持久化（format3）、CLI/Server/Web 三个宿主、共享 Gettext 文案。
+- **名称已变化**：当前 umbrella 是十三个应用。Web 宿主应用名为 `beamlet_app_web`（模块仍是 `Beamlet.Web.*`，Web release 名仍是 `beamlet_web`）；持久化拆为 `beamlet_storage`、`beamlet_actions_storage`、`beamlet_agent_storage`；纯归约核心是 `beamlet_agent_core`；另有共享 `beamlet_i18n`。下文 §3 表格保留六应用基线，不再逐项对应现名。
+- **未验证**：物理跨机执行、断电保障、付费模型调用、真实部署与发布产物的现场运维。`scripts/deployment/` 的检查只在本机复制产物上运行。
+- **后续语言阶段**：同目录无语言后缀的 `agent-operation-persistence.md`、`persistence-delivery.md` 目前仍是中文原文，英文对照在后续阶段补齐；本页只链接已存在的中文目标。
 
 ## 目录
 
@@ -83,7 +92,9 @@ Agent 决定需要进行什么操作.运行时决定操作可以在哪里运行,
 
 ## 3. 应用结构
 
-计划将系统划分为六个应用.现有包名 `beamlet_actions` 暂时保留;其领域契约使用 Operation 和 Execution,不再保留独立的 Action 抽象.本轮文档修订不重命名应用代码.
+下面是首版的设计计划:六个应用.现有包名 `beamlet_actions` 暂时保留;其领域契约使用 Operation 和 Execution,不再保留独立的 Action 抽象.本轮文档修订不重命名应用代码.
+
+> 实现说明:当前仓库实际有十三个应用（见 [根 README](README_zh.md)）,本表仍按基线职责划分阅读;持久化能力归三个 storage 库,纯归约归 `beamlet_agent_core`,界面应用名为 `beamlet_app_web`.
 
 | 应用 | 负责 | 不负责 |
 | --- | --- | --- |
@@ -176,6 +187,8 @@ Harness 不一定是一个长期运行的进程.目录和上下文函数可以�
 可复用库暴露接口和 child specification,而不是自动启动库中所有服务.`beamlet_node` 启动已配置的角色子树.`beamlet_web` 是独立应用,也是 Web 交互部署中的 release 入口之一.
 
 初期可以提供一个在启动时配置角色的产品节点 release,以及一个额外启动 Web 应用的 release.执行节点部署无需包含 Phoenix.不过,这并不承诺每种角色的发布产物都只包含最少的库;实际 Mix release 依赖闭包和应用启动情况必须在实现阶段验证.
+
+当前实现的三个命名 release 是 `beamlet_server`（同一产物支持默认、仅权威、仅执行三种启动配置）、`beamlet_cli` 与 `beamlet_web`,各自只包含自己的依赖闭包.复制产物与命名控制检查见[部署说明](scripts/deployment/README_zh.md);本阶段未执行物理部署、跨机或现场运维验收.
 
 ### 建立集群
 
@@ -378,7 +391,7 @@ Beamlet.Web.Supervisor                         独立 Web 应用
 
 ## 12. 范围与未来演进
 
-第一版明确不包含:
+第一版明确不包含（历史基线列表;其中持久化、检查点、恢复与按引用导出已由后续设计实现,见[持久化设计](docs/architecture/agent-operation-persistence_zh.md)）:
 
 - Agent/Operation 持久化,检查点,重放,恢复和持久队列.
 - 操作审阅/审批工作流.

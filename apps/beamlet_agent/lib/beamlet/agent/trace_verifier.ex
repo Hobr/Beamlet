@@ -18,6 +18,7 @@ defmodule Beamlet.Agent.TraceVerifier do
   @spec input_source?(object(), object(), object()) :: boolean()
   @spec omitted?(state(), binary(), binary()) :: boolean()
   @moduledoc false
+  # 离线校验同时检查归属、来源与内容摘要；重新计算文件哈希本身不足以证明引用一致。
   alias Beamlet.Agent.Storage.Codec
 
   def closure(control, files, artifacts, missing) do

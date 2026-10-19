@@ -1,5 +1,7 @@
 defmodule Beamlet.I18n.Vocabulary do
   @moduledoc """
+  仅翻译 Catalogue 声明的状态与原因。已知 atom 转为文本后查询，未知 atom/binary 保留文本，其他值原样返回；调用方仍须采用安全呈现规则。
+
   Translates the shared status/reason vocabulary for both surfaces.
 
   Callers pass whatever atom/value they already render; only words declared by
@@ -11,6 +13,8 @@ defmodule Beamlet.I18n.Vocabulary do
   alias Beamlet.I18n.Catalogue
 
   @doc """
+  仅翻译声明过的状态词；未知 atom 转为文本，其他非文本值原样返回。
+
   Status/state word for an atom or binary, translated when it is shared
   vocabulary.
   """
@@ -20,6 +24,8 @@ defmodule Beamlet.I18n.Vocabulary do
   def status(value), do: value
 
   @doc """
+  仅翻译声明过的原因；未知 atom 转为文本，其他非文本值原样返回。
+
   Error/outcome word for an atom or binary, translated when it is shared
   vocabulary.
   """

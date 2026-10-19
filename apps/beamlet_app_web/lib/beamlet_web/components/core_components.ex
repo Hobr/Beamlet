@@ -1,5 +1,7 @@
 defmodule Beamlet.Web.CoreComponents do
   @moduledoc """
+  Phoenix 表单、通知、表格与图标组件。声明式 attr/slot 定义调用边界，模板负责转义文本；表单错误先按字段使用状态过滤，再经 errors 域翻译，不承担业务校验。
+
   Provides core UI components.
 
   At first glance, this module may seem daunting, but its goal is to provide
@@ -33,6 +35,8 @@ defmodule Beamlet.Web.CoreComponents do
   alias Phoenix.LiveView.JS
 
   @doc """
+  呈现通知与可关闭按钮；消息来源为 slot 或 flash，类型限定 info/error。
+
   Renders flash notices.
 
   ## Examples
@@ -55,7 +59,9 @@ defmodule Beamlet.Web.CoreComponents do
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
-  @typedoc "Phoenix supplies defaults and change tracking; global attributes and slot data stay extensible."
+  @typedoc "Phoenix 组件扩展 assigns；默认值与变更跟踪由框架提供，全局属性与 slot 数据保持可扩展。
+
+Phoenix supplies defaults and change tracking; global attributes and slot data stay extensible."
   @type assigns :: %{optional(atom()) => term()}
   @typep rendered :: Phoenix.LiveView.Rendered.t()
   # LiveStream has no published t/0 in this dependency version.
@@ -94,6 +100,8 @@ defmodule Beamlet.Web.CoreComponents do
   end
 
   @doc """
+  有 href/navigate/patch 时呈现链接，否则呈现按钮；内容来自必需 slot。
+
   Renders a button with navigation support.
 
   ## Examples
@@ -136,6 +144,8 @@ defmodule Beamlet.Web.CoreComponents do
   end
 
   @doc """
+  呈现带标签和错误的输入；FormField 仅在字段已使用时显示错误，支持 select/checkbox/textarea 等声明类型。
+
   Renders an input with label and error messages.
 
   A `Phoenix.HTML.FormField` may be passed as argument,
@@ -332,6 +342,8 @@ defmodule Beamlet.Web.CoreComponents do
   end
 
   @doc """
+  呈现标题、可选副标题及操作 slot。
+
   Renders a header with title.
   """
   slot :inner_block, required: true
@@ -361,6 +373,8 @@ defmodule Beamlet.Web.CoreComponents do
   end
 
   @doc """
+  按声明列呈现普通列表或 LiveStream，stream 行使用稳定 row_id。
+
   Renders a table with generic styling.
 
   ## Examples
@@ -430,6 +444,8 @@ defmodule Beamlet.Web.CoreComponents do
   end
 
   @doc """
+  呈现带标题的数据条目 slot。
+
   Renders a data list.
 
   ## Examples
@@ -458,6 +474,8 @@ defmodule Beamlet.Web.CoreComponents do
   end
 
   @doc """
+  通过 hero- 类名呈现已打包图标，可用样式类调整大小。
+
   Renders a [Heroicon](https://heroicons.com).
 
   Heroicons come in three styles – outline, solid, and mini.
@@ -490,6 +508,7 @@ defmodule Beamlet.Web.CoreComponents do
   # Phoenix's public struct constructor initializes ops to an ordinary list;
   # JS.t/0 marks that field opaque, which Dialyzer rejects for these default wrappers.
   @typep js :: %JS{ops: list()}
+  @doc "构造指定选择器的显示过渡 JS 命令，不在服务端操纵 DOM。"
   @spec show(js(), binary()) :: js()
   def show(js \\ %JS{}, selector) do
     JS.show(js,
@@ -502,6 +521,7 @@ defmodule Beamlet.Web.CoreComponents do
     )
   end
 
+  @doc "构造指定选择器的隐藏过渡 JS 命令。"
   @spec hide(js(), binary()) :: js()
   def hide(js \\ %JS{}, selector) do
     JS.hide(js,
@@ -514,6 +534,8 @@ defmodule Beamlet.Web.CoreComponents do
   end
 
   @doc """
+  使用 Web errors 域翻译表单错误，opts 含 count 时使用复数规则。
+
   Translates an error message using gettext.
   """
   @spec translate_error({binary(), keyword()}) :: binary()
@@ -536,6 +558,8 @@ defmodule Beamlet.Web.CoreComponents do
   end
 
   @doc """
+  筛选指定字段的错误并逐项翻译。
+
   Translates the errors for a field from a keyword list of errors.
   """
   @spec translate_errors([{atom(), {binary(), keyword()}}], atom()) :: [binary()]

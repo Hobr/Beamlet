@@ -10,52 +10,52 @@ msgid ""
 msgstr ""
 "Language: zh_CN\n"
 
-#: lib/beamlet_web/components/core_components.ex:406
-#: lib/beamlet_web/components/core_components.ex:406
+#: lib/beamlet_web/components/core_components.ex:420
+#: lib/beamlet_web/components/core_components.ex:420
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr "操作"
 
-#: lib/beamlet_web/components/layouts.ex:109
-#: lib/beamlet_web/components/layouts.ex:109
-#: lib/beamlet_web/components/layouts.ex:124
-#: lib/beamlet_web/components/layouts.ex:124
+#: lib/beamlet_web/components/layouts.ex:115
+#: lib/beamlet_web/components/layouts.ex:115
+#: lib/beamlet_web/components/layouts.ex:130
+#: lib/beamlet_web/components/layouts.ex:130
 #, elixir-autogen, elixir-format
 msgid "Attempting to reconnect"
 msgstr "正在尝试重新连接"
 
-#: lib/beamlet_web/components/layouts.ex:116
-#: lib/beamlet_web/components/layouts.ex:116
+#: lib/beamlet_web/components/layouts.ex:122
+#: lib/beamlet_web/components/layouts.ex:122
 #, elixir-autogen, elixir-format
 msgid "Something went wrong!"
 msgstr "出现错误！"
 
-#: lib/beamlet_web/components/layouts.ex:101
-#: lib/beamlet_web/components/layouts.ex:101
+#: lib/beamlet_web/components/layouts.ex:107
+#: lib/beamlet_web/components/layouts.ex:107
 #, elixir-autogen, elixir-format
 msgid "We can't find the internet"
 msgstr "无法连接到互联网"
 
-#: lib/beamlet_web/components/core_components.ex:88
-#: lib/beamlet_web/components/core_components.ex:88
+#: lib/beamlet_web/components/core_components.ex:94
+#: lib/beamlet_web/components/core_components.ex:94
 #, elixir-autogen, elixir-format
 msgid "close"
 msgstr "关闭"
 
-#: lib/beamlet_web/live/management_live.ex:339
-#: lib/beamlet_web/live/management_live.ex:339
+#: lib/beamlet_web/live/management_live.ex:343
+#: lib/beamlet_web/live/management_live.ex:343
 #, elixir-autogen, elixir-format
 msgid "%{node} · Report: %{report} · Source receipt age: %{age}"
 msgstr "%{node} · 报告：%{report} · 来源接收时长：%{age}"
 
-#: lib/beamlet_web/live/management_live.ex:304
-#: lib/beamlet_web/live/management_live.ex:304
+#: lib/beamlet_web/live/management_live.ex:307
+#: lib/beamlet_web/live/management_live.ex:307
 #, elixir-autogen, elixir-format
 msgid "%{target} observed facts"
 msgstr "%{target} 的观测事实"
 
-#: lib/beamlet_web/live/management_live.ex:472
-#: lib/beamlet_web/live/management_live.ex:472
+#: lib/beamlet_web/live/management_live.ex:477
+#: lib/beamlet_web/live/management_live.ex:477
 #, elixir-autogen, elixir-format
 msgid "%{value} ms"
 msgstr "%{value} 毫秒"
@@ -66,20 +66,20 @@ msgstr "%{value} 毫秒"
 msgid "Active / unknown state: draft stays here and is never queued."
 msgstr "活动 / 未知状态：草稿保留在此，永不排队。"
 
-#: lib/beamlet_web/components/observation_components.ex:57
-#: lib/beamlet_web/components/observation_components.ex:57
+#: lib/beamlet_web/components/observation_components.ex:62
+#: lib/beamlet_web/components/observation_components.ex:62
 #, elixir-autogen, elixir-format
 msgid "Activity content omitted / truncated"
 msgstr "活动内容已省略 / 已截断"
 
-#: lib/beamlet_web/live/management_live.ex:215
-#: lib/beamlet_web/live/management_live.ex:215
+#: lib/beamlet_web/live/management_live.ex:217
+#: lib/beamlet_web/live/management_live.ex:217
 #, elixir-autogen, elixir-format
 msgid "Activity identity stale / unknown; no historical reconstruction."
 msgstr "活动标识已过期 / 未知；不做历史重建。"
 
-#: lib/beamlet_web/components/observation_components.ex:36
-#: lib/beamlet_web/components/observation_components.ex:36
+#: lib/beamlet_web/components/observation_components.ex:41
+#: lib/beamlet_web/components/observation_components.ex:41
 #, elixir-autogen, elixir-format
 msgid "Activity identity: %{id}"
 msgstr "活动标识：%{id}"
@@ -102,8 +102,8 @@ msgstr "高级授权域"
 msgid "Agent workspace"
 msgstr "Agent 工作区"
 
-#: lib/beamlet_web/live/management_live.ex:205
-#: lib/beamlet_web/live/management_live.ex:205
+#: lib/beamlet_web/live/management_live.ex:207
+#: lib/beamlet_web/live/management_live.ex:207
 #, elixir-autogen, elixir-format
 msgid "Agent: %{id} · %{authority}"
 msgstr "Agent：%{id} · %{authority}"
@@ -114,58 +114,58 @@ msgstr "Agent：%{id} · %{authority}"
 msgid "Authority"
 msgstr "授权域"
 
-#: lib/beamlet_web/live/workbench_live.ex:174
-#: lib/beamlet_web/live/workbench_live.ex:174
+#: lib/beamlet_web/live/workbench_live.ex:175
+#: lib/beamlet_web/live/workbench_live.ex:175
 #, elixir-autogen, elixir-format
 msgid "Available"
 msgstr "可用"
 
-#: lib/beamlet_web/live/management_live.ex:358
-#: lib/beamlet_web/live/management_live.ex:358
+#: lib/beamlet_web/live/management_live.ex:362
+#: lib/beamlet_web/live/management_live.ex:362
 #, elixir-autogen, elixir-format
 msgid "Available %{pool}: %{quantity}"
 msgstr "可用 %{pool}：%{quantity}"
 
-#: lib/beamlet_web/live/management_live.ex:360
-#: lib/beamlet_web/live/management_live.ex:360
+#: lib/beamlet_web/live/management_live.ex:364
+#: lib/beamlet_web/live/management_live.ex:364
 #, elixir-autogen, elixir-format
 msgid "Available capacity unknown"
 msgstr "可用容量未知"
 
-#: lib/beamlet_web/live/management_live.ex:219
-#: lib/beamlet_web/live/management_live.ex:219
+#: lib/beamlet_web/live/management_live.ex:221
+#: lib/beamlet_web/live/management_live.ex:221
 #: lib/beamlet_web/live/workbench_live.html.heex:188
 #: lib/beamlet_web/live/workbench_live.html.heex:188
 #, elixir-autogen, elixir-format
 msgid "Business state: %{state}"
 msgstr "业务状态：%{state}"
 
-#: lib/beamlet_web/live/management_live.ex:352
-#: lib/beamlet_web/live/management_live.ex:352
+#: lib/beamlet_web/live/management_live.ex:356
+#: lib/beamlet_web/live/management_live.ex:356
 #, elixir-autogen, elixir-format
 msgid "Capabilities: %{capabilities} · Environments: %{environments}"
 msgstr "能力：%{capabilities} · 环境：%{environments}"
 
-#: lib/beamlet_web/live/management_live.ex:449
-#: lib/beamlet_web/live/management_live.ex:449
+#: lib/beamlet_web/live/management_live.ex:454
+#: lib/beamlet_web/live/management_live.ex:454
 #, elixir-autogen, elixir-format
 msgid "Catalogue read unavailable: %{reason}. Last observation retained; current facts unknown"
 msgstr "目录读取不可用：%{reason}。保留上次观测；当前事实未知"
 
-#: lib/beamlet_web/live/workbench_live.ex:300
-#: lib/beamlet_web/live/workbench_live.ex:300
+#: lib/beamlet_web/live/workbench_live.ex:301
+#: lib/beamlet_web/live/workbench_live.ex:301
 #, elixir-autogen, elixir-format
 msgid "Child identity no longer available"
 msgstr "子实例标识已不可用"
 
-#: lib/beamlet_web/components/observation_components.ex:67
-#: lib/beamlet_web/components/observation_components.ex:67
+#: lib/beamlet_web/components/observation_components.ex:72
+#: lib/beamlet_web/components/observation_components.ex:72
 #, elixir-autogen, elixir-format
 msgid "Child identity observed; observe-only. No command is sent to the child."
 msgstr "已观测到子实例标识；仅观测。不会向子实例发送任何命令。"
 
-#: lib/beamlet_web/live/workbench_live.ex:284
-#: lib/beamlet_web/live/workbench_live.ex:284
+#: lib/beamlet_web/live/workbench_live.ex:285
+#: lib/beamlet_web/live/workbench_live.ex:285
 #, elixir-autogen, elixir-format
 msgid "Child inspector is observe-only"
 msgstr "子实例检查器仅用于观测"
@@ -194,44 +194,44 @@ msgstr "关闭实例…"
 msgid "Close this Agent instance? Leaving this page only unsubscribes."
 msgstr "关闭此 Agent 实例？离开本页面只会取消订阅。"
 
-#: lib/beamlet_web/live/workbench_live.ex:408
-#: lib/beamlet_web/live/workbench_live.ex:408
+#: lib/beamlet_web/live/workbench_live.ex:409
+#: lib/beamlet_web/live/workbench_live.ex:409
 #, elixir-autogen, elixir-format
 msgid "Command pending; no duplicate dispatch"
 msgstr "命令等待中；不会重复派发"
 
-#: lib/beamlet_web/live/management_live.ex:402
-#: lib/beamlet_web/live/management_live.ex:402
+#: lib/beamlet_web/live/management_live.ex:407
+#: lib/beamlet_web/live/management_live.ex:407
 #, elixir-autogen, elixir-format
 msgid "Compatible environment references: %{environments}. Empty means no environment required."
 msgstr "兼容的环境引用：%{environments}。留空表示无需环境。"
 
-#: lib/beamlet_web/live/workbench_live.ex:248
-#: lib/beamlet_web/live/workbench_live.ex:248
+#: lib/beamlet_web/live/workbench_live.ex:249
+#: lib/beamlet_web/live/workbench_live.ex:249
 #, elixir-autogen, elixir-format
 msgid "Configuration or exact identity unavailable / stale"
 msgstr "配置或精确标识不可用 / 已过期"
 
-#: lib/beamlet_web/live/management_live.ex:377
-#: lib/beamlet_web/live/management_live.ex:377
+#: lib/beamlet_web/live/management_live.ex:382
+#: lib/beamlet_web/live/management_live.ex:382
 #, elixir-autogen, elixir-format
 msgid "Configuration source category: trusted startup catalogue. Same public descriptors as creation. No provider probes; online availability unknown."
 msgstr "配置来源类别：受信启动目录。与创建时相同的公开描述符。不探测提供方；在线可用性未知。"
 
-#: lib/beamlet_web/live/workbench_live.ex:436
-#: lib/beamlet_web/live/workbench_live.ex:436
+#: lib/beamlet_web/live/workbench_live.ex:437
+#: lib/beamlet_web/live/workbench_live.ex:437
 #, elixir-autogen, elixir-format
 msgid "Configuration unavailable before creation dispatch"
 msgstr "创建派发前配置不可用"
 
-#: lib/beamlet_web/live/management_live.ex:306
-#: lib/beamlet_web/live/management_live.ex:306
+#: lib/beamlet_web/live/management_live.ex:309
+#: lib/beamlet_web/live/management_live.ex:309
 #, elixir-autogen, elixir-format
 msgid "Configured roles: %{roles}"
 msgstr "已配置角色：%{roles}"
 
-#: lib/beamlet_web/live/management_live.ex:305
-#: lib/beamlet_web/live/management_live.ex:305
+#: lib/beamlet_web/live/management_live.ex:308
+#: lib/beamlet_web/live/management_live.ex:308
 #, elixir-autogen, elixir-format
 msgid "Configured: %{configured}"
 msgstr "已配置：%{configured}"
@@ -242,26 +242,26 @@ msgstr "已配置：%{configured}"
 msgid "Confirm close instance"
 msgstr "确认关闭实例"
 
-#: lib/beamlet_web/live/workbench_live.ex:206
-#: lib/beamlet_web/live/workbench_live.ex:206
+#: lib/beamlet_web/live/workbench_live.ex:207
+#: lib/beamlet_web/live/workbench_live.ex:207
 #, elixir-autogen, elixir-format
 msgid "Confirmed instance retained here; navigation unavailable"
 msgstr "已确认的实例保留在此；导航不可用"
 
-#: lib/beamlet_web/live/workbench_live.ex:39
-#: lib/beamlet_web/live/workbench_live.ex:39
+#: lib/beamlet_web/live/workbench_live.ex:40
+#: lib/beamlet_web/live/workbench_live.ex:40
 #, elixir-autogen, elixir-format
 msgid "Connecting"
 msgstr "连接中"
 
-#: lib/beamlet_web/live/management_live.ex:273
-#: lib/beamlet_web/live/management_live.ex:273
+#: lib/beamlet_web/live/management_live.ex:276
+#: lib/beamlet_web/live/management_live.ex:276
 #, elixir-autogen, elixir-format
 msgid "Connection: %{connection}"
 msgstr "连接状态：%{connection}"
 
-#: lib/beamlet_web/live/management_live.ex:223
-#: lib/beamlet_web/live/management_live.ex:223
+#: lib/beamlet_web/live/management_live.ex:225
+#: lib/beamlet_web/live/management_live.ex:225
 #, elixir-autogen, elixir-format
 msgid "Coverage: %{coverage}"
 msgstr "覆盖度：%{coverage}"
@@ -272,14 +272,14 @@ msgstr "覆盖度：%{coverage}"
 msgid "Create and send task"
 msgstr "创建并发送任务"
 
-#: lib/beamlet_web/live/workbench_live.ex:156
-#: lib/beamlet_web/live/workbench_live.ex:156
+#: lib/beamlet_web/live/workbench_live.ex:157
+#: lib/beamlet_web/live/workbench_live.ex:157
 #, elixir-autogen, elixir-format
 msgid "Created instance confirmed"
 msgstr "已确认创建的实例"
 
-#: lib/beamlet_web/live/workbench_live.ex:175
-#: lib/beamlet_web/live/workbench_live.ex:175
+#: lib/beamlet_web/live/workbench_live.ex:176
+#: lib/beamlet_web/live/workbench_live.ex:176
 #, elixir-autogen, elixir-format
 msgid "Created. Initial input: %{input}"
 msgstr "已创建。初始输入：%{input}"
@@ -290,8 +290,8 @@ msgstr "已创建。初始输入：%{input}"
 msgid "Creation disabled: no configured public presets. Enable a trusted Web host catalogue."
 msgstr "创建已停用：没有已配置的公开预设。请启用受信的 Web 主机目录。"
 
-#: lib/beamlet_web/live/workbench_live.ex:152
-#: lib/beamlet_web/live/workbench_live.ex:152
+#: lib/beamlet_web/live/workbench_live.ex:153
+#: lib/beamlet_web/live/workbench_live.ex:153
 #, elixir-autogen, elixir-format
 msgid "Creation dispatched; outcome not yet known"
 msgstr "创建已派发；结果尚不可知"
@@ -308,10 +308,10 @@ msgstr "创建标识：%{id} · %{authority}。调用方超时不等于取消。
 msgid "Current Agent diagnostics"
 msgstr "当前 Agent 诊断"
 
-#: lib/beamlet_web/components/observation_components.ex:20
-#: lib/beamlet_web/components/observation_components.ex:20
-#: lib/beamlet_web/components/observation_components.ex:21
-#: lib/beamlet_web/components/observation_components.ex:21
+#: lib/beamlet_web/components/observation_components.ex:25
+#: lib/beamlet_web/components/observation_components.ex:25
+#: lib/beamlet_web/components/observation_components.ex:26
+#: lib/beamlet_web/components/observation_components.ex:26
 #, elixir-autogen, elixir-format
 msgid "Current concurrent activity"
 msgstr "当前并发活动"
@@ -328,26 +328,26 @@ msgstr "当前对话"
 msgid "Current live context only. Earlier history may be missing; updates can coalesce. No token stream or reasoning trace."
 msgstr "仅当前实时上下文。更早的历史可能缺失；更新可能被合并。没有 token 流或推理轨迹。"
 
-#: lib/beamlet_web/live/management_live.ex:217
-#: lib/beamlet_web/live/management_live.ex:217
+#: lib/beamlet_web/live/management_live.ex:219
+#: lib/beamlet_web/live/management_live.ex:219
 #, elixir-autogen, elixir-format
 msgid "Current turn: %{turn}"
 msgstr "当前轮次：%{turn}"
 
-#: lib/beamlet_web/live/management_live.ex:382
-#: lib/beamlet_web/live/management_live.ex:382
+#: lib/beamlet_web/live/management_live.ex:387
+#: lib/beamlet_web/live/management_live.ex:387
 #, elixir-autogen, elixir-format
 msgid "Default authority reference: %{authority}"
 msgstr "默认授权域引用：%{authority}"
 
-#: lib/beamlet_web/live/management_live.ex:394
-#: lib/beamlet_web/live/management_live.ex:394
+#: lib/beamlet_web/live/management_live.ex:399
+#: lib/beamlet_web/live/management_live.ex:399
 #, elixir-autogen, elixir-format
 msgid "Default model reference: %{model} · Tools: %{tools} · Environment: %{environment}"
 msgstr "默认模型引用：%{model} · 工具：%{tools} · 环境：%{environment}"
 
-#: lib/beamlet_web/live/management_live.ex:175
-#: lib/beamlet_web/live/management_live.ex:175
+#: lib/beamlet_web/live/management_live.ex:177
+#: lib/beamlet_web/live/management_live.ex:177
 #: lib/beamlet_web/live/workbench_live.html.heex:8
 #: lib/beamlet_web/live/workbench_live.html.heex:8
 #, elixir-autogen, elixir-format
@@ -360,20 +360,20 @@ msgstr "诊断"
 msgid "Discover now"
 msgstr "立即发现"
 
-#: lib/beamlet_web/live/workbench_live.ex:140
-#: lib/beamlet_web/live/workbench_live.ex:140
+#: lib/beamlet_web/live/workbench_live.ex:141
+#: lib/beamlet_web/live/workbench_live.ex:141
 #, elixir-autogen, elixir-format
 msgid "Discovery unavailable"
 msgstr "发现不可用"
 
-#: lib/beamlet_web/live/workbench_live.ex:159
-#: lib/beamlet_web/live/workbench_live.ex:159
+#: lib/beamlet_web/live/workbench_live.ex:160
+#: lib/beamlet_web/live/workbench_live.ex:160
 #, elixir-autogen, elixir-format
 msgid "Dispatched; acknowledgement unknown"
 msgstr "已派发；确认未知"
 
-#: lib/beamlet_web/live/management_live.ex:210
-#: lib/beamlet_web/live/management_live.ex:210
+#: lib/beamlet_web/live/management_live.ex:212
+#: lib/beamlet_web/live/management_live.ex:212
 #, elixir-autogen, elixir-format
 msgid "Display absent / omitted"
 msgstr "显示内容缺失 / 已省略"
@@ -402,14 +402,14 @@ msgstr "生效的公开选项：模型 %{model}；工具 %{tools}；环境 %{env
 msgid "Environment (must match selected tools)"
 msgstr "环境（必须与所选工具匹配）"
 
-#: lib/beamlet_web/live/workbench_live.ex:197
-#: lib/beamlet_web/live/workbench_live.ex:197
+#: lib/beamlet_web/live/workbench_live.ex:198
+#: lib/beamlet_web/live/workbench_live.ex:198
 #, elixir-autogen, elixir-format
 msgid "Exact discovered identity: %{reason}. Refresh discovery explicitly."
 msgstr "精确发现的标识：%{reason}。请显式刷新发现。"
 
-#: lib/beamlet_web/live/management_live.ex:105
-#: lib/beamlet_web/live/management_live.ex:105
+#: lib/beamlet_web/live/management_live.ex:106
+#: lib/beamlet_web/live/management_live.ex:106
 #, elixir-autogen, elixir-format
 msgid "Exact handle resolved; awaiting live context"
 msgstr "已解析精确句柄；等待实时上下文"
@@ -420,20 +420,20 @@ msgstr "已解析精确句柄；等待实时上下文"
 msgid "Initial input: %{input} · Navigation: %{navigation}"
 msgstr "初始输入：%{input} · 导航：%{navigation}"
 
-#: lib/beamlet_web/live/workbench_live.ex:423
-#: lib/beamlet_web/live/workbench_live.ex:423
+#: lib/beamlet_web/live/workbench_live.ex:424
+#: lib/beamlet_web/live/workbench_live.ex:424
 #, elixir-autogen, elixir-format
 msgid "Input accepted"
 msgstr "输入已接受"
 
-#: lib/beamlet_web/components/observation_components.ex:48
-#: lib/beamlet_web/components/observation_components.ex:48
+#: lib/beamlet_web/components/observation_components.ex:53
+#: lib/beamlet_web/components/observation_components.ex:53
 #, elixir-autogen, elixir-format
 msgid "Inspect activity diagnostics"
 msgstr "查看活动诊断"
 
-#: lib/beamlet_web/components/observation_components.ex:65
-#: lib/beamlet_web/components/observation_components.ex:65
+#: lib/beamlet_web/components/observation_components.ex:70
+#: lib/beamlet_web/components/observation_components.ex:70
 #, elixir-autogen, elixir-format
 msgid "Inspect child (observe only)"
 msgstr "查看子实例（仅观测）"
@@ -444,8 +444,8 @@ msgstr "查看子实例（仅观测）"
 msgid "Instance public configuration"
 msgstr "实例公开配置"
 
-#: lib/beamlet_web/live/workbench_live.ex:439
-#: lib/beamlet_web/live/workbench_live.ex:439
+#: lib/beamlet_web/live/workbench_live.ex:440
+#: lib/beamlet_web/live/workbench_live.ex:440
 #, elixir-autogen, elixir-format
 msgid "Invalid selection or missing configuration; nothing dispatched"
 msgstr "选择无效或缺少配置；未派发任何内容"
@@ -456,20 +456,20 @@ msgstr "选择无效或缺少配置；未派发任何内容"
 msgid "Keep instance"
 msgstr "保留实例"
 
-#: lib/beamlet_web/components/layouts.ex:146
-#: lib/beamlet_web/components/layouts.ex:146
+#: lib/beamlet_web/components/layouts.ex:154
+#: lib/beamlet_web/components/layouts.ex:154
 #, elixir-autogen, elixir-format
 msgid "Language"
 msgstr "语言"
 
-#: lib/beamlet_web/live/management_live.ex:184
-#: lib/beamlet_web/live/management_live.ex:184
+#: lib/beamlet_web/live/management_live.ex:186
+#: lib/beamlet_web/live/management_live.ex:186
 #, elixir-autogen, elixir-format
 msgid "Last observation (Web receipt): %{at}"
 msgstr "上次观测（Web 接收）：%{at}"
 
-#: lib/beamlet_web/live/management_live.ex:116
-#: lib/beamlet_web/live/management_live.ex:116
+#: lib/beamlet_web/live/management_live.ex:117
+#: lib/beamlet_web/live/management_live.ex:117
 #, elixir-autogen, elixir-format
 msgid "Last observation received"
 msgstr "已收到上次观测"
@@ -486,8 +486,8 @@ msgstr "离开只会移除观测。Web 重启会清除导航；内嵌 Agent 可�
 msgid "Live Agents"
 msgstr "实时 Agent"
 
-#: lib/beamlet_web/live/management_live.ex:171
-#: lib/beamlet_web/live/management_live.ex:171
+#: lib/beamlet_web/live/management_live.ex:173
+#: lib/beamlet_web/live/management_live.ex:173
 #, elixir-autogen, elixir-format
 msgid "Management"
 msgstr "管理"
@@ -516,8 +516,8 @@ msgstr "已偏离预设默认值"
 msgid "Name"
 msgstr "名称"
 
-#: lib/beamlet_web/live/management_live.ex:182
-#: lib/beamlet_web/live/management_live.ex:182
+#: lib/beamlet_web/live/management_live.ex:184
+#: lib/beamlet_web/live/management_live.ex:184
 #, elixir-autogen, elixir-format
 msgid "Navigation is not authorization. Trusted deployment controls apply."
 msgstr "导航不等于授权。仍适用受信部署控制。"
@@ -540,104 +540,104 @@ msgstr "有新活动 — 跳到底部"
 msgid "Next task draft"
 msgstr "下一个任务草稿"
 
-#: lib/beamlet_web/live/management_live.ex:200
-#: lib/beamlet_web/live/management_live.ex:200
+#: lib/beamlet_web/live/management_live.ex:202
+#: lib/beamlet_web/live/management_live.ex:202
 #, elixir-autogen, elixir-format
 msgid "No exact live handle resolved. Open diagnostics from an existing Agent workspace."
 msgstr "未解析到精确的实时句柄。请从已有 Agent 工作区打开诊断。"
 
-#: lib/beamlet_web/live/management_live.ex:336
-#: lib/beamlet_web/live/management_live.ex:336
+#: lib/beamlet_web/live/management_live.ex:340
+#: lib/beamlet_web/live/management_live.ex:340
 #, elixir-autogen, elixir-format
 msgid "No reports; capacity unknown"
 msgstr "无报告；容量未知"
 
-#: lib/beamlet_web/live/management_live.ex:442
-#: lib/beamlet_web/live/management_live.ex:442
+#: lib/beamlet_web/live/management_live.ex:447
+#: lib/beamlet_web/live/management_live.ex:447
 #, elixir-autogen, elixir-format
 msgid "Node scope read unavailable: %{reason}. Last observation retained; current facts unknown"
 msgstr "节点范围读取不可用：%{reason}。保留上次观测；当前事实未知"
 
-#: lib/beamlet_web/live/management_live.ex:173
-#: lib/beamlet_web/live/management_live.ex:173
+#: lib/beamlet_web/live/management_live.ex:175
+#: lib/beamlet_web/live/management_live.ex:175
 #: lib/beamlet_web/live/workbench_live.html.heex:6
 #: lib/beamlet_web/live/workbench_live.html.heex:6
 #, elixir-autogen, elixir-format
 msgid "Nodes"
 msgstr "节点"
 
-#: lib/beamlet_web/live/management_live.ex:389
-#: lib/beamlet_web/live/management_live.ex:389
+#: lib/beamlet_web/live/management_live.ex:394
+#: lib/beamlet_web/live/management_live.ex:394
 #, elixir-autogen, elixir-format
 msgid "None configured; availability unknown"
 msgstr "未配置任何项；可用性未知"
 
-#: lib/beamlet_web/live/workbench_live.ex:43
-#: lib/beamlet_web/live/workbench_live.ex:43
-#: lib/beamlet_web/live/workbench_live.ex:341
-#: lib/beamlet_web/live/workbench_live.ex:341
+#: lib/beamlet_web/live/workbench_live.ex:44
+#: lib/beamlet_web/live/workbench_live.ex:44
+#: lib/beamlet_web/live/workbench_live.ex:342
+#: lib/beamlet_web/live/workbench_live.ex:342
 #, elixir-autogen, elixir-format
 msgid "Not requested"
 msgstr "未请求"
 
-#: lib/beamlet_web/live/workbench_live.ex:42
-#: lib/beamlet_web/live/workbench_live.ex:42
+#: lib/beamlet_web/live/workbench_live.ex:43
+#: lib/beamlet_web/live/workbench_live.ex:43
 #, elixir-autogen, elixir-format
 msgid "Not submitted"
 msgstr "未提交"
 
-#: lib/beamlet_web/live/workbench_live.ex:239
-#: lib/beamlet_web/live/workbench_live.ex:239
+#: lib/beamlet_web/live/workbench_live.ex:240
+#: lib/beamlet_web/live/workbench_live.ex:240
 #, elixir-autogen, elixir-format
 msgid "Observation unavailable; instance outcome unknown"
 msgstr "观测不可用；实例结果未知"
 
-#: lib/beamlet_web/live/management_live.ex:151
-#: lib/beamlet_web/live/management_live.ex:151
+#: lib/beamlet_web/live/management_live.ex:152
+#: lib/beamlet_web/live/management_live.ex:152
 #, elixir-autogen, elixir-format
 msgid "Observation unavailable; last observation retained, current facts unknown"
 msgstr "观测不可用；保留上次观测，当前事实未知"
 
-#: lib/beamlet_web/live/management_live.ex:192
-#: lib/beamlet_web/live/management_live.ex:192
+#: lib/beamlet_web/live/management_live.ex:194
+#: lib/beamlet_web/live/management_live.ex:194
 #, elixir-autogen, elixir-format
 msgid "Observe only. Current context, not a complete timeline. Placement unknown unless observed."
 msgstr "仅观测。当前上下文，不是完整时间线。除非观测到，否则放置位置未知。"
 
-#: lib/beamlet_web/live/management_live.ex:140
-#: lib/beamlet_web/live/management_live.ex:140
+#: lib/beamlet_web/live/management_live.ex:141
+#: lib/beamlet_web/live/management_live.ex:141
 #, elixir-autogen, elixir-format
 msgid "Observing current live context"
 msgstr "正在观测当前实时上下文"
 
-#: lib/beamlet_web/live/workbench_live.ex:228
-#: lib/beamlet_web/live/workbench_live.ex:228
+#: lib/beamlet_web/live/workbench_live.ex:229
+#: lib/beamlet_web/live/workbench_live.ex:229
 #, elixir-autogen, elixir-format
 msgid "Observing live context"
 msgstr "正在观测实时上下文"
 
-#: lib/beamlet_web/live/management_live.ex:225
-#: lib/beamlet_web/live/management_live.ex:225
+#: lib/beamlet_web/live/management_live.ex:227
+#: lib/beamlet_web/live/management_live.ex:227
 #: lib/beamlet_web/live/workbench_live.html.heex:201
 #: lib/beamlet_web/live/workbench_live.html.heex:201
 #, elixir-autogen, elixir-format
 msgid "Omitted entries: %{entries}; activities: %{activities}"
 msgstr "省略条目：%{entries}；活动：%{activities}"
 
-#: lib/beamlet_web/live/management_live.ex:197
-#: lib/beamlet_web/live/management_live.ex:197
+#: lib/beamlet_web/live/management_live.ex:199
+#: lib/beamlet_web/live/management_live.ex:199
 #, elixir-autogen, elixir-format
 msgid "Open observe-only workbench"
 msgstr "打开只读观测工作台"
 
-#: lib/beamlet_web/components/observation_components.ex:38
-#: lib/beamlet_web/components/observation_components.ex:38
+#: lib/beamlet_web/components/observation_components.ex:43
+#: lib/beamlet_web/components/observation_components.ex:43
 #, elixir-autogen, elixir-format
 msgid "Operation identity: %{operation} · Attempt identity: %{attempt}"
 msgstr "操作标识：%{operation} · 尝试标识：%{attempt}"
 
-#: lib/beamlet_web/live/workbench_live.ex:443
-#: lib/beamlet_web/live/workbench_live.ex:443
+#: lib/beamlet_web/live/workbench_live.ex:444
+#: lib/beamlet_web/live/workbench_live.ex:444
 #, elixir-autogen, elixir-format
 msgid "Outcome unknown / unavailable. No automatic retry. Discover the displayed identity explicitly."
 msgstr "结果未知 / 不可用。不会自动重试。请显式发现所显示的标识。"
@@ -648,14 +648,14 @@ msgstr "结果未知 / 不可用。不会自动重试。请显式发现所显示
 msgid "Partial / unknown discovery. Empty results do not prove absence."
 msgstr "发现不完整 / 未知。空结果不能证明不存在。"
 
-#: lib/beamlet_web/components/observation_components.ex:23
-#: lib/beamlet_web/components/observation_components.ex:23
+#: lib/beamlet_web/components/observation_components.ex:28
+#: lib/beamlet_web/components/observation_components.ex:28
 #, elixir-autogen, elixir-format
 msgid "Placement unknown unless observed. Cards are current facts; completed activities may disappear."
 msgstr "除非观测到，否则放置位置未知。卡片是当前事实；已完成的活动可能消失。"
 
-#: lib/beamlet_web/components/observation_components.ex:49
-#: lib/beamlet_web/components/observation_components.ex:49
+#: lib/beamlet_web/components/observation_components.ex:54
+#: lib/beamlet_web/components/observation_components.ex:54
 #, elixir-autogen, elixir-format
 msgid "Placement: %{placement}"
 msgstr "放置位置：%{placement}"
@@ -666,88 +666,88 @@ msgstr "放置位置：%{placement}"
 msgid "Preset"
 msgstr "预设"
 
-#: lib/beamlet_web/live/management_live.ex:174
-#: lib/beamlet_web/live/management_live.ex:174
+#: lib/beamlet_web/live/management_live.ex:176
+#: lib/beamlet_web/live/management_live.ex:176
 #: lib/beamlet_web/live/workbench_live.html.heex:7
 #: lib/beamlet_web/live/workbench_live.html.heex:7
 #, elixir-autogen, elixir-format
 msgid "Presets"
 msgstr "预设列表"
 
-#: lib/beamlet_web/live/management_live.ex:261
-#: lib/beamlet_web/live/management_live.ex:261
+#: lib/beamlet_web/live/management_live.ex:264
+#: lib/beamlet_web/live/management_live.ex:264
 #, elixir-autogen, elixir-format
 msgid "Public read bounds: 32 targets per call, 8 workers, 5 seconds, 1 MiB. Page deadline: 12 seconds. Available is advisory; totals and utilization unknown."
 msgstr "公开读取边界：每次调用 32 个目标、8 个 worker、5 秒、1 MiB。页面期限：12 秒。可用数仅供参考；总数与利用率未知。"
 
-#: lib/beamlet_web/live/management_live.ex:292
-#: lib/beamlet_web/live/management_live.ex:292
+#: lib/beamlet_web/live/management_live.ex:295
+#: lib/beamlet_web/live/management_live.ex:295
 #, elixir-autogen, elixir-format
 msgid "Read completeness: %{completeness}"
 msgstr "读取完整度：%{completeness}"
 
-#: lib/beamlet_web/live/management_live.ex:311
-#: lib/beamlet_web/live/management_live.ex:311
+#: lib/beamlet_web/live/management_live.ex:314
+#: lib/beamlet_web/live/management_live.ex:314
 #, elixir-autogen, elixir-format
 msgid "Read unavailable; facts unknown"
 msgstr "读取不可用；事实未知"
 
-#: lib/beamlet_web/live/management_live.ex:180
-#: lib/beamlet_web/live/management_live.ex:180
+#: lib/beamlet_web/live/management_live.ex:182
+#: lib/beamlet_web/live/management_live.ex:182
 #, elixir-autogen, elixir-format
 msgid "Read-only %{section}"
 msgstr "只读 %{section}"
 
-#: lib/beamlet_web/live/management_live.ex:81
-#: lib/beamlet_web/live/management_live.ex:81
+#: lib/beamlet_web/live/management_live.ex:82
+#: lib/beamlet_web/live/management_live.ex:82
 #, elixir-autogen, elixir-format
 msgid "Reading; previous observation retained"
 msgstr "读取中；保留上次观测"
 
-#: lib/beamlet_web/live/workbench_live.ex:97
-#: lib/beamlet_web/live/workbench_live.ex:97
+#: lib/beamlet_web/live/workbench_live.ex:98
+#: lib/beamlet_web/live/workbench_live.ex:98
 #, elixir-autogen, elixir-format
 msgid "Ready"
 msgstr "就绪"
 
-#: lib/beamlet_web/live/management_live.ex:346
-#: lib/beamlet_web/live/management_live.ex:346
+#: lib/beamlet_web/live/management_live.ex:350
+#: lib/beamlet_web/live/management_live.ex:350
 #, elixir-autogen, elixir-format
 msgid "Ready: %{ready} · Execution ready: %{execution_ready}"
 msgstr "就绪：%{ready} · 执行就绪：%{execution_ready}"
 
-#: lib/beamlet_web/live/management_live.ex:186
-#: lib/beamlet_web/live/management_live.ex:186
+#: lib/beamlet_web/live/management_live.ex:188
+#: lib/beamlet_web/live/management_live.ex:188
 #, elixir-autogen, elixir-format
 msgid "Refresh observation"
 msgstr "刷新观测"
 
-#: lib/beamlet_web/live/management_live.ex:266
-#: lib/beamlet_web/live/management_live.ex:266
+#: lib/beamlet_web/live/management_live.ex:269
+#: lib/beamlet_web/live/management_live.ex:269
 #, elixir-autogen, elixir-format
 msgid "Registered readiness is not provider health. Missing or stale reports do not prove death."
 msgstr "已注册的就绪状态不等于提供方健康。报告缺失或过期不能证明已死亡。"
 
-#: lib/beamlet_web/live/management_live.ex:307
-#: lib/beamlet_web/live/management_live.ex:307
+#: lib/beamlet_web/live/management_live.ex:310
+#: lib/beamlet_web/live/management_live.ex:310
 #, elixir-autogen, elixir-format
 msgid "Registered services: %{services}"
 msgstr "已注册服务：%{services}"
 
-#: lib/beamlet_web/live/workbench_live.ex:426
-#: lib/beamlet_web/live/workbench_live.ex:426
+#: lib/beamlet_web/live/workbench_live.ex:427
+#: lib/beamlet_web/live/workbench_live.ex:427
 #, elixir-autogen, elixir-format
 msgid "Rejected: %{reason}"
 msgstr "已拒绝：%{reason}"
 
-#: lib/beamlet_web/live/management_live.ex:327
-#: lib/beamlet_web/live/management_live.ex:327
+#: lib/beamlet_web/live/management_live.ex:331
+#: lib/beamlet_web/live/management_live.ex:331
 #, elixir-autogen, elixir-format
 msgid "Report source: %{source} · coverage: %{coverage}"
 msgstr "报告来源：%{source} · 覆盖度：%{coverage}"
 
-#: lib/beamlet_web/live/workbench_live.ex:430
-#: lib/beamlet_web/live/workbench_live.ex:430
+#: lib/beamlet_web/live/workbench_live.ex:431
+#: lib/beamlet_web/live/workbench_live.ex:431
 #, elixir-autogen, elixir-format
 msgid "Request acknowledged; observe actual state. Stop does not undo external effects."
 msgstr "请求已确认；请观测实际状态。stop 不会撤销外部影响。"
@@ -758,28 +758,28 @@ msgstr "请求已确认；请观测实际状态。stop 不会撤销外部影响�
 msgid "Reset to preset defaults"
 msgstr "重置为预设默认值"
 
-#: lib/beamlet_web/live/management_live.ex:221
-#: lib/beamlet_web/live/management_live.ex:221
-#: lib/beamlet_web/live/management_live.ex:222
-#: lib/beamlet_web/live/management_live.ex:222
+#: lib/beamlet_web/live/management_live.ex:223
+#: lib/beamlet_web/live/management_live.ex:223
+#: lib/beamlet_web/live/management_live.ex:224
+#: lib/beamlet_web/live/management_live.ex:224
 #, elixir-autogen, elixir-format
 msgid "Retained live context"
 msgstr "保留的实时上下文"
 
-#: lib/beamlet_web/live/management_live.ex:364
-#: lib/beamlet_web/live/management_live.ex:364
+#: lib/beamlet_web/live/management_live.ex:368
+#: lib/beamlet_web/live/management_live.ex:368
 #, elixir-autogen, elixir-format
 msgid "Runtime reports unavailable / not configured; capacity unknown"
 msgstr "运行时报告不可用 / 未配置；容量未知"
 
-#: lib/beamlet_web/live/management_live.ex:284
-#: lib/beamlet_web/live/management_live.ex:284
+#: lib/beamlet_web/live/management_live.ex:287
+#: lib/beamlet_web/live/management_live.ex:287
 #, elixir-autogen, elixir-format
 msgid "Scope partial: %{target} not read (32-target limit including explicit local). Facts unknown."
 msgstr "范围不完整：未读取 %{target}（32 个目标上限，含显式本地）。事实未知。"
 
-#: lib/beamlet_web/live/management_live.ex:251
-#: lib/beamlet_web/live/management_live.ex:251
+#: lib/beamlet_web/live/management_live.ex:254
+#: lib/beamlet_web/live/management_live.ex:254
 #, elixir-autogen, elixir-format
 msgid "Scope: explicit local VM and configured trusted targets. Distribution: %{distribution}."
 msgstr "范围：显式本地 VM 与已配置的受信目标。分布式：%{distribution}。"
@@ -802,14 +802,14 @@ msgstr "发送下一轮"
 msgid "Source field truncated"
 msgstr "来源字段已截断"
 
-#: lib/beamlet_web/live/management_live.ex:212
-#: lib/beamlet_web/live/management_live.ex:212
+#: lib/beamlet_web/live/management_live.ex:214
+#: lib/beamlet_web/live/management_live.ex:214
 #, elixir-autogen, elixir-format
 msgid "Source omissions/truncation may apply; context replaces prior display."
 msgstr "来源可能存在省略 / 截断；上下文会替换先前显示。"
 
-#: lib/beamlet_web/live/workbench_live.ex:321
-#: lib/beamlet_web/live/workbench_live.ex:321
+#: lib/beamlet_web/live/workbench_live.ex:322
+#: lib/beamlet_web/live/workbench_live.ex:322
 #, elixir-autogen, elixir-format
 msgid "Stale discovery; refresh explicitly"
 msgstr "发现结果已过期；请显式刷新"
@@ -844,52 +844,52 @@ msgstr "工具调用：%{name}"
 msgid "Tools (configured capabilities only)"
 msgstr "工具（仅已配置能力）"
 
-#: lib/beamlet_web/components/observation_components.ex:84
-#: lib/beamlet_web/components/observation_components.ex:84
+#: lib/beamlet_web/components/observation_components.ex:91
+#: lib/beamlet_web/components/observation_components.ex:91
 #, elixir-autogen, elixir-format
 msgid "Turn %{id}"
 msgstr "轮次 %{id}"
 
-#: lib/beamlet_web/components/observation_components.ex:80
-#: lib/beamlet_web/components/observation_components.ex:80
+#: lib/beamlet_web/components/observation_components.ex:87
+#: lib/beamlet_web/components/observation_components.ex:87
 #, elixir-autogen, elixir-format
 msgid "Turn unknown"
 msgstr "轮次未知"
 
-#: lib/beamlet_web/live/workbench_live.ex:205
-#: lib/beamlet_web/live/workbench_live.ex:205
+#: lib/beamlet_web/live/workbench_live.ex:206
+#: lib/beamlet_web/live/workbench_live.ex:206
 #, elixir-autogen, elixir-format
 msgid "Unavailable"
 msgstr "不可用"
 
-#: lib/beamlet_web/live/workbench_live.ex:433
-#: lib/beamlet_web/live/workbench_live.ex:433
+#: lib/beamlet_web/live/workbench_live.ex:434
+#: lib/beamlet_web/live/workbench_live.ex:434
 #, elixir-autogen, elixir-format
 msgid "Unavailable / rejected: %{reason}"
 msgstr "不可用 / 已拒绝：%{reason}"
 
-#: lib/beamlet_web/live/management_live.ex:456
-#: lib/beamlet_web/live/management_live.ex:456
+#: lib/beamlet_web/live/management_live.ex:461
+#: lib/beamlet_web/live/management_live.ex:461
 #, elixir-autogen, elixir-format
 msgid "Unavailable / stale identity: %{reason}. Last observation retained; current facts unknown"
 msgstr "不可用 / 标识已过期：%{reason}。保留上次观测；当前事实未知"
 
-#: lib/beamlet_web/live/management_live.ex:184
-#: lib/beamlet_web/live/management_live.ex:184
-#: lib/beamlet_web/live/management_live.ex:433
-#: lib/beamlet_web/live/management_live.ex:433
-#: lib/beamlet_web/live/management_live.ex:464
-#: lib/beamlet_web/live/management_live.ex:464
-#: lib/beamlet_web/live/management_live.ex:473
-#: lib/beamlet_web/live/management_live.ex:473
+#: lib/beamlet_web/live/management_live.ex:186
+#: lib/beamlet_web/live/management_live.ex:186
+#: lib/beamlet_web/live/management_live.ex:438
+#: lib/beamlet_web/live/management_live.ex:438
+#: lib/beamlet_web/live/management_live.ex:469
+#: lib/beamlet_web/live/management_live.ex:469
+#: lib/beamlet_web/live/management_live.ex:478
+#: lib/beamlet_web/live/management_live.ex:478
 #: lib/beamlet_web/live/workbench_live.html.heex:211
 #: lib/beamlet_web/live/workbench_live.html.heex:211
 #, elixir-autogen, elixir-format
 msgid "Unknown"
 msgstr "未知"
 
-#: lib/beamlet_web/live/workbench_live.ex:340
-#: lib/beamlet_web/live/workbench_live.ex:340
+#: lib/beamlet_web/live/workbench_live.ex:341
+#: lib/beamlet_web/live/workbench_live.ex:341
 #, elixir-autogen, elixir-format
 msgid "Unknown (attached instance)"
 msgstr "未知（已附加实例）"
@@ -900,22 +900,22 @@ msgstr "未知（已附加实例）"
 msgid "Unknown (external Agent)"
 msgstr "未知（外部 Agent）"
 
-#: lib/beamlet_web/live/management_live.ex:22
-#: lib/beamlet_web/live/management_live.ex:22
-#: lib/beamlet_web/live/management_live.ex:51
-#: lib/beamlet_web/live/management_live.ex:51
+#: lib/beamlet_web/live/management_live.ex:23
+#: lib/beamlet_web/live/management_live.ex:23
+#: lib/beamlet_web/live/management_live.ex:52
+#: lib/beamlet_web/live/management_live.ex:52
 #, elixir-autogen, elixir-format
 msgid "Unknown / not observed"
 msgstr "未知 / 未观测"
 
-#: lib/beamlet_web/components/observation_components.ex:75
-#: lib/beamlet_web/components/observation_components.ex:75
+#: lib/beamlet_web/components/observation_components.ex:81
+#: lib/beamlet_web/components/observation_components.ex:81
 #, elixir-autogen, elixir-format
 msgid "Unknown / omitted"
 msgstr "未知 / 已省略"
 
-#: lib/beamlet_web/components/observation_components.ex:78
-#: lib/beamlet_web/components/observation_components.ex:78
+#: lib/beamlet_web/components/observation_components.ex:84
+#: lib/beamlet_web/components/observation_components.ex:84
 #, elixir-autogen, elixir-format
 msgid "Unsupported content omitted"
 msgstr "不支持的内容已省略"
@@ -926,46 +926,46 @@ msgstr "不支持的内容已省略"
 msgid "What would you like to do?"
 msgstr "你想做什么？"
 
-#: lib/beamlet_web/live/management_live.ex:172
-#: lib/beamlet_web/live/management_live.ex:172
+#: lib/beamlet_web/live/management_live.ex:174
+#: lib/beamlet_web/live/management_live.ex:174
 #: lib/beamlet_web/live/workbench_live.html.heex:5
 #: lib/beamlet_web/live/workbench_live.html.heex:5
 #, elixir-autogen, elixir-format
 msgid "Workbench"
 msgstr "工作台"
 
-#: lib/beamlet_web/live/management_live.ex:428
-#: lib/beamlet_web/live/management_live.ex:428
+#: lib/beamlet_web/live/management_live.ex:433
+#: lib/beamlet_web/live/management_live.ex:433
 #, elixir-autogen, elixir-format
 msgid "authorities"
 msgstr "授权域"
 
-#: lib/beamlet_web/live/management_live.ex:277
-#: lib/beamlet_web/live/management_live.ex:277
+#: lib/beamlet_web/live/management_live.ex:280
+#: lib/beamlet_web/live/management_live.ex:280
 #, elixir-autogen, elixir-format
 msgid "connected at read entry"
 msgstr "读取时已连接"
 
-#: lib/beamlet_web/live/management_live.ex:424
-#: lib/beamlet_web/live/management_live.ex:424
+#: lib/beamlet_web/live/management_live.ex:429
+#: lib/beamlet_web/live/management_live.ex:429
 #, elixir-autogen, elixir-format
 msgid "diagnostics"
 msgstr "诊断"
 
-#: lib/beamlet_web/live/management_live.ex:256
-#: lib/beamlet_web/live/management_live.ex:256
+#: lib/beamlet_web/live/management_live.ex:259
+#: lib/beamlet_web/live/management_live.ex:259
 #, elixir-autogen, elixir-format
 msgid "disabled; local path supported"
 msgstr "已停用；支持本地路径"
 
-#: lib/beamlet_web/live/management_live.ex:427
-#: lib/beamlet_web/live/management_live.ex:427
+#: lib/beamlet_web/live/management_live.ex:432
+#: lib/beamlet_web/live/management_live.ex:432
 #, elixir-autogen, elixir-format
 msgid "environments"
 msgstr "环境"
 
-#: lib/beamlet_web/live/management_live.ex:276
-#: lib/beamlet_web/live/management_live.ex:276
+#: lib/beamlet_web/live/management_live.ex:279
+#: lib/beamlet_web/live/management_live.ex:279
 #, elixir-autogen, elixir-format
 msgid "local (no distribution required)"
 msgstr "本地（无需分布式）"
@@ -976,52 +976,52 @@ msgstr "本地（无需分布式）"
 msgid "missing"
 msgstr "缺失"
 
-#: lib/beamlet_web/live/management_live.ex:425
-#: lib/beamlet_web/live/management_live.ex:425
+#: lib/beamlet_web/live/management_live.ex:430
+#: lib/beamlet_web/live/management_live.ex:430
 #, elixir-autogen, elixir-format
 msgid "models"
 msgstr "模型"
 
-#: lib/beamlet_web/live/management_live.ex:422
-#: lib/beamlet_web/live/management_live.ex:422
+#: lib/beamlet_web/live/management_live.ex:427
+#: lib/beamlet_web/live/management_live.ex:427
 #, elixir-autogen, elixir-format
 msgid "nodes"
 msgstr "节点"
 
-#: lib/beamlet_web/live/management_live.ex:431
-#: lib/beamlet_web/live/management_live.ex:431
+#: lib/beamlet_web/live/management_live.ex:436
+#: lib/beamlet_web/live/management_live.ex:436
 #, elixir-autogen, elixir-format
 msgid "none"
 msgstr "无"
 
-#: lib/beamlet_web/live/management_live.ex:383
-#: lib/beamlet_web/live/management_live.ex:383
+#: lib/beamlet_web/live/management_live.ex:388
+#: lib/beamlet_web/live/management_live.ex:388
 #, elixir-autogen, elixir-format
 msgid "none configured"
 msgstr "未配置"
 
-#: lib/beamlet_web/live/management_live.ex:436
-#: lib/beamlet_web/live/management_live.ex:436
+#: lib/beamlet_web/live/management_live.ex:441
+#: lib/beamlet_web/live/management_live.ex:441
 #: lib/beamlet_web/live/workbench_live.html.heex:170
 #: lib/beamlet_web/live/workbench_live.html.heex:170
 #, elixir-autogen, elixir-format
 msgid "not required"
 msgstr "不需要"
 
-#: lib/beamlet_web/live/management_live.ex:296
-#: lib/beamlet_web/live/management_live.ex:296
+#: lib/beamlet_web/live/management_live.ex:299
+#: lib/beamlet_web/live/management_live.ex:299
 #, elixir-autogen, elixir-format
 msgid "partial / unknown"
 msgstr "部分 / 未知"
 
-#: lib/beamlet_web/live/management_live.ex:423
-#: lib/beamlet_web/live/management_live.ex:423
+#: lib/beamlet_web/live/management_live.ex:428
+#: lib/beamlet_web/live/management_live.ex:428
 #, elixir-autogen, elixir-format
 msgid "presets"
 msgstr "预设"
 
-#: lib/beamlet_web/live/management_live.ex:426
-#: lib/beamlet_web/live/management_live.ex:426
+#: lib/beamlet_web/live/management_live.ex:431
+#: lib/beamlet_web/live/management_live.ex:431
 #, elixir-autogen, elixir-format
 msgid "tools"
 msgstr "工具"

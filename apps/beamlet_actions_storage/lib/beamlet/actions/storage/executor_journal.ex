@@ -1,5 +1,7 @@
 defmodule Beamlet.Actions.Storage.ExecutorJournal do
   @moduledoc """
+  执行端本地 SQLite 证据日志。authority_id/attempt_id 只登记一次；重复登记返回已有状态，调用方据此禁止再次启动 worker。首个停止原因保留，终态、附件与回执原子提交；重启遗留意图只能标为 unknown_after_restart，不能推断未执行，也不能据此重试。
+
   Executor-local SQLite evidence journal. `claim_start/2` is insert-once on
   `(authority_id, attempt_id)` and only reports the stored state, so a duplicate
   admission never starts a second worker. The first recorded stop cause survives
@@ -87,24 +89,28 @@ defmodule Beamlet.Actions.Storage.ExecutorJournal do
   @stop_reasons ~w(deadline cancelled)
   @transaction_budget 33_554_432
 
+  @doc "按 authority_id/attempt_id 登记一次 start_intent；同身份返回已有状态，改变 boot/执行端/描述则冲突。此返回本身不启动 worker。"
   def claim_start(repo, attrs) do
     with {:ok, input} <- validate_start(attrs) do
       Records.transact(repo, fn -> write_start(repo, input) end)
     end
   end
 
+  @doc "按版本记录 deadline 或 cancelled 的首个原因；竞争触发和终态后的调用保留已有事实，不是终止确认。"
   def record_stop(repo, attrs) do
     with {:ok, input} <- validate_stop(attrs) do
       Records.transact(repo, fn -> write_stop(repo, input) end)
     end
   end
 
+  @doc "只从匹配版本的 start_intent 原子提交终态、附件、终止观察和回执；规范编码总预算 32 MiB。相同终态可重放，重启未知状态不能转为终态。"
   def record_terminal(repo, attrs) do
     with {:ok, input} <- validate_terminal(attrs) do
       Records.transact(repo, fn -> write_terminal(repo, input) end)
     end
   end
 
+  @doc "按版本确认已存 terminal 回执，重复确认返回已有事实；不删除记录或重启任务。"
   def acknowledge(repo, attrs) do
     with {:ok, input} <- validate_acknowledge(attrs) do
       Records.transact(repo, fn -> write_acknowledge(repo, input) end)
@@ -112,6 +118,8 @@ defmodule Beamlet.Actions.Storage.ExecutorJournal do
   end
 
   @doc """
+  将指定 authority/执行端遗留 start_intent 标为 unknown_after_restart；可用 keep_executor_boot_id 排除仍活跃的 boot。不推断未执行。
+
   Marks start intents left by another boot as `unknown_after_restart`. This is the
   only way to reach that state; the journal never infers "not executed".
   """
@@ -121,6 +129,7 @@ defmodule Beamlet.Actions.Storage.ExecutorJournal do
     end
   end
 
+  @doc "按 authority/attempt UUID 读取完整日志数据；缺失返回 conflict，读失败返回安全错误。"
   def fetch(repo, authority_id, attempt_id) do
     with {:ok, authority_id} <- Records.uuid(authority_id),
          {:ok, attempt_id} <- Records.uuid(attempt_id) do
@@ -273,6 +282,7 @@ defmodule Beamlet.Actions.Storage.ExecutorJournal do
     )
   end
 
+  # 首个停止原因是持久事实；后来的触发不能覆盖，也不能作为终止证明。
   # Competing triggers do not overwrite the first recorded cause, and a request
   # after terminal/unknown is a no-op that reports the stored fact.
   defp stop_conflict(repo, input) do
