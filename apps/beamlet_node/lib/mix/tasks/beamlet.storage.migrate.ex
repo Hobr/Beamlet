@@ -26,6 +26,7 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
   alias Beamlet.Node.Storage.Operator
 
   @impl true
+  @spec run([binary()]) :: :ok
   def run(args) do
     {opts, rest, invalid} =
       OptionParser.parse(args, strict: [storage: :string, roles: :string])
@@ -46,6 +47,7 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
     end
   end
 
+  @spec read(binary()) :: {:ok, list()} | :error
   defp read(path) do
     {storage, _binding} = Code.eval_file(path)
     if is_list(storage), do: {:ok, storage}, else: :error
@@ -55,6 +57,7 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
     _, _ -> :error
   end
 
+  @spec roles(binary() | nil) :: {:ok, [:authority | :executor]} | :error
   defp roles(nil), do: {:ok, [:authority, :executor]}
 
   defp roles(value) do
@@ -64,16 +67,19 @@ defmodule Mix.Tasks.Beamlet.Storage.Migrate do
     end
   end
 
+  @spec names([:authority | :executor | :unknown]) :: {:ok, [:authority | :executor]} | :error
   defp names(roles) when is_list(roles) do
     if Enum.all?(roles, &(&1 in [:authority, :executor])) and Enum.uniq(roles) == roles,
       do: {:ok, roles},
       else: :error
   end
 
+  @spec safe_role(binary()) :: :authority | :executor | :unknown
   defp safe_role("authority"), do: :authority
   defp safe_role("executor"), do: :executor
   defp safe_role(_), do: :unknown
 
+  @spec ensure_started() :: :ok
   defp ensure_started do
     {:ok, _} = Application.ensure_all_started(:beamlet_node)
     :ok

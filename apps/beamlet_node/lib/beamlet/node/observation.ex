@@ -3,9 +3,34 @@ defmodule Beamlet.Node.Observation do
   alias Beamlet.Runtime.Directory
   alias Beamlet.Runtime.Observation, as: Read
 
+  @typedoc "Advisory source-local facts; readiness means registration only."
+  @type local_observation :: %{
+          version: 1,
+          node: node(),
+          configured: boolean(),
+          roles: [Beamlet.Node.role()] | :unknown,
+          services: services() | :not_configured,
+          runtime: {:ok, Beamlet.Runtime.observation()} | {:error, atom()}
+        }
+  @type services :: %{
+          routes: readiness(),
+          runtime: readiness(),
+          authority: readiness(),
+          executor: readiness()
+        }
+  @type readiness :: :ready | :unavailable | :not_configured
+  @type aggregate :: %{
+          nodes: %{optional(node()) => local_observation()},
+          failures: %{optional(node()) => atom()},
+          complete: boolean()
+        }
+  @typep active :: %{optional(pid()) => node()}
+  @typep response :: {:ok, local_observation()} | {:error, atom()}
+  @spec local() :: response()
   def local, do: Read.isolate(fn -> local_read(5000) end, 5000)
 
   # Fixed erpc entry: every delayed execution starts a finite source-local budget.
+  @spec local_read(term()) :: response()
   def local_read(budget) when is_integer(budget) and budget in 1..5000 do
     deadline = Read.now() + budget
     owner = Process.whereis(Beamlet.Node)
@@ -15,6 +40,7 @@ defmodule Beamlet.Node.Observation do
 
   def local_read(_), do: {:error, :invalid_query}
 
+  @spec source_read(pid() | nil, integer()) :: response()
   defp source_read(nil, _) do
     {:ok,
      %{
@@ -34,6 +60,11 @@ defmodule Beamlet.Node.Observation do
     end
   end
 
+  @spec source_result(
+          pid(),
+          [Beamlet.Node.role()],
+          {:ok, Beamlet.Runtime.observation()} | {:error, atom()}
+        ) :: response()
   defp source_result(owner, roles, runtime) do
     if owner == Process.whereis(Beamlet.Node) do
       {:ok,
@@ -50,6 +81,7 @@ defmodule Beamlet.Node.Observation do
     end
   end
 
+  @spec services([Beamlet.Node.role()]) :: services()
   defp services(roles) do
     %{
       routes: ready([Beamlet.Node.Routes]),
@@ -72,14 +104,17 @@ defmodule Beamlet.Node.Observation do
     }
   end
 
+  @spec role_ready([Beamlet.Node.role()], Beamlet.Node.role(), [atom()]) :: readiness()
   defp role_ready(roles, role, names) do
     if role in roles, do: ready(names), else: :not_configured
   end
 
+  @spec ready([atom()]) :: :ready | :unavailable
   defp ready(names) do
     if Enum.all?(names, &is_pid(Process.whereis(&1))), do: :ready, else: :unavailable
   end
 
+  @spec observe(term()) :: {:ok, aggregate()} | {:error, :invalid_query}
   def observe(nodes) do
     if valid?(nodes, 32, []) do
       deadline = Read.now() + 5000
@@ -91,11 +126,13 @@ defmodule Beamlet.Node.Observation do
     end
   end
 
+  @spec aggregate_result(aggregate() | {:error, term()}, [node()]) :: {:ok, aggregate()}
   defp aggregate_result({:error, _}, nodes),
     do: {:ok, %{nodes: %{}, failures: Map.new(nodes, &{&1, :timeout}), complete: false}}
 
   defp aggregate_result(result, _), do: {:ok, result}
 
+  @spec valid?(term(), integer(), [node()]) :: boolean()
   defp valid?([], _, _), do: true
 
   defp valid?([n | rest], left, seen) when is_atom(n) and left > 0 do
@@ -104,6 +141,7 @@ defmodule Beamlet.Node.Observation do
 
   defp valid?(_, _, _), do: false
 
+  @spec collect([node()], [node()], integer()) :: aggregate()
   defp collect(nodes, connected, deadline) do
     {eligible, missing} = Enum.split_with(nodes, &(&1 in connected))
 
@@ -116,6 +154,7 @@ defmodule Beamlet.Node.Observation do
     schedule(eligible, %{}, result, deadline)
   end
 
+  @spec schedule([node()], active(), aggregate(), integer()) :: aggregate()
   defp schedule([target | rest] = queued, active, result, deadline) when map_size(active) < 8 do
     if Read.remaining(deadline) == 0 do
       expire(queued, active, result)
@@ -137,6 +176,7 @@ defmodule Beamlet.Node.Observation do
     end
   end
 
+  @spec request(node(), integer()) :: response()
   defp request(target, deadline) do
     budget = Read.remaining(deadline)
 
@@ -151,6 +191,7 @@ defmodule Beamlet.Node.Observation do
   end
 
   @doc false
+  @spec retain(aggregate(), node(), term()) :: aggregate()
   def retain(result, target, {:ok, observation}) do
     candidate = %{result | nodes: Map.put(result.nodes, target, observation)}
 
@@ -167,6 +208,7 @@ defmodule Beamlet.Node.Observation do
 
   def retain(result, target, _), do: retain(result, target, {:error, :unavailable})
 
+  @spec retain_completeness(aggregate(), node(), local_observation()) :: aggregate()
   defp retain_completeness(result, _, %{configured: false}), do: result
   defp retain_completeness(result, _, %{runtime: {:ok, %{complete: true}}}), do: result
 
@@ -175,6 +217,7 @@ defmodule Beamlet.Node.Observation do
 
   defp retain_completeness(result, target, _), do: retain(result, target, {:error, :limit})
 
+  @spec expire([node()], active(), aggregate()) :: aggregate()
   defp expire(queued, active, result) do
     Enum.each(active, fn {pid, _} ->
       ref = Process.monitor(pid)

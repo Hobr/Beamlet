@@ -12,6 +12,14 @@ defmodule Beamlet.Node.Agents do
   alias Beamlet.Agent.Discovery, as: D
   alias Beamlet.Node.Cluster
 
+  @typedoc "Bounded eventual identities; completeness covers requested targets only."
+  @type result :: %{
+          agents: [D.descriptor()],
+          failures: %{optional(node()) => atom()},
+          complete: boolean()
+        }
+  @typep active :: %{optional(pid()) => node()}
+  @spec discover(term()) :: {:ok, result()} | {:error, :invalid_query}
   def discover(nodes) do
     with true <- valid_nodes?(nodes),
          {:ok, connected} <- Cluster.connected(Enum.map(nodes, &Atom.to_string/1)) do
@@ -21,6 +29,7 @@ defmodule Beamlet.Node.Agents do
     end
   end
 
+  @spec discover_connected([node()], [node()]) :: {:ok, result()}
   defp discover_connected(nodes, connected) do
     deadline = D.now() + D.budget()
     # One stream item provides a single outer deadline and caller ownership;
@@ -40,7 +49,9 @@ defmodule Beamlet.Node.Agents do
     end
   end
 
+  @spec valid_nodes?(term()) :: boolean()
   defp valid_nodes?(nodes), do: valid_nodes?(nodes, 32, [])
+  @spec valid_nodes?(term(), integer(), [node()]) :: boolean()
   defp valid_nodes?([], _, _), do: true
 
   defp valid_nodes?([n | rest], left, seen) when is_atom(n) and left > 0 do
@@ -50,6 +61,7 @@ defmodule Beamlet.Node.Agents do
 
   defp valid_nodes?(_, _, _), do: false
 
+  @spec collect([node()], [node()], integer()) :: result()
   defp collect(nodes, connected, deadline) do
     {eligible, missing} = Enum.split_with(nodes, &(&1 in connected))
 
@@ -62,6 +74,7 @@ defmodule Beamlet.Node.Agents do
     schedule(eligible, %{}, result, deadline)
   end
 
+  @spec schedule([node()], active(), result(), integer()) :: result()
   defp schedule(queued, active, result, deadline) when map_size(active) < 8 and queued != [] do
     if D.remaining(deadline) == 0 do
       expire(queued, active, result)
@@ -88,6 +101,7 @@ defmodule Beamlet.Node.Agents do
   end
 
   @doc false
+  @spec retain(result(), node(), term()) :: result()
   def retain(result, target, {:ok, agents}) do
     candidate = %{result | agents: result.agents ++ agents}
     # Reserve16KiB for ALL32 possible255-byte node names and static failures,
@@ -111,6 +125,7 @@ defmodule Beamlet.Node.Agents do
 
   def retain(result, target, _), do: retain(result, target, {:error, :unavailable})
 
+  @spec expire([node()], active(), result()) :: result()
   defp expire(queued, active, result) do
     Enum.each(active, fn {pid, _} ->
       monitor = Process.monitor(pid)

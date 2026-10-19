@@ -25,6 +25,9 @@ defmodule Beamlet.Node.Storage.Operator do
   `{:error, {:authority | :journal, reason}}` / `{:error,
   :invalid_storage_configuration}`.
   """
+  @spec initialize(term(), term()) ::
+          {:ok, %{authority: :installed | nil, journal: :installed | nil}}
+          | {:error, :invalid_storage_configuration | {:authority | :journal, atom()}}
   def initialize(roles, storage) do
     with {:ok, %{adapter: adapter, authority: authority, journal: journal}} <-
            Host.datasets(roles, storage) do
@@ -35,6 +38,8 @@ defmodule Beamlet.Node.Storage.Operator do
     end
   end
 
+  @spec install(:authority | :journal, module(), keyword() | nil) ::
+          {:ok, :installed | nil} | {:error, {:authority | :journal, atom()}}
   defp install(_role, _repo, nil), do: {:ok, nil}
 
   defp install(role, repo, opts) do
@@ -50,6 +55,7 @@ defmodule Beamlet.Node.Storage.Operator do
     end
   end
 
+  @spec stop(module()) :: :ok
   defp stop(repo) do
     if Process.whereis(repo), do: repo.stop(5000)
     :ok
@@ -57,6 +63,7 @@ defmodule Beamlet.Node.Storage.Operator do
     _, _ -> :ok
   end
 
+  @spec authority_repo(:postgres | :sqlite) :: module()
   defp authority_repo(:postgres), do: PostgresAuthorityRepo
   defp authority_repo(:sqlite), do: SQLiteAuthorityRepo
 end

@@ -63,6 +63,42 @@ defmodule Beamlet.Node.Storage do
   The authority block is required for `:authority`; the journal block for
   `:executor`. `executor_id` is the durable executor identity of this VM.
   """
+  @typedoc "Validated dataset wiring, independent of admission/readiness."
+  @type datasets :: %{
+          adapter: :sqlite | :postgres,
+          authority: keyword() | nil,
+          journal: keyword() | nil
+        }
+  @type configuration :: %{
+          adapter: :sqlite | :postgres,
+          authority: keyword() | nil,
+          journal: keyword() | nil,
+          executor_id: binary()
+        }
+  @type wiring :: %{
+          authority_repo: module(),
+          journal_repo: module(),
+          executor_id: binary(),
+          executor_boot_id: binary()
+        }
+  @typep state :: %{
+           storage: configuration(),
+           boot_id: binary(),
+           datasets: pid() | %{},
+           admission: pid() | nil
+         }
+  @typep common :: %{
+           authority_database: binary(),
+           journal_database: binary(),
+           peers: true | binary()
+         }
+  @typep error :: {:error, :invalid_storage_configuration}
+  @typep status :: %{
+           admission: Beamlet.Storage.Admission.status(),
+           datasets: %{optional(atom()) => :ready | {:refused, atom()}} | {:error, atom()},
+           boot_id: binary()
+         }
+  @spec configuration(term(), term()) :: {:ok, configuration()} | error()
   def configuration(roles, storage) do
     with {:ok, %{adapter: adapter} = datasets} <- datasets(roles, storage),
          {:ok, executor_id} <- uuid(storage[:executor_id]) do
@@ -71,6 +107,7 @@ defmodule Beamlet.Node.Storage do
   end
 
   @doc "Dataset options the roles need, without requiring the executor identity."
+  @spec datasets(term(), term()) :: {:ok, datasets()} | error()
   def datasets(roles, storage) when is_list(roles) and is_list(storage) do
     with true <- Keyword.keyword?(storage),
          true <- Enum.uniq(Keyword.keys(storage)) == Keyword.keys(storage),
@@ -87,6 +124,7 @@ defmodule Beamlet.Node.Storage do
 
   def datasets(_, _), do: {:error, :invalid_storage_configuration}
 
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts),
     do: GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
 
@@ -97,6 +135,13 @@ defmodule Beamlet.Node.Storage do
   :journal_not_configured}`. It grants no admission; submit/accept consult
   `Beamlet.Storage.Admission` themselves.
   """
+  @spec runtime(atom()) ::
+          {:ok, wiring()}
+          | {:error,
+             :storage_not_configured
+             | :authority_not_configured
+             | :journal_not_configured
+             | :storage_unavailable}
   def runtime(name \\ __MODULE__) do
     case Process.whereis(name) do
       nil -> {:error, :storage_not_configured}
@@ -107,6 +152,7 @@ defmodule Beamlet.Node.Storage do
   end
 
   @doc "Admission status plus each configured dataset's open state."
+  @spec status(atom()) :: status() | {:error, :storage_not_configured | :storage_unavailable}
   def status(name \\ __MODULE__) do
     case Process.whereis(name) do
       nil ->
@@ -121,11 +167,13 @@ defmodule Beamlet.Node.Storage do
 
   # A configured host that is slow or shut down is not "not configured": operators
   # must not read a timeout as "this VM has no storage".
+  @spec host_exit(term()) :: {:error, :storage_unavailable}
   defp host_exit({:timeout, _}), do: {:error, :storage_unavailable}
   defp host_exit(:timeout), do: {:error, :storage_unavailable}
   defp host_exit(_reason), do: {:error, :storage_unavailable}
 
   @impl true
+  @spec init(keyword()) :: {:ok, state()}
   def init(opts) do
     Process.flag(:trap_exit, true)
     settings = Keyword.fetch!(opts, :storage)
@@ -134,6 +182,8 @@ defmodule Beamlet.Node.Storage do
   end
 
   @impl true
+  @spec handle_call(:runtime | :status, GenServer.from(), state()) ::
+          {:reply, {:ok, wiring()} | {:error, atom()} | status(), state()}
   def handle_call(:runtime, _from, state) do
     authority = state.storage[:authority]
     journal = state.storage[:journal]
@@ -164,6 +214,7 @@ defmodule Beamlet.Node.Storage do
      state}
   end
 
+  @spec dataset_status() :: %{optional(atom()) => :ready | {:refused, atom()}} | {:error, atom()}
   defp dataset_status do
     case Host.status(Beamlet.Node.Storage.Resources) do
       statuses when is_map(statuses) ->
@@ -178,8 +229,10 @@ defmodule Beamlet.Node.Storage do
   end
 
   @impl true
+  @spec handle_info({:EXIT, pid(), term()}, state()) :: {:stop, term(), state()}
   def handle_info({:EXIT, _pid, reason}, state), do: {:stop, reason, state}
 
+  @spec open(state()) :: state()
   defp open(state) do
     datasets =
       for {key, repo, opts} <- [
@@ -218,11 +271,13 @@ defmodule Beamlet.Node.Storage do
   end
 
   @impl true
+  @spec terminate(term(), state()) :: :ok | nil
   def terminate(_, state) do
     if state.admission && Process.alive?(state.admission), do: GenServer.stop(state.admission)
     if Process.alive?(state.datasets), do: GenServer.stop(state.datasets)
   end
 
+  @spec common(:sqlite | :postgres, keyword()) :: {:ok, common()} | error()
   defp common(:sqlite, storage) do
     with {:ok, authority} <- absolute(storage[:database]),
          {:ok, journal} <- absolute(get_in(storage, [:journal, :database])),
@@ -245,6 +300,7 @@ defmodule Beamlet.Node.Storage do
     end
   end
 
+  @spec connectable?(keyword()) :: boolean()
   defp connectable?(storage) do
     host = is_binary(storage[:hostname]) or is_binary(storage[:socket_dir])
     port = is_nil(storage[:port]) or (is_integer(storage[:port]) and storage[:port] in 1..65_535)
@@ -253,6 +309,8 @@ defmodule Beamlet.Node.Storage do
     host and port and user and password
   end
 
+  @spec authority_dataset([Beamlet.Node.role()], :sqlite | :postgres, keyword(), common()) ::
+          {:ok, keyword() | nil} | error()
   defp authority_dataset(roles, adapter, storage, common) do
     if :authority in roles do
       with {:ok, id} <- uuid(storage[:dataset_id]) do
@@ -265,6 +323,7 @@ defmodule Beamlet.Node.Storage do
     end
   end
 
+  @spec authority_opts(:sqlite | :postgres, keyword(), common()) :: keyword()
   defp authority_opts(:sqlite, _storage, common) do
     [database: common.authority_database, peer_database: common.journal_database]
   end
@@ -278,6 +337,8 @@ defmodule Beamlet.Node.Storage do
     |> put_present(:password, storage[:password])
   end
 
+  @spec journal_dataset([Beamlet.Node.role()], keyword(), common()) ::
+          {:ok, keyword() | nil} | error()
   defp journal_dataset(roles, storage, common) do
     if :executor in roles do
       journal = Keyword.get(storage, :journal, [])
@@ -303,18 +364,22 @@ defmodule Beamlet.Node.Storage do
   # `common/2` only ever yields `peers: true` (SQLite, journal peers with the
   # authority file) or `peers: <absolute binary>` (PostgreSQL), so no third
   # fallback clause exists; an unknown adapter already failed in `common/2`.
+  @spec journal_peer(keyword(), common()) :: {:ok, binary()}
   defp journal_peer(_journal, %{peers: true, authority_database: authority}), do: {:ok, authority}
   defp journal_peer(_journal, %{peers: peer}) when is_binary(peer), do: {:ok, peer}
 
+  @spec put_present(keyword(), atom(), term()) :: keyword()
   defp put_present(opts, _key, nil), do: opts
   defp put_present(opts, key, value), do: Keyword.put(opts, key, value)
 
+  @spec uuid(term()) :: {:ok, binary()} | error()
   defp uuid(value) when is_binary(value) do
     if Codec.uuid?(value), do: {:ok, value}, else: {:error, :invalid_storage_configuration}
   end
 
   defp uuid(_), do: {:error, :invalid_storage_configuration}
 
+  @spec absolute(term()) :: {:ok, binary()} | error()
   defp absolute(path) when is_binary(path) do
     if Path.type(path) == :absolute and path != "/" and not String.contains?(path, <<0>>),
       do: {:ok, path},
@@ -323,6 +388,7 @@ defmodule Beamlet.Node.Storage do
 
   defp absolute(_), do: {:error, :invalid_storage_configuration}
 
+  @spec authority_repo(:postgres | :sqlite) :: module()
   defp authority_repo(:postgres), do: PostgresAuthorityRepo
   defp authority_repo(:sqlite), do: SQLiteAuthorityRepo
 end
