@@ -9,6 +9,7 @@ defmodule Beamlet.CLI.Application do
   @host_keys [:enabled, :allowed_nodes]
 
   @impl true
+  @spec start(Application.start_type(), term()) :: Supervisor.on_start()
   def start(_type, _args) do
     with {:ok, settings} <-
            Beamlet.CLI.configuration(

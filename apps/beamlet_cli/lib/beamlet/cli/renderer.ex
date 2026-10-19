@@ -8,6 +8,7 @@ defmodule Beamlet.CLI.Renderer do
   # Shared error vocabulary. These literals are runtime lookups into
   # `Beamlet.I18n`; the table itself is the allowlist, so an unexpected term can
   # never become copy or leak into the terminal.
+  @spec safe_reason(term()) :: binary()
   defp safe_reason(:invalid_command), do: Beamlet.I18n.dgettext("errors", "invalid_command")
 
   defp safe_reason(:invalid_configuration),
@@ -35,6 +36,7 @@ defmodule Beamlet.CLI.Renderer do
 
   # Help body. Command grammar, keywords and example tokens stay untranslated;
   # only the prose lines have a different translation.
+  @spec help_lines() :: [binary()]
   defp help_lines do
     [
       gettext("help | connect <trusted-node> | nodes | agents [authority]"),
@@ -50,6 +52,8 @@ defmodule Beamlet.CLI.Renderer do
     ]
   end
 
+  # Unknown values intentionally use the bounded inspect fallback.
+  @spec render(term()) :: binary()
   def render(:help) do
     header = gettext("commands / policy")
     rows = help_lines() |> Enum.map(&%{header => &1})
@@ -131,6 +135,12 @@ defmodule Beamlet.CLI.Renderer do
 
   # Fixed explicit width prevents terminal width detection from silently omitting
   # the authority/ID columns. Rows/cells are bounded before Owl lays them out.
+  @spec identity(%{
+          required(:authority) => node(),
+          required(:id) => binary(),
+          required(:pid) => pid(),
+          optional(atom()) => term()
+        }) :: %{binary() => binary()}
   defp identity(ref),
     do: %{
       gettext("authority") => to_string(ref.authority),
@@ -138,6 +148,7 @@ defmodule Beamlet.CLI.Renderer do
       gettext("pid") => inspect(ref.pid)
     }
 
+  @spec table([%{binary() => binary()}]) :: binary()
   defp table([]), do: gettext("(none)")
 
   defp table(rows) do
@@ -152,6 +163,7 @@ defmodule Beamlet.CLI.Renderer do
     |> IO.chardata_to_string()
   end
 
+  @spec bounded(term(), pos_integer()) :: binary()
   defp bounded(value, count) do
     value
     |> inspect(limit: 40, printable_limit: 2048)

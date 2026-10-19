@@ -5,8 +5,18 @@ defmodule Beamlet.CLI.Session do
   alias Beamlet.Node.{Agents, Cluster}
   defstruct aliases: %{}, allowed_nodes: [], discovery: nil
 
+  @typedoc "Local aliases and one retained eventual discovery result."
+  @type t :: %__MODULE__{
+          aliases: %{optional(binary()) => Agent.Ref.t()},
+          allowed_nodes: [binary()],
+          discovery: Agents.result() | nil
+        }
+  @typep output :: (binary() -> term())
+  @typep identity :: %{authority: node(), id: binary(), pid: pid(), incarnation: reference()}
+  @spec new([binary()]) :: t()
   def new(allowed \\ []), do: %__MODULE__{allowed_nodes: allowed}
 
+  @spec execute(t(), term(), output()) :: {:quit | :continue, t()}
   def execute(session, line, output \\ &Owl.IO.puts/1) do
     result = with {:ok, command} <- Command.parse(line), do: dispatch(session, command, output)
 
@@ -24,6 +34,7 @@ defmodule Beamlet.CLI.Session do
     end
   end
 
+  @spec dispatch(t(), Command.t(), output()) :: {:quit, t()} | {t(), term()} | Agent.error()
   defp dispatch(s, {"help"}, _), do: {s, :help}
   defp dispatch(s, {"quit"}, _), do: {:quit, %{s | aliases: %{}}}
   defp dispatch(s, {"nodes"}, _), do: {s, Cluster.connected(s.allowed_nodes)}
@@ -92,17 +103,22 @@ defmodule Beamlet.CLI.Session do
          do: {s, Client.watch(ref, Keyword.put(options, :output, output))}
   end
 
+  @spec identity(Agent.Ref.t()) :: identity()
   defp identity(ref), do: Map.take(ref, [:authority, :id, :pid, :incarnation])
+  @spec targets(t(), binary() | nil) :: {:ok, [node()]} | {:error, :invalid_authority}
   defp targets(s, nil), do: Cluster.connected(s.allowed_nodes)
 
   defp targets(s, name) do
     with {:ok, authority} <- Cluster.authority(name, s.allowed_nodes), do: {:ok, [authority]}
   end
 
+  @spec fetch(t(), binary()) :: {:ok, Agent.Ref.t()} | {:error, :unknown_alias}
   defp fetch(s, name), do: Map.fetch(s.aliases, name) |> found()
+  @spec found({:ok, Agent.Ref.t()} | :error) :: {:ok, Agent.Ref.t()} | {:error, :unknown_alias}
   defp found({:ok, ref}), do: {:ok, ref}
   defp found(:error), do: {:error, :unknown_alias}
 
+  @spec available(t(), term()) :: :ok | {:error, :invalid_alias | :alias_exists | :alias_limit}
   defp available(s, name) do
     cond do
       not is_binary(name) -> {:error, :invalid_alias}
@@ -113,6 +129,7 @@ defmodule Beamlet.CLI.Session do
     end
   end
 
+  @spec creation_options(binary()) :: {:ok, keyword()} | {:error, :invalid_configuration}
   defp creation_options(path) do
     with true <- Path.type(path) == :absolute,
          [{:beamlet_cli, [agent_options: options]}] <- Config.Reader.read!(path),

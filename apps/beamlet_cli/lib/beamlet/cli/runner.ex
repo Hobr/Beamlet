@@ -2,21 +2,29 @@ defmodule Beamlet.CLI.Runner do
   @moduledoc "Standalone terminal owner, invoked after Application startup by the release."
   alias Beamlet.CLI.{Command, Locale, Renderer, Session}
 
+  @typep line :: binary() | :eof | {:error, :input | :line_limit}
+  @typep output :: (binary() -> term())
+  @typedoc "Injected terminal effects; exit callback's value is preserved."
+  @type options(value) :: [{:read, (-> line())} | {:output, output()} | {:exit, (0 | 1 -> value)}]
+  @spec main() :: :ok
   def main do
     {:ok, _} = Application.ensure_all_started(:beamlet_cli)
     run(Session.new(Application.get_env(:beamlet_cli, :allowed_nodes, [])))
   end
 
+  @spec run(Session.t(), options(value)) :: value | :ok when value: var
   def run(session, opts \\ []) do
     # The locale is resolved once for the process before any stdin is read, so
     # every later Renderer/Session output in this process uses one language.
-    Locale.put()
+    # Locale installation is a process side effect; the resolved name is unused.
+    _ = Locale.put()
     read = Keyword.get(opts, :read, fn -> read_line(:stdio) end)
     output = Keyword.get(opts, :output, &Owl.IO.puts/1)
     exit = Keyword.get(opts, :exit, &System.stop/1)
     exit.(loop(session, read, output))
   end
 
+  @spec loop(Session.t(), (-> line()), output()) :: 0 | 1
   defp loop(session, read, output) do
     case read.() do
       :eof ->
@@ -38,6 +46,7 @@ defmodule Beamlet.CLI.Runner do
   # The exclusive reader temporarily requests Latin-1 device encoding so binread
   # transports original bytes, then restores encoding before any output/callback.
   # Pipes and injected nonterminal devices require no device-option mutation.
+  @spec read_line(IO.device()) :: line()
   def read_line(device) do
     target = if device == :stdio, do: :standard_io, else: device
     options = :io.getopts(target)
@@ -59,6 +68,7 @@ defmodule Beamlet.CLI.Runner do
     end
   end
 
+  @spec read_line(IO.device(), [binary()], non_neg_integer()) :: line()
   defp read_line(device, chunks, count) do
     case IO.binread(device, 1) do
       :eof ->
@@ -77,6 +87,7 @@ defmodule Beamlet.CLI.Runner do
     end
   end
 
+  @spec finish([binary()]) :: binary() | {:error, :input}
   defp finish(chunks) do
     text = IO.iodata_to_binary(Enum.reverse(chunks))
     if String.valid?(text), do: text, else: {:error, :input}

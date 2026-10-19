@@ -6,14 +6,23 @@ defmodule Beamlet.CLI.Client do
   alias Beamlet.Agent
   alias Beamlet.CLI.Renderer
 
+  @typep output :: (binary() -> term())
+  @typep watch_result :: Agent.result(Agent.snapshot())
+  @spec create(node(), term()) :: Agent.result(Agent.Ref.t())
   def create(authority, options), do: Agent.start(authority, options)
+  @spec input(Agent.Ref.t(), term()) :: Agent.result(Agent.turn())
   def input(ref, text), do: Agent.input(ref, text)
+  @spec snapshot(Agent.Ref.t()) :: Agent.result(Agent.snapshot())
   def snapshot(ref), do: Agent.snapshot(ref)
+  @spec status(Agent.Ref.t()) :: Agent.result(Agent.snapshot())
   def status(ref), do: Agent.snapshot(ref)
+  @spec stop(Agent.Ref.t()) :: :ok | Agent.error()
   def stop(ref), do: Agent.stop_turn(ref)
+  @spec close(Agent.Ref.t()) :: :ok | Agent.error()
   def close(ref), do: Agent.close(ref)
 
   @doc "Watch up to 256 snapshots for at most 60 seconds; timeout never cancels work."
+  @spec watch(Agent.Ref.t(), term()) :: watch_result()
   def watch(ref, opts \\ [])
 
   def watch(ref, opts) when is_list(opts) do
@@ -27,6 +36,7 @@ defmodule Beamlet.CLI.Client do
 
   def watch(_, _), do: {:error, :invalid_watch_options}
 
+  @spec do_watch(Agent.Ref.t(), keyword()) :: watch_result()
   defp do_watch(ref, opts) do
     timeout = Keyword.get(opts, :timeout, 5000)
     events = Keyword.get(opts, :events, 64)
@@ -50,6 +60,7 @@ defmodule Beamlet.CLI.Client do
     end
   end
 
+  @spec watch_events(Agent.Ref.t(), integer(), non_neg_integer(), output()) :: watch_result()
   defp watch_events(_ref, _deadline, 0, _output), do: {:error, :event_limit}
 
   defp watch_events(ref, deadline, remaining, output) do

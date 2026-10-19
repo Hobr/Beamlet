@@ -23,12 +23,15 @@ defmodule Beamlet.CLI.Locale do
   @env "BEAMLET_LANG"
 
   @doc "Canonical locales in display order."
+  @spec options() :: [{binary(), binary()}]
   def options, do: Shared.options()
 
   @doc "Canonicalises a locale, or `nil` when unknown."
+  @spec normalize(term()) :: binary() | nil
   def normalize(locale), do: Shared.normalize(locale)
 
   @doc "Configured/environment locale, falling back to the shared default."
+  @spec locale() :: binary()
   def locale do
     Shared.normalize(config_value(:locale)) ||
       Shared.normalize(System.get_env(@env)) ||
@@ -43,7 +46,9 @@ defmodule Beamlet.CLI.Locale do
   same process (including `Session` and `Renderer` calls) uses one language.
   Returns the canonical locale.
   """
+  @spec put(term()) :: binary()
   def put(locale \\ nil), do: Shared.put(locale || locale())
 
+  @spec config_value(:locale | :default_locale) :: term()
   defp config_value(key), do: Application.get_env(:beamlet_cli, key)
 end

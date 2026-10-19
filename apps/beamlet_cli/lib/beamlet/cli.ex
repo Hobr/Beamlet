@@ -2,6 +2,9 @@ defmodule Beamlet.CLI do
   @moduledoc "Opt-in interaction host. No stdin or Node startup on ordinary loading."
   alias Beamlet.Node.Cluster
 
+  @typedoc "Validated opt-in interaction host settings."
+  @type settings :: [{:enabled, boolean()} | {:allowed_nodes, [binary()]}]
+  @spec configuration(term()) :: {:ok, settings()} | {:error, :invalid_configuration}
   def configuration(settings) do
     with true <- is_list(settings) and Keyword.keyword?(settings),
          keys = Keyword.keys(settings),
