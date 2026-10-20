@@ -1,5 +1,0 @@
-{"file":".trellis/spec/backend/index.md","reason":"按实际应用边界选取层级规范，不从目标架构推断接口"}
-{"file":".trellis/spec/backend/directory-structure.md","reason":"十三应用、监督树和配置/发布入口的所有权与边界"}
-{"file":".trellis/spec/backend/quality-guidelines.md","reason":"文档及源码注释修改的格式/编译/测试/静态验证要求"}
-{"file":".trellis/spec/backend/typespec-guidelines.md","reason":"公开类型、回调、错误及运行时校验的说明边界，不改既有类型契约"}
-{"file":".trellis/tasks/10-19-bilingual-documentation/research/coverage.md","reason":"逐文件覆盖、语言映射、中文先于英文的阶段与证据记录"}

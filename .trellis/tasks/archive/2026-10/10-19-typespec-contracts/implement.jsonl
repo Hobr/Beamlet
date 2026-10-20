@@ -1,8 +1,0 @@
-{"file":".trellis/spec/backend/index.md","reason":"Backend ownership and mandatory guideline routing"}
-{"file":".trellis/spec/backend/directory-structure.md","reason":"Thirteen-app dependency directions; no type-only reverse dependencies"}
-{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Root-level Mix checks, formatter scope, PLT evidence and regression gates"}
-{"file":".trellis/spec/backend/error-handling.md","reason":"Preserve safe errors, narrow exceptions and outcome-unknown semantics"}
-{"file":".trellis/spec/backend/database-guidelines.md","reason":"Foundation/domain persistence ownership and transaction boundaries"}
-{"file":".trellis/spec/backend/operation-runtime.md","reason":"Operation lifecycle, Result/status/cancellation/deadline contracts"}
-{"file":".trellis/spec/backend/harness-providers.md","reason":"Native Model/Tool/provider contracts and hostile-input validation"}
-{"file":".trellis/tasks/10-19-typespec-contracts/research/audit-baseline.md","reason":"Executed baseline, known map mismatch, 68 unclassified warnings and evidence limits"}

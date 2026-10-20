@@ -1,46 +1,85 @@
-# Created by https://www.toptal.com/developers/gitignore/api/linux,direnv,visualstudiocode,erlang,elixir
-# Edit at https://www.toptal.com/developers/gitignore?templates=linux,direnv,visualstudiocode,erlang,elixir
+# Created by https://www.toptal.com/developers/gitignore/api/go,linux,direnv,visualstudiocode,emacs
+# Edit at https://www.toptal.com/developers/gitignore?templates=go,linux,direnv,visualstudiocode,emacs
 
 ### direnv ###
 .direnv
 .envrc
 
-### Elixir ###
-_build
-cover
-deps
-doc
-.fetch
-erl_crash.dump
-*.ez
-*.beam
-/config/*.secret.exs
-.elixir_ls/
+### Emacs ###
+# -*- mode: gitignore; -*-
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
 
-### Elixir Patch ###
+# Org-mode
+.org-id-locations
+*_archive
 
-### Erlang ###
-.eunit
-*.o
-*.plt
-.concrete/DEV_MODE
+# flymake-mode
+*_flymake.*
 
-# rebar 2.x
-.rebar
-rel/example_project
-ebin/*.beam
-deps
+# eshell files
+/eshell/history
+/eshell/lastdir
 
-# rebar 3
-.rebar3
-_build/
-_checkouts/
+# elpa packages
+/elpa/
 
-### Erlang Patch ###
-rebar3.crashdump
+# reftex files
+*.rel
+
+# AUCTeX auto folder
+/auto/
+
+# cask packages
+.cask/
+dist/
+
+# Flycheck
+flycheck_*.el
+
+# server auth directory
+/server/
+
+# projectiles files
+.projectile
+
+# directory configuration
+.dir-locals.el
+
+# network security
+/network-security.data
+
+
+### Go ###
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
 
 ### Linux ###
-*~
 
 # temporary files which can be created if a process still has a handle open of a deleted file
 .fuse_hidden*
@@ -73,14 +112,4 @@ rebar3.crashdump
 .history
 .ionide
 
-# End of https://www.toptal.com/developers/gitignore/api/linux,direnv,visualstudiocode,erlang,elixir
-
-# Dev
-.nix-mix/
-.nix-hex/
-
-# Ignore package tarball (built via "mix hex.build").
-*.tar
-tmp
-.expert
-__pycache__
+# End of https://www.toptal.com/developers/gitignore/api/go,linux,direnv,visualstudiocode,emacs

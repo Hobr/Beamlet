@@ -1,8 +1,0 @@
-{"file":".trellis/spec/backend/index.md","reason":"应用边界与spec路由"}
-{"file":".trellis/spec/backend/operation-runtime.md","reason":"终止/预算/单次准入/租约与生命周期现有契约"}
-{"file":".trellis/spec/backend/error-handling.md","reason":"安全错误与不确定性"}
-{"file":".trellis/spec/backend/quality-guidelines.md","reason":"实际DOWN和分布式容量同步回归"}
-{"file":".trellis/spec/backend/agent-orchestration.md","reason":"相邻Agent helper retirement保护"}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"单owner分类与跨进程结果契约"}
-{"file":".trellis/tasks/10-17-web-observation/research/independent-check.md","reason":"完整根因证据/基线证明/未解composition失败"}
-{"file":".trellis/tasks/10-17-runtime-deadline-classification/design.md","reason":"待批准的终止分类矩阵与竞争规则"}
