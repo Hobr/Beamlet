@@ -1,0 +1,14 @@
+[toolchain]
+channel = "1.99.1"
+profile = "default"
+components = [
+    "rust-src",
+    "rustfmt",
+    "rust-analyzer",
+    "clippy",
+    "cargo",
+    "llvm-tools"
+]
+targets = [
+    "wasm32-wasip2",
+]

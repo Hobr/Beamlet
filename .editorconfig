@@ -8,9 +8,5 @@ indent_style = space
 indent_size = 4
 trim_trailing_whitespace = true
 
-[{*.md,*.toml,*.nix}]
+[*.{nix,md,yml,yaml}]
 indent_size = 2
-
-[{go.mod,go.sum,go.work,*.go,Makefile}]
-indent_style = tab
-indent_size = 4
