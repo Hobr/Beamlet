@@ -1,0 +1,9 @@
+[package]
+name = "beamlet-kernel"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

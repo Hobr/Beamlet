@@ -2,6 +2,20 @@
 
 **WIP**, with broken changes before the first release.
 
+## Workspace Layout
+
+- crate/
+  - kernel: Durable operation and execution protocols
+  - store-sqlite: SQLite persistence adapter
+  - transport-zenoh: Zenoh transport adapter
+
+  - harness: Composable agent capabilities
+  - llm: Language model execution adapters
+  - tools: Tool execution adapters
+
+- apps/
+  - cli: Command-line application for Beamlet Agent Harness
+
 ## Build
 
 ### Development Environment
