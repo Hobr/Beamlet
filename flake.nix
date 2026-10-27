@@ -1,7 +1,6 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    rust-overlay.url = "github:oxalica/rust-overlay";
     flakelight.url = "github:nix-community/flakelight";
   };
 
@@ -10,61 +9,35 @@
     flakelight ./. {
       inherit inputs;
 
-      withOverlays = [
-        inputs.rust-overlay.overlays.default
+      devShell = pkgs: {
+        packages = with pkgs; [
+          go_latest
 
-        (final: prev: {
-          rustToolchain =
-            let
-              rust = prev.rust-bin;
-            in
-            if builtins.pathExists ./rust-toolchain.toml then
-              rust.fromRustupToolchainFile ./rust-toolchain.toml
+          gopls
+          gotools
+          golangci-lint
+          govulncheck
 
-            else if builtins.pathExists ./rust-toolchain then
-              rust.fromRustupToolchainFile ./rust-toolchain
+          mage
+          pre-commit
+        ];
 
-            else
-              rust.stable."1.99.1".default.override {
-                extensions = [
-                  "rust-src"
-                  "rustfmt"
-                  "rust-analyzer"
-                  "clippy"
-                  "cargo"
-                  "llvm-tools"
-                ];
+        env = {
+          GO111MODULE = "on";
+          GOPROXY = "https://goproxy.cn";
+        };
 
-                targets = [
-                  "wasm32-wasip2"
-                ];
-              };
-        })
-      ];
+        shellHook = ''
+          export PATH="$HOME/go/bin:$PATH"
+        '';
+      };
 
-      devShell =
-        pkgs: with pkgs; rec {
-          packages = [
-            pkg-config
-            openssl
-
-            rustToolchain
-            cargo-binstall
-            pre-commit
-
-            just
-            just-lsp
-          ];
-
-          env = {
-            LD_LIBRARY_PATH = lib.makeLibraryPath packages;
-            RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
-          };
-
-          shellHook = ''
-            export CARGO_HOME="$PWD/.cargo"
-            export PATH="$CARGO_HOME/bin:$PWD/target/debug:$PATH"
-          '';
+      packages.server =
+        pkgs:
+        pkgs.buildGoModule {
+          src = ./.;
+          vendorHash = null;
+          subPackages = [ "cmd/server" ];
         };
     };
 }
