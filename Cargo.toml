@@ -1,14 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/kernel",
-    "crates/transport-zenoh",
-
-    "crates/harness",
-    "crates/llm",
-    "crates/tools",
-
-    "apps/cli"
 ]
 
 [workspace.package]
@@ -19,13 +11,6 @@ license = "Apache-2.0"
 repository = "https://github.com/Hobr/Beamlet"
 
 [workspace.dependencies]
-beamlet-kernel = { path = "crates/kernel" }
-beamlet-transport-zenoh = { path = "crates/transport-zenoh" }
-
-beamlet-harness = { path = "crates/harness" }
-beamlet-llm = { path = "crates/llm" }
-beamlet-tools = { path = "crates/tools" }
-
 tokio = "1"
 
 serde = { version = "1", features = ["derive"] }

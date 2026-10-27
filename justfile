@@ -2,7 +2,7 @@ default:
     @just --list
 
 install-dev:
-    cargo binstall cargo-deny cargo-nextest cargo-update cargo-llvm-cov wasmtime-cli wasm-tools -y --force
+    cargo binstall cargo-deny cargo-nextest cargo-update -y --force
     cargo deny fetch
 
 clippy:
