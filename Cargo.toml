@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
     "crates/kernel",
-    "crates/store-sqlite",
     "crates/transport-zenoh",
 
     "crates/harness",
