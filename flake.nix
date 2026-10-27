@@ -17,8 +17,12 @@
           gotools
           golangci-lint
           govulncheck
+          go-tools
+          nilaway
+          errcheck
+          panicparse
+          delve
 
-          mage
           pre-commit
         ];
 
@@ -26,18 +30,14 @@
           GO111MODULE = "on";
           GOPROXY = "https://goproxy.cn";
         };
-
-        shellHook = ''
-          export PATH="$HOME/go/bin:$PATH"
-        '';
       };
 
-      packages.server =
-        pkgs:
-        pkgs.buildGoModule {
+      packages = pkgs: {
+        server = pkgs.buildGoModule {
           src = ./.;
           vendorHash = null;
           subPackages = [ "cmd/server" ];
         };
+      };
     };
 }

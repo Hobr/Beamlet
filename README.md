@@ -4,10 +4,29 @@
 
 ## Build
 
+### Nix
+
 ```bash
-# Development shell
+# Nix Shell
 nix develop
 
-# Build tool
-go install github.com/magefile/mage@latest
+# OR direnv
+apt install -y direnv
+echo 'use flake' > .envrc
+direnv allow
+```
+
+### AI (Optional)
+
+```bash
+npm install -g @mindfoldhq/trellis@latest @colbymchenry/codegraph
+trellis init -u <your-name>
+codegraph install
+codegraph init
+```
+
+### Project
+
+```bash
+go tool task
 ```
