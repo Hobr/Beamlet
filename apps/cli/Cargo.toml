@@ -10,6 +10,17 @@ repository.workspace = true
 beamlet-harness.workspace = true
 beamlet-kernel.workspace = true
 beamlet-llm.workspace = true
-beamlet-store-sqlite.workspace = true
 beamlet-tools.workspace = true
 beamlet-transport-zenoh.workspace = true
+
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
+anyhow.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+reedline = "0.52"
+clap = { version = "4", features = ["derive", "unicode", "env", "string", "wrap_help"] }
+
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+ron = "0.12"

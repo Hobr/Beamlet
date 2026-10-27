@@ -20,9 +20,17 @@ repository = "https://github.com/Hobr/Beamlet"
 
 [workspace.dependencies]
 beamlet-kernel = { path = "crates/kernel" }
-beamlet-store-sqlite = { path = "crates/store-sqlite" }
 beamlet-transport-zenoh = { path = "crates/transport-zenoh" }
 
 beamlet-harness = { path = "crates/harness" }
 beamlet-llm = { path = "crates/llm" }
 beamlet-tools = { path = "crates/tools" }
+
+tokio = "1"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
