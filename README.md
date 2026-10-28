@@ -54,9 +54,6 @@ just fmt
 # Test
 just test
 
-# Coverage
-just coverage
-
 # Doc
 just doc
 
