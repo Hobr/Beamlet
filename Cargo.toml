@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = [
+    "apps/node",
+    "apps/console",
+    "apps/desktop",
 ]
 
 [workspace.package]
@@ -11,3 +14,13 @@ license = "Apache-2.0"
 repository = "https://github.com/Hobr/Beamlet"
 
 [workspace.dependencies]
+
+[profile.dev.package]
+gpui-pre = { opt-level = 3 }
+gpui-component = { opt-level = 3 }
+gpui-kit = { opt-level = 3 }
+gpui-kit-assets = { opt-level = 3 }
+gpui-pre-platform = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+taffy = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }
