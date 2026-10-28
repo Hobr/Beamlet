@@ -70,10 +70,14 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    #"RUSTSEC-0000-0000",
-    #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
-    #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
-    #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
+    { id = "RUSTSEC-2024-0384", reason = "GPUI still uses instant; awaiting upstream migration to web-time." },
+    { id = "RUSTSEC-2024-0436", reason = "GPUI, metal, and image dependencies still use paste; awaiting upstream replacement." },
+    { id = "RUSTSEC-2025-0134", reason = "gpui-pre-reqwest still uses rustls-pemfile; awaiting upstream migration to rustls-pki-types." },
+    { id = "RUSTSEC-2026-0206", reason = "GPUI SVG dependencies still use rustybuzz; awaiting upstream migration to harfrust." },
+    { id = "RUSTSEC-2026-0192", reason = "GPUI font and SVG dependencies still use ttf-parser; awaiting upstream migration." },
+    { id = "RUSTSEC-2026-0371", reason = "GPUI Linux dependencies still use zbus_names; awaiting upstream migration to zbus 6." },
+    { id = "RUSTSEC-2026-0370", reason = "GPUI Linux dependencies still use zvariant; awaiting upstream migration to zbus 6." },
+    { id = "RUSTSEC-2026-0372", reason = "GPUI Linux dependencies still use zvariant_derive; awaiting upstream migration to zbus 6." },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.

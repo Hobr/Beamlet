@@ -46,6 +46,7 @@
         pkgs: with pkgs; rec {
           packages = [
             pkg-config
+            fontconfig
             openssl
 
             rustToolchain
