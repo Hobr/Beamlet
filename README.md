@@ -57,6 +57,9 @@ just test
 # Doc
 just doc
 
+# Generate licenses.html
+just license
+
 # Update
 just update
 ```

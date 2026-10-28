@@ -2,11 +2,8 @@ default:
     @just --list
 
 install-dev:
-    cargo binstall cargo-deny cargo-nextest cargo-update -y --force
+    cargo binstall cargo-deny cargo-nextest cargo-update cargo-about -y --force
     cargo deny fetch
-
-clippy:
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 check:
     cargo check --workspace
@@ -20,6 +17,9 @@ test:
 
 doc:
     cargo doc --workspace --no-deps
+
+license:
+    cargo about generate --workspace about.hbs > licenses.html
 
 update:
     cargo install-update -a
