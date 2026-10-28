@@ -4,19 +4,27 @@
 
 ## Build
 
-### Nix
+### Development Environment
+
+#### Linux
+
+```bash
+apt install -y rustup cargo-binstall pre-commit just
+```
+
+#### Nix
 
 ```bash
 # Nix Shell
 nix develop
 
-# OR direnv
+# OR Direnv
 apt install -y direnv
 echo 'use flake' > .envrc
 direnv allow
 ```
 
-### AI (Optional)
+#### AI (Optional)
 
 ```bash
 npm install -g @mindfoldhq/trellis@latest @colbymchenry/codegraph
@@ -28,5 +36,30 @@ codegraph init
 ### Project
 
 ```bash
-go tool task
+# Dev Tools
+just install-dev
+
+# Build
+just build
+
+# Release Build
+just release
+
+# Check
+just check
+
+# Format
+just fmt
+
+# Test
+just test
+
+# Coverage
+just coverage
+
+# Doc
+just doc
+
+# Update
+just update
 ```
