@@ -4,6 +4,15 @@ members = [
     "apps/node",
     "apps/console",
     "apps/desktop",
+
+    "crates/kernel",
+    "crates/runtime",
+    "crates/client",
+    "crates/ffi",
+
+    "crates/agent",
+    "crates/agent-llm",
+    "crates/agent-tools",
 ]
 
 [workspace.package]
