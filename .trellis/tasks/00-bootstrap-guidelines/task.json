@@ -10,7 +10,7 @@
   "priority": "P1",
   "creator": "hobr",
   "assignee": "hobr",
-  "createdAt": "2026-10-20",
+  "createdAt": "2026-10-28",
   "completedAt": null,
   "branch": null,
   "base_branch": null,
@@ -21,9 +21,8 @@
   "children": [],
   "parent": null,
   "relatedFiles": [
-    ".trellis/spec/backend/",
-    ".trellis/spec/frontend/"
+    ".trellis/spec/backend/"
   ],
-  "notes": "First-time setup task created by trellis init (fullstack project)",
+  "notes": "First-time setup task created by trellis init (backend project)",
   "meta": {}
 }

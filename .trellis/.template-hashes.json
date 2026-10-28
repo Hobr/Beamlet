@@ -63,7 +63,6 @@
     ".pi/agents/trellis-research.md": "ef77555f4c2c4ade36f1c23a076b6f4bb9d180ff24a2f00d7cdc2f8fd5af0b0a",
     ".pi/extensions/trellis/index.ts": "b53f1b5ac66f4ed15a46e1f5b013e0074e23695e86a55a724d4c273032d9fb41",
     ".pi/settings.json": "b68f37c04a7007d2b52d5a87326e3786edbc903bfa518358830dd85727c13d7c",
-    "AGENTS.md": "6cacfe99748b435d0660c2463c697bc323d53798aecf3492283ca8eac1b29682",
     ".trellis/agents/check.md": "edb4f57361407249a53bf5998ebf91c40d2b969e826a2c5e1b4e813a08bcb175",
     ".trellis/agents/implement.md": "66e25ad046c94869442834bc3cdfbd5a9a7412d3ff54561d64d2886552c27e87",
     ".trellis/config.yaml": "a966e6d374e9e6ff283cf761ccd99631323ee1754856cef51ad154ca0afb9dfa",
