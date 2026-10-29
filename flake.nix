@@ -36,7 +36,7 @@
                 ];
 
                 targets = [
-                  "wasm32-wasip2"
+                  "wasm32-unknown-unknown"
                 ];
               };
         })
@@ -55,6 +55,12 @@
 
             just
             just-lsp
+          ]
+          ++ lib.optionals stdenv.hostPlatform.isLinux [
+            glib
+            gtk3
+            webkitgtk_4_1
+            xdotool
           ];
 
           env = {

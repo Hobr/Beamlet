@@ -1,6 +1,10 @@
 [workspace]
 resolver = "3"
 members = [
+    "apps/ui",
+    "apps/web",
+    "apps/desktop",
+    "apps/mobile",
 ]
 
 [workspace.package]
@@ -12,6 +16,8 @@ repository = "https://github.com/Hobr/Beamlet"
 
 [workspace.dependencies]
 tokio = { version = "1.54", features = ["full"] }
+
+dioxus = "0.7"
 
 tower = "0.5"
 tower-http = "0.7"
@@ -26,3 +32,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 anyhow = "1"
 thiserror = "2"
+
+beamlet-ui = { path = "apps/ui" }

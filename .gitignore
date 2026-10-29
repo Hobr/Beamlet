@@ -111,3 +111,5 @@ rust-project.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/emacs,linux,direnv,visualstudiocode,rust,rust-analyzer
+
+.DS_Store

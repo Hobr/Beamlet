@@ -2,7 +2,7 @@ default:
     @just --list
 
 install-dev:
-    cargo binstall cargo-deny cargo-nextest cargo-update cargo-about -y --force
+    cargo binstall cargo-deny cargo-nextest cargo-update cargo-about dioxus-cli -y --force
     cargo deny fetch
 
 check:
