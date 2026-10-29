@@ -9,7 +9,20 @@
 #### Linux
 
 ```bash
-apt install -y rustup cargo-binstall pre-commit just
+apt install rustup \
+    cargo-binstall \
+    pre-commit \
+    just \
+    libwebkit2gtk-4.1-dev \
+    build-essential \
+    curl \
+    wget \
+    file \
+    libxdo-dev \
+    libssl-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    lld
 ```
 
 #### Nix
@@ -38,6 +51,12 @@ codegraph init
 ```bash
 # Dev Tools
 just install-dev
+
+# Run
+just console
+just node
+just web
+just desktop
 
 # Build
 just build
