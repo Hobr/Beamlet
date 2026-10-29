@@ -1,18 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-    "apps/node",
-    "apps/console",
-    "apps/desktop",
-
-    "crates/kernel",
-    "crates/runtime",
-    "crates/client",
-    "crates/ffi",
-
-    "crates/agent",
-    "crates/agent-llm",
-    "crates/agent-tools",
 ]
 
 [workspace.package]
@@ -24,15 +12,9 @@ repository = "https://github.com/Hobr/Beamlet"
 
 [workspace.dependencies]
 tokio = { version = "1.54", features = ["full"] }
-tokio-util = { version = "0.7", features = ["full"] }
-tokio-stream = { version = "0.1", features = ["full"] }
 
 tower = "0.5"
 tower-http = "0.7"
-
-futures-util = "0.3"
-
-uniffi = "0.32"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -44,13 +26,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 anyhow = "1"
 thiserror = "2"
-
-[profile.dev.package]
-gpui-pre = { opt-level = 3 }
-gpui-component = { opt-level = 3 }
-gpui-kit = { opt-level = 3 }
-gpui-kit-assets = { opt-level = 3 }
-gpui-pre-platform = { opt-level = 3 }
-rustybuzz = { opt-level = 3 }
-taffy = { opt-level = 3 }
-ttf-parser = { opt-level = 3 }
