@@ -8,3 +8,4 @@ repository.workspace = true
 
 [dependencies]
 dioxus = { workspace = true }
+lucide-dioxus.workspace = true

@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 dioxus = { workspace = true, features = ["router"] }
+lucide-dioxus.workspace = true
 beamlet-ui = { workspace = true }
 
 [features]

@@ -21,6 +21,8 @@ repository = "https://github.com/Hobr/Beamlet"
 tokio = { version = "1.54", features = ["full"] }
 
 dioxus = "0.7"
+lucide-dioxus = { version = "3.63", features = ["all-icons"] }
+beamlet-ui = { path = "apps/ui" }
 
 tower = "0.5"
 tower-http = "0.7"
@@ -35,5 +37,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 anyhow = "1"
 thiserror = "2"
-
-beamlet-ui = { path = "apps/ui" }
