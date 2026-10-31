@@ -82,3 +82,20 @@ just license
 # Update
 just update
 ```
+
+### Mobile
+
+[Dioxus for Android/iOS](https://dioxuslabs.com/learn/0.7/guides/platforms/mobile/)
+
+#### Android
+
+```bash
+# Create emulator
+avdmanager create avd \
+    --name beamlet \
+    --package 'system-images;android-34;google_apis;x86_64' \
+    --device pixel_7
+
+# Serve
+just android
+```

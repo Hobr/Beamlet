@@ -25,7 +25,13 @@ web *args:
 desktop *args:
     dx serve --package "{{desktop_package}}" --platform desktop "$@"
 
-build: build-console build-node build-web build-desktop
+android *args:
+    dx serve --package "{{mobile_package}}" --platform android "$@"
+
+ios *args:
+    dx serve --package "{{mobile_package}}" --platform ios "$@"
+
+build: build-console build-node build-web build-desktop build-android
 
 build-console *args:
     cargo build --package "{{console_package}}" "$@"
@@ -45,7 +51,7 @@ build-android *args:
 build-ios *args:
     dx build --package "{{mobile_package}}" --platform ios "$@"
 
-release: release-console release-node release-web release-desktop
+release: release-console release-node release-web release-desktop release-android
 
 release-console *args:
     cargo build --release --package "{{console_package}}" "$@"
