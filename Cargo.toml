@@ -19,6 +19,9 @@ repository = "https://github.com/Hobr/Beamlet"
 
 [workspace.dependencies]
 tokio = { version = "1.54", features = ["full"] }
+tokio-util = { version = "0.7", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["full"] }
+task-supervisor = "0.5"
 
 dioxus = "0.7"
 lucide-dioxus = { version = "3.63", features = ["all-icons"] }
