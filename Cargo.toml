@@ -1,31 +1,31 @@
 [workspace]
 resolver = "3"
 members = [
-    "apps/console",
-    "apps/node",
+  "apps/console",
+  "apps/node",
 
-    "apps/ui",
-    "apps/web",
-    "apps/desktop",
-    "apps/mobile",
+  "apps/desktop",
+  "apps/mobile",
+  "apps/ui",
+  "apps/web",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99.1"
-license = "Apache-2.0"
 repository = "https://github.com/Hobr/Beamlet"
+license = "Apache-2.0"
 
 [workspace.dependencies]
-tokio = { version = "1.54", features = ["full"] }
-tokio-util = { version = "0.7", features = ["full"] }
-tokio-stream = { version = "0.1", features = ["full"] }
 task-supervisor = "0.5"
+tokio = { version = "1.54", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["full"] }
 
+beamlet-ui = { path = "apps/ui" }
 dioxus = "0.7"
 lucide-dioxus = { version = "3.63", features = ["all-icons"] }
-beamlet-ui = { path = "apps/ui" }
 
 tower = "0.5"
 tower-http = "0.7"

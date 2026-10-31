@@ -3,13 +3,13 @@ name = "beamlet-desktop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
 repository.workspace = true
+license.workspace = true
 
 [dependencies]
+beamlet-ui = { workspace = true }
 dioxus = { workspace = true, features = ["router"] }
 lucide-dioxus.workspace = true
-beamlet-ui = { workspace = true }
 
 [features]
 default = ["desktop"]
