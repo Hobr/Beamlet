@@ -1,0 +1,89 @@
+#:schema https://www.schemastore.org/prek.json
+
+fail_fast = false
+exclude = '^licenses\.html$'
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "check-toml" },
+  { id = "check-yaml" },
+  { id = "check-json" },
+  { id = "check-xml" },
+  { id = "check-case-conflict" },
+  { id = "check-added-large-files" },
+  { id = "check-symlinks" },
+  { id = "check-illegal-windows-names" },
+  { id = "check-merge-conflict", args = ["--assume-in-merge"] },
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "fix-byte-order-marker" },
+  { id = "mixed-line-ending" },
+  { id = "detect-private-key" },
+  { id = "destroyed-symlinks" },
+]
+
+[[repos]]
+repo = "https://github.com/tombi-toml/tombi-pre-commit"
+rev = "v1.9.8"
+hooks = [
+  { id = "tombi-format", args = ["--offline"] },
+  { id = "tombi-lint", args = ["--offline"] },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "dioxus-fmt"
+name = "Dioxus RSX format"
+description = "Format RSX macros with the Dioxus CLI."
+entry = "dx fmt"
+language = "system"
+files = '(\.rs$|(^|/)\.?rustfmt\.toml$)'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "cargo-fmt"
+name = "cargo fmt"
+description = "Format files with rustfmt."
+entry = "cargo fmt --all -- --check"
+language = "rust"
+files = '(\.rs$|(^|/)\.?rustfmt\.toml$)'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "cargo-deny"
+name = "cargo deny check"
+description = "Check cargo dependencies"
+entry = "cargo deny check"
+language = "rust"
+files = '((^|/)(Cargo\.(toml|lock)|deny\.toml|rust-toolchain(\.toml)?)$|^\.cargo/config(\.toml)?$)'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "cargo-check"
+name = "cargo check"
+description = "Check the package for errors."
+entry = "cargo check --all"
+language = "rust"
+files = '(\.rs$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?)$|^\.cargo/config(\.toml)?$)'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "cargo-clippy"
+name = "cargo clippy"
+description = "Lint rust sources"
+entry = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+language = "rust"
+files = '(\.rs$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?)$|^\.cargo/config(\.toml)?$)'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "cargo-test"
+name = "cargo test"
+description = "unit test for the project"
+entry = "cargo nextest run --all-features --no-tests=warn"
+language = "rust"
+files = '(\.rs$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?)$|^\.cargo/config(\.toml)?$)'
+pass_filenames = false

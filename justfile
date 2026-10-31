@@ -10,7 +10,7 @@ default:
     @just --list
 
 install-dev:
-    cargo binstall cargo-deny cargo-nextest cargo-update cargo-about dioxus-cli -y --force
+    cargo binstall prek cargo-deny cargo-nextest cargo-update cargo-about dioxus-cli -y --force
     cargo deny fetch
 
 console *args:
@@ -71,7 +71,7 @@ check:
 fmt:
     cargo fmt --all
     dx fmt
-    pre-commit run --all-files
+    prek run --all-files
 
 test:
     cargo nextest run --workspace --all-features
@@ -86,5 +86,5 @@ update: && license
     cargo install-update -a
     cargo update
     cargo deny fetch
-    pre-commit autoupdate
+    prek autoupdate
     nix flake update

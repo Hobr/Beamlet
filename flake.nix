@@ -60,7 +60,6 @@
 
             rustToolchain
             cargo-binstall
-            pre-commit
 
             just
             just-lsp

@@ -11,7 +11,6 @@
 ```bash
 apt install rustup \
     cargo-binstall \
-    pre-commit \
     just \
     libwebkit2gtk-4.1-dev \
     build-essential \
@@ -68,6 +67,7 @@ just release
 just check
 
 # Format
+prek install
 just fmt
 
 # Test
