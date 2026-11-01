@@ -3,6 +3,8 @@ resolver = "3"
 members = [
   "apps/console",
   "apps/node",
+
+  "crates/lib",
 ]
 
 [workspace.package]
@@ -57,3 +59,5 @@ anyhow = "1"
 thiserror = "2"
 
 proptest = "1.12"
+
+beamlet-lib = { path = "crates/lib" }
