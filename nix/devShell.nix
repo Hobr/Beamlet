@@ -27,6 +27,7 @@ rec {
       pkg-config
 
       rustToolchain
+      mold
       cargo-binstall
 
       androidSdk.androidsdk
