@@ -22,7 +22,6 @@ tokio-stream = { version = "0.1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["full"] }
 
 kameo = { version = "0.22", features = ["metrics", "remote"] }
-libp2p = { version = "0.57", features = ["full"] }
 rmqtt = { version = "0.24", features = ["full"] }
 
 axum = { version = "0.8", features = ["http2", "ws"] }
@@ -30,6 +29,8 @@ reqwest = { version = "0.13", features = ["brotli", "cookies", "deflate", "gzip"
 tower = "0.5"
 tower-http = "0.7"
 
+rquickjs = { version = "0.14", features = ["full"] }
+rune = "0.14"
 wasmtime = "50"
 wasmtime-wasi = "50"
 
@@ -38,7 +39,7 @@ sea-orm = { version = "2", features = ["macros", "runtime-tokio", "runtime-tokio
 tempfile = "3.27"
 
 blake3 = { version = "1.8", features = ["rayon"] }
-uuid = { version = "1.29", features = ["v4", "v5", "v7"] }
+uuid = { version = "1.29", features = ["serde", "v4", "v5", "v7"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
