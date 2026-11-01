@@ -108,4 +108,7 @@ rust-project.json
 
 # End of https://www.toptal.com/developers/gitignore/api/emacs,linux,direnv,visualstudiocode,rust,rust-analyzer
 
+# cargo about
+licenses.html
+
 .DS_Store
