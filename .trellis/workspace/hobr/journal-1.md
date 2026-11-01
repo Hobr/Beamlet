@@ -37,3 +37,37 @@ Recorded and archived the high-level Rune-first backend direction at user reques
 ### Next Steps
 
 - No active implementation work; create a new task only when experiments or implementation are explicitly requested.
+
+
+## Session 2: Bootstrap source-backed Beamlet specs
+<!-- trellis-session: v=2 fp=fbbf0acf11d00af5 -->
+
+**Date**: 2026-11-01
+**Task**: Bootstrap source-backed Beamlet specs
+**Branch**: `dev`
+
+### Summary
+
+Completed and archived the source-backed workspace and Console spec bootstrap at user request. Documentation-only changes; no product code or runtime experiments. Changes remain uncommitted.
+
+### Main Changes
+
+- Replaced generic guidance with 10 English spec documents, including root and Console indexes.
+- Removed inactive database/logging templates, relocated error handling to Console, and preserved future architecture as unimplemented context.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] Static checks passed: 75 local links/anchors, complete index reachability, 3 source-matched Rust snippets, and task manifests.
+- [OK] Rust builds/tests, product execution, engine experiments, and dependency updates were intentionally not run.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- No active task; documentation and closure records await an explicit commit request.
