@@ -1,7 +1,7 @@
 #:schema https://www.schemastore.org/prek.json
 
 fail_fast = false
-exclude = '^licenses\.html$'
+exclude = '^(licenses\.html|Cargo\.lock)$'
 
 [[repos]]
 repo = "builtin"
