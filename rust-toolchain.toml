@@ -10,6 +10,7 @@ components = [
   "llvm-tools",
 ]
 targets = [
+  "wasm32-wasip2",
   "wasm32-unknown-unknown",
   "aarch64-linux-android",
   "i686-linux-android",

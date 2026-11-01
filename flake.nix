@@ -41,6 +41,7 @@
                 ];
 
                 targets = [
+                  "wasm32-wasip2"
                   "wasm32-unknown-unknown"
 
                   "aarch64-linux-android"
