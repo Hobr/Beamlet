@@ -13,6 +13,7 @@ repository = "https://github.com/Hobr/Beamlet"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+futures = "0.3"
 rayon = "1.12"
 tokio = { version = "1.54", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["full"] }
@@ -49,8 +50,6 @@ tracing-journald = "0.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 clap = { version = "4.6", features = ["derive", "string", "unicode"] }
-crossterm = "0.29"
-ratatui = "0.30"
 reedline = { version = "0.52", features = ["bashisms", "sqlite", "system_clipboard"] }
 tachyonfx = "0.25"
 
