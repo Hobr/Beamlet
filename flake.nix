@@ -10,11 +10,6 @@
     flakelight ./. {
       inherit inputs;
 
-      nixpkgs.config = {
-        allowUnfree = true;
-        android_sdk.accept_license = true;
-      };
-
       withOverlays = [
         inputs.rust-overlay.overlays.default
 
@@ -42,17 +37,6 @@
 
                 targets = [
                   "wasm32-wasip2"
-                  "wasm32-unknown-unknown"
-
-                  "aarch64-linux-android"
-                  "i686-linux-android"
-                  "armv7-linux-androideabi"
-                  "x86_64-linux-android"
-
-                  "x86_64-apple-ios"
-                  "aarch64-apple-ios"
-                  "aarch64-apple-ios-sim"
-                  "aarch64-apple-darwin"
                 ];
               };
         })

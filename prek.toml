@@ -35,15 +35,6 @@ hooks = [
 repo = "local"
 
 [[repos.hooks]]
-id = "dioxus-fmt"
-name = "Dioxus RSX format"
-description = "Format RSX macros with the Dioxus CLI."
-entry = "dx fmt"
-language = "system"
-files = '(\.rs$|(^|/)\.?rustfmt\.toml$)'
-pass_filenames = false
-
-[[repos.hooks]]
 id = "cargo-fmt"
 name = "cargo fmt"
 description = "Format files with rustfmt."

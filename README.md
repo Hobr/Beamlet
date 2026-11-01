@@ -10,18 +10,8 @@
 
 ```bash
 apt install rustup \
-    cargo-binstall \
-    just \
-    libwebkit2gtk-4.1-dev \
-    build-essential \
-    curl \
-    wget \
-    file \
-    libxdo-dev \
-    libssl-dev \
-    libayatana-appindicator3-dev \
-    librsvg2-dev \
-    lld
+  cargo-binstall \
+  just
 ```
 
 #### Nix
@@ -54,8 +44,6 @@ just install-dev
 # Run
 just console
 just node
-just web
-just desktop
 
 # Build
 just build
@@ -81,21 +69,4 @@ just license
 
 # Update
 just update
-```
-
-### Mobile
-
-[Dioxus for Android/iOS](https://dioxuslabs.com/learn/0.7/guides/platforms/mobile/)
-
-#### Android
-
-```bash
-# Create emulator
-avdmanager create avd \
-    --name beamlet \
-    --package 'system-images;android-34;google_apis;x86_64' \
-    --device pixel_7
-
-# Serve
-just android
 ```
