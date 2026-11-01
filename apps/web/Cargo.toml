@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 beamlet-ui = { workspace = true }
 dioxus = { workspace = true, features = ["router"] }
+gloo = "0.12"
 lucide-dioxus.workspace = true
 
 [features]

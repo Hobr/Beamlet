@@ -10,7 +10,7 @@ default:
     @just --list
 
 install-dev:
-    cargo binstall prek cargo-deny cargo-nextest cargo-update cargo-about dioxus-cli -y --force
+    cargo binstall prek cargo-deny cargo-nextest cargo-update cargo-about dioxus-cli sea-orm-cli -y --force
     cargo deny fetch
 
 console *args:
