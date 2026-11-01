@@ -88,7 +88,7 @@ doc:
 license:
     cargo about generate --workspace about.hbs > licenses.html
 
-update: && license
+update:
     cargo install-update -a
     cargo update
     cargo deny fetch
