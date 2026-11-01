@@ -1,0 +1,30 @@
+{
+  "id": "rune-durable-codemode",
+  "name": "rune-durable-codemode",
+  "title": "Freeze Rune-first Codemode architecture",
+  "description": "Freeze the high-level Rune-first Codemode backend direction only; detailed design, code experiments, and implementation are deferred.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "hobr",
+  "assignee": "hobr",
+  "createdAt": "2026-11-01",
+  "completedAt": "2026-11-01",
+  "branch": null,
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Closed at the user request after recording the high-level Rune-first architecture. Documentation-only completion: no product-code changes, code experiments, or runtime testing. Detailed design and all backend implementation acceptance criteria remain deferred.",
+  "meta": {
+    "completion_scope": "high_level_design_freeze",
+    "implementation": "deferred",
+    "code_experiments": "not_run"
+  }
+}

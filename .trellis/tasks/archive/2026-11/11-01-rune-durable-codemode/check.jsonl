@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/index.md","reason":"Verify applicable guideline status without treating placeholder examples as implemented conventions."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review transaction boundaries, shared codecs, result order, and failure propagation."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check single Operation model and absence of parallel engine/domain abstractions."}
+{"file":".trellis/tasks/archive/2026-11/11-01-rune-durable-codemode/research/baseline-and-gates.md","reason":"Distinguish proven behavior from claims; check PRD acceptance and stop on unsound Rune identity or limits."}
