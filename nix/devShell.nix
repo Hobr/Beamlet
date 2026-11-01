@@ -1,17 +1,14 @@
-pkgs:
-rec {
-  packages =
-    with pkgs;
-    [
-      pkg-config
+pkgs: rec {
+  packages = with pkgs; [
+    pkg-config
 
-      rustToolchain
-      mold
-      cargo-binstall
+    rustToolchain
+    mold
+    cargo-binstall
 
-      just
-      just-lsp
-    ];
+    just
+    just-lsp
+  ];
 
   env = with pkgs; rec {
     LD_LIBRARY_PATH = lib.makeLibraryPath packages;
