@@ -13,11 +13,13 @@ repository = "https://github.com/Hobr/Beamlet"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+rayon = "1.12"
 tokio = { version = "1.54", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["full"] }
 
 kameo = { version = "0.22", features = ["metrics", "remote"] }
+libp2p = { version = "0.57", features = ["full"] }
 rmqtt = { version = "0.24", features = ["full"] }
 
 axum = { version = "0.8", features = ["http2", "ws"] }
@@ -25,16 +27,21 @@ reqwest = { version = "0.13", features = ["brotli", "cookies", "deflate", "gzip"
 tower = "0.5"
 tower-http = "0.7"
 
-rayon = "1.12"
 wasmtime = "50"
 wasmtime-wasi = "50"
 
 config = "0.15"
 sea-orm = { version = "2", features = ["macros", "runtime-tokio", "runtime-tokio-rustls", "sqlx-mysql", "sqlx-postgres", "sqlx-sqlite", "with-uuid"] }
+tempfile = "3.27"
+
+blake3 = { version = "1.8", features = ["rayon"] }
+uuid = { version = "1.29", features = ["v4", "v5", "v7"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-error = "0.2"
@@ -49,3 +56,5 @@ tachyonfx = "0.25"
 
 anyhow = "1"
 thiserror = "2"
+
+proptest = "1.12"
