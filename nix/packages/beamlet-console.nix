@@ -22,6 +22,7 @@ in
         ../../Cargo.toml
         ../../Cargo.lock
         ../../apps
+        ../../crates
       ];
     };
     cargoLock.lockFile = ../../Cargo.lock;
