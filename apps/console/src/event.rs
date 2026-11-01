@@ -48,8 +48,23 @@ pub struct EventHandler {
     receiver: mpsc::UnboundedReceiver<Event>,
 }
 
+impl Default for EventHandler {
+    /// Starts event handling using the current Tokio runtime.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called outside a Tokio runtime.
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventHandler {
-    /// Constructs a new instance of [`EventHandler`] and spawns a new thread to handle events.
+    /// Constructs a new instance of [`EventHandler`] and spawns a task to handle events.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called outside a Tokio runtime.
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
         let actor = EventTask::new(sender.clone());
