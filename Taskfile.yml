@@ -50,6 +50,13 @@ tasks:
     cmds:
       - gup update
 
+  licenses:
+    desc: Generate the dependency's licenses
+    cmds:
+      - go-licenses check --include_tests ./...
+      - go-licenses report --include_tests ./... > licenses.csv
+      - go-licenses save ./... --save_path=third_party_licenses
+
   install-dev:
     desc: Install Go development tools
     cmds:
@@ -61,6 +68,7 @@ tasks:
           - golang.org/x/tools/cmd/stringer
           - golang.org/x/tools/cmd/toolstash
           - golang.org/x/vuln/cmd/govulncheck
+          - github.com/google/go-licenses/v2
           - honnef.co/go/tools/cmd/staticcheck
           - go.uber.org/nilaway/cmd/nilaway
           - github.com/kisielk/errcheck

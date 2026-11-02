@@ -37,6 +37,9 @@ go install golang.org/x/tools/cmd/toolstash@latest
 # Go Vulncheck
 go install golang.org/x/vuln/cmd/govulncheck@latest
 
+# Go Licenses
+go install github.com/google/go-licenses/v2@latest
+
 # Go-tools
 go install honnef.co/go/tools/cmd/staticcheck@latest
 
