@@ -9,6 +9,21 @@ pkgs: {
     nats-server
     natscli
     nats-top
+
+    kubectl
+    k9s
+    kind
+
+    (wrapHelm kubernetes-helm {
+      plugins = with pkgs.kubernetes-helmPlugins; [
+        helm-diff
+        helm-unittest
+        helm-secrets
+        helm-git
+        helm-dt
+        helm-schema
+      ];
+    })
   ];
 
   env = {

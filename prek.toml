@@ -6,7 +6,7 @@ exclude = '^(licenses\.html|Cargo\.lock)$'
 [[repos]]
 repo = "builtin"
 hooks = [
-  { id = "check-yaml" },
+  { id = "check-yaml", exclude = "^charts/" },
   { id = "check-toml" },
   { id = "check-case-conflict" },
   { id = "check-added-large-files" },
@@ -33,5 +33,5 @@ hooks = [
 repo = "https://github.com/google/yamlfmt"
 rev = "v0.21.0"
 hooks = [
-  { id = "yamlfmt", args = ["-formatter", "retain_line_breaks_single=true"], exclude = '^\.goreleaser\.yaml$' },
+  { id = "yamlfmt", args = ["-formatter", "retain_line_breaks_single=true"], exclude = '(^\.goreleaser\.yaml$|^charts/)' },
 ]
