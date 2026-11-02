@@ -27,33 +27,20 @@ If don't want to install go-task:
 # Gopls
 go install golang.org/x/tools/gopls@latest
 
-# Go Tools
-go install golang.org/x/tools/cmd/goimports@latest
-go install golang.org/x/tools/cmd/callgraph@latest
-go install golang.org/x/tools/cmd/digraph@latest
-go install golang.org/x/tools/cmd/stringer@latest
-go install golang.org/x/tools/cmd/toolstash@latest
-
 # Go Vulncheck
 go install golang.org/x/vuln/cmd/govulncheck@latest
-
-# Go Licenses
-go install github.com/google/go-licenses/v2@latest
-
-# Go-tools
-go install honnef.co/go/tools/cmd/staticcheck@latest
-
-# Nilway
-go install go.uber.org/nilaway/cmd/nilaway@latest
-
-# Errcheck
-go install github.com/kisielk/errcheck@latest
 
 # Panicparse
 go install github.com/maruel/panicparse/v2/cmd/pp@latest
 
 # Delve
 go install github.com/go-delve/delve/cmd/dlv@latest
+
+# Go Licenses
+go install github.com/google/go-licenses/v2@latest
+
+# Gup
+go install github.com/nao1215/gup@latest
 ```
 
 #### Nix

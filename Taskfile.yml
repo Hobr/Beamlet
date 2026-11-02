@@ -6,16 +6,13 @@ tasks:
   fmt:
     desc: Format Go code and organize imports (modifies files)
     cmds:
-      - goimports -w .
+      - golangci-lint fmt
       - prek run --all-files
 
   lint:
     desc: Run Go static analysis and error checks
     cmds:
-      - go vet ./...
       - golangci-lint run
-      - staticcheck ./...
-      - errcheck ./...
 
   test:
     desc: Run all Go tests
@@ -62,17 +59,9 @@ tasks:
     cmds:
       - for:
           - golang.org/x/tools/gopls
-          - golang.org/x/tools/cmd/goimports
-          - golang.org/x/tools/cmd/callgraph
-          - golang.org/x/tools/cmd/digraph
-          - golang.org/x/tools/cmd/stringer
-          - golang.org/x/tools/cmd/toolstash
           - golang.org/x/vuln/cmd/govulncheck
-          - github.com/google/go-licenses/v2
-          - honnef.co/go/tools/cmd/staticcheck
-          - go.uber.org/nilaway/cmd/nilaway
-          - github.com/kisielk/errcheck
           - github.com/maruel/panicparse/v2/cmd/pp
           - github.com/go-delve/delve/cmd/dlv
+          - github.com/google/go-licenses/v2
           - github.com/nao1215/gup
         cmd: go install {{.ITEM}}@latest
