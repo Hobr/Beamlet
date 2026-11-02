@@ -28,3 +28,10 @@ hooks = [
   { id = "tombi-format", args = ["--offline"] },
   { id = "tombi-lint", args = ["--offline"] },
 ]
+
+[[repos]]
+repo = "https://github.com/google/yamlfmt"
+rev = "v0.21.0"
+hooks = [
+  { id = "yamlfmt", args = ["-formatter", "retain_line_breaks_single=true"], exclude = '^\.goreleaser\.yaml$' },
+]
