@@ -1,0 +1,30 @@
+#:schema https://www.schemastore.org/prek.json
+
+fail_fast = false
+exclude = '^(licenses\.html|Cargo\.lock)$'
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "check-yaml" },
+  { id = "check-toml" },
+  { id = "check-case-conflict" },
+  { id = "check-added-large-files" },
+  { id = "check-symlinks" },
+  { id = "check-illegal-windows-names" },
+  { id = "check-merge-conflict", args = ["--assume-in-merge"] },
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "fix-byte-order-marker" },
+  { id = "mixed-line-ending" },
+  { id = "detect-private-key" },
+  { id = "destroyed-symlinks" },
+]
+
+[[repos]]
+repo = "https://github.com/tombi-toml/tombi-pre-commit"
+rev = "v1.9.8"
+hooks = [
+  { id = "tombi-format", args = ["--offline"] },
+  { id = "tombi-lint", args = ["--offline"] },
+]
