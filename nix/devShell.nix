@@ -10,4 +10,8 @@ pkgs: {
     GO111MODULE = "on";
     GOPROXY = "https://goproxy.cn";
   };
+
+  shellHook = ''
+    export PATH="$(go env GOBIN):$PATH"
+  '';
 }
