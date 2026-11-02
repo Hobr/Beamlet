@@ -1,4 +1,0 @@
-{"file":".trellis/spec/backend/index.md","reason":"Locate backend guidelines; most are bootstrap templates, not established implementation evidence."}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace admission, persistence, remote delivery, and guest result boundaries."}
-{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Preserve the existing workspace and avoid duplicate execution or payload models."}
-{"file":".trellis/tasks/archive/2026-11/11-01-rune-durable-codemode/research/baseline-and-gates.md","reason":"Use the verified repository baseline, frozen constraints, and Rune feasibility gates; follow the task PRD, design, and plan."}

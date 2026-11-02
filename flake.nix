@@ -1,7 +1,6 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    rust-overlay.url = "github:oxalica/rust-overlay";
     flakelight.url = "github:nix-community/flakelight";
   };
 
@@ -10,36 +9,35 @@
     flakelight ./. {
       inherit inputs;
 
-      withOverlays = [
-        inputs.rust-overlay.overlays.default
+      devShell = pkgs: {
+        packages = with pkgs; [
+          go_latest
 
-        (final: prev: {
-          rustToolchain =
-            let
-              rust = prev.rust-bin;
-            in
-            if builtins.pathExists ./rust-toolchain.toml then
-              rust.fromRustupToolchainFile ./rust-toolchain.toml
+          gopls
+          gotools
+          golangci-lint
+          govulncheck
+          go-tools
+          nilaway
+          errcheck
+          panicparse
+          delve
 
-            else if builtins.pathExists ./rust-toolchain then
-              rust.fromRustupToolchainFile ./rust-toolchain
+          pre-commit
+        ];
 
-            else
-              rust.stable."1.99.1".default.override {
-                extensions = [
-                  "rust-src"
-                  "rustfmt"
-                  "rust-analyzer"
-                  "clippy"
-                  "cargo"
-                  "llvm-tools"
-                ];
+        env = {
+          GO111MODULE = "on";
+          GOPROXY = "https://goproxy.cn";
+        };
+      };
 
-                targets = [
-                  "wasm32-wasip2"
-                ];
-              };
-        })
-      ];
+      packages = pkgs: {
+        server = pkgs.buildGoModule {
+          src = ./.;
+          vendorHash = null;
+          subPackages = [ "cmd/server" ];
+        };
+      };
     };
 }
