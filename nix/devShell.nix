@@ -2,8 +2,13 @@ pkgs: {
   packages = with pkgs; [
     go_latest
     golangci-lint
+
     prek
     go-task
+
+    nats-server
+    natscli
+    nats-top
   ];
 
   env = {
