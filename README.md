@@ -41,6 +41,9 @@ go install github.com/google/go-licenses/v2@latest
 
 # Gup
 go install github.com/nao1215/gup@latest
+
+# GoReleaser
+go install github.com/goreleaser/goreleaser/v2@latest
 ```
 
 #### Nix
