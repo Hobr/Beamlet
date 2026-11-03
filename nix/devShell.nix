@@ -1,37 +1,22 @@
-pkgs: {
+pkgs: rec {
   packages = with pkgs; [
-    go_latest
-    golangci-lint
+    pkg-config
 
-    prek
-    go-task
+    rustToolchain
+    mold
+    cargo-binstall
 
-    nats-server
-    natscli
-    nats-top
-
-    kubectl
-    k9s
-    kind
-
-    (wrapHelm kubernetes-helm {
-      plugins = with pkgs.kubernetes-helmPlugins; [
-        helm-diff
-        helm-unittest
-        helm-secrets
-        helm-git
-        helm-dt
-        helm-schema
-      ];
-    })
+    just
+    just-lsp
   ];
 
-  env = {
-    GO111MODULE = "on";
-    GOPROXY = "https://goproxy.cn";
+  env = with pkgs; rec {
+    LD_LIBRARY_PATH = lib.makeLibraryPath packages;
+    RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
   };
 
   shellHook = ''
-    export PATH="$(go env GOBIN):$PATH"
+    export CARGO_HOME="$PWD/.cargo"
+    export PATH="$CARGO_HOME/bin:$PWD/target/debug:$PATH"
   '';
 }
