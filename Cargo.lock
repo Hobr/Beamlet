@@ -19,6 +19,10 @@ name = "beamlet-agent-tool"
 version = "0.1.0"
 
 [[package]]
+name = "beamlet-console"
+version = "0.1.0"
+
+[[package]]
 name = "beamlet-durable"
 version = "0.1.0"
 

@@ -1,10 +1,14 @@
 pkgs: rec {
   packages = with pkgs; [
     pkg-config
+    mold
 
     rustToolchain
     mold
     cargo-binstall
+
+    flutter
+    dart
 
     just
     just-lsp
