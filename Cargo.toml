@@ -1,6 +1,19 @@
 [workspace]
 resolver = "3"
 members = [
+  "kernel/beamlet",
+  "kernel/beamlet-durable",
+  "kernel/beamlet-kernel",
+
+  "adapters/beamlet-message-nats",
+  "adapters/beamlet-message-zenoh",
+
+  "agent/beamlet-agent",
+  "agent/beamlet-agent-llm",
+  "agent/beamlet-agent-tool",
+
+  "app/beamlet-console",
+  "app/beamlet-node",
 ]
 
 [workspace.package]
