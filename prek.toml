@@ -25,7 +25,7 @@ hooks = [
 
 [[repos]]
 repo = "https://github.com/tombi-toml/tombi-pre-commit"
-rev = "v1.9.8"
+rev = "v1.9.9"
 hooks = [
   { id = "tombi-format", args = ["--offline"] },
   { id = "tombi-lint", args = ["--offline"] },
