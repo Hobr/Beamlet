@@ -25,7 +25,6 @@ license = "Apache-2.0"
 
 [workspace.dependencies]
 futures = "0.3"
-kameo = "0.22"
 rayon = "1.12"
 tokio = { version = "1.54", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["full"] }
@@ -35,14 +34,15 @@ async-nats = "0.51"
 zenoh = { version = "1.10", features = ["shared-memory", "stats", "uring"] }
 
 axum = { version = "0.8", features = ["http2", "ws"] }
-reqwest = { version = "0.13", features = ["brotli", "cookies", "deflate", "gzip", "json", "socks", "stream", "zstd"] }
 tower = "0.5"
 tower-http = "0.7"
 
-rquickjs = { version = "0.14", features = ["full"] }
-rune = "0.14"
 wasmtime = "50"
 wasmtime-wasi = "50"
+
+reqwest = { version = "0.13", features = ["brotli", "cookies", "deflate", "gzip", "json", "socks", "stream", "zstd"] }
+rquickjs = { version = "0.14", features = ["full"] }
+rune = "0.14"
 
 config = "0.15"
 diesel = { version = "2.3", features = ["sqlite"] }
@@ -73,10 +73,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
 thiserror = "2"
 
+criterion = { version = "0.8", features = ["html_reports"] }
 proptest = "1.12"
 
 [profile.release]
-opt-level = "s"
-strip = true
+opt-level = 3
+strip = "debuginfo"
 lto = true
 codegen-units = 1

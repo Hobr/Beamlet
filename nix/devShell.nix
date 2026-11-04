@@ -12,6 +12,9 @@ pkgs: rec {
 
     just
     just-lsp
+
+    samply
+    heaptrack
   ];
 
   env = with pkgs; rec {
