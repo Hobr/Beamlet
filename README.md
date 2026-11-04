@@ -2,6 +2,19 @@
 
 **WIP**, with broken changes before the first release.
 
+## Usage
+
+### Nix
+
+```bash
+# List
+nix flake show github:Hobr/Beamlet
+
+# Node
+nix run github:Hobr/Beamlet#beamlet-node -- --version
+nix run github:Hobr/Beamlet#beamlet-console -- --version
+```
+
 ## Build
 
 ### Development Environment
