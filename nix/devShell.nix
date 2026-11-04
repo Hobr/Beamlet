@@ -15,6 +15,9 @@ pkgs: rec {
 
     samply
     heaptrack
+
+    temurin-bin
+    quint
   ];
 
   env = with pkgs; rec {

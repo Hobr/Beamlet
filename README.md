@@ -39,6 +39,12 @@ echo 'use flake' > .envrc
 direnv allow
 ```
 
+#### Quint (Optional)
+
+```bash
+npm i @informalsystems/quint -g
+```
+
 #### AI (Optional)
 
 ```bash
