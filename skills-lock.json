@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "skills": {
+    "quint-execute-spec": {
+      "source": "quint-co/quint-llm-kit",
+      "sourceType": "github",
+      "skillPath": "quint-llm-kit-plugin/skills/quint-execute-spec/SKILL.md",
+      "computedHash": "f3b31d464f928c5c91ec11619dc6ae86206b52521b94525528e07915870399a2"
+    },
+    "quint-lang": {
+      "source": "quint-co/quint-llm-kit",
+      "sourceType": "github",
+      "skillPath": "quint-llm-kit-plugin/skills/quint-lang/SKILL.md",
+      "computedHash": "36f0537bdad934309064e01c12182174e037ac9452cf95430d832361d4596132"
+    },
+    "quint-modeling": {
+      "source": "quint-co/quint-llm-kit",
+      "sourceType": "github",
+      "skillPath": "quint-llm-kit-plugin/skills/quint-modeling/SKILL.md",
+      "computedHash": "6dbc289c299a0697903182baf8f34aa1b9417867d02efa2b2e390767f3cb8b05"
+    },
+    "rust-best-practices": {
+      "source": "morganlinton/BeautifulRust",
+      "sourceType": "github",
+      "skillPath": "skills/rust-best-practices/SKILL.md",
+      "computedHash": "33e21c7a60ee545691185a3c499908dfc10205cde95c855e31975f3e4c264bee"
+    },
+    "rust-port": {
+      "source": "morganlinton/BeautifulRust",
+      "sourceType": "github",
+      "skillPath": "skills/rust-port/SKILL.md",
+      "computedHash": "049b502f5aded5b47f79892687f8a922d52b388755e9792e4b0714a3e97cd409"
+    },
+    "rust-review": {
+      "source": "morganlinton/BeautifulRust",
+      "sourceType": "github",
+      "skillPath": "skills/rust-review/SKILL.md",
+      "computedHash": "af430a1aeaed47f1052b48ec974a6a5360c4e4f2b26c83f1d4ae0f88ae174e72"
+    }
+  }
+}

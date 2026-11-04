@@ -54,3 +54,4 @@ update:
     cargo deny fetch
     prek autoupdate
     nix flake update
+    npx skills update
