@@ -26,6 +26,17 @@ repository = "https://github.com/Hobr/Beamlet"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+beamlet = { path = "kernel/beamlet" }
+beamlet-durable = { path = "kernel/beamlet-durable" }
+beamlet-kernel = { path = "kernel/beamlet-kernel" }
+
+beamlet-agent = { path = "agent/beamlet-agent" }
+beamlet-agent-llm = { path = "agent/beamlet-agent-llm" }
+beamlet-agent-tool = { path = "agent/beamlet-agent-tool" }
+
+beamlet-message-nats = { path = "adapters/beamlet-message-nats" }
+beamlet-message-zenoh = { path = "adapters/beamlet-message-zenoh" }
+
 futures = "0.3"
 rayon = "1.12"
 tokio = { version = "1.54", features = ["full"] }
