@@ -209,8 +209,11 @@ version = "0.1.0"
 name = "beamlet-console"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "beamlet-agent",
+ "beamlet-message-zenoh",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -242,7 +245,9 @@ dependencies = [
 name = "beamlet-node"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "beamlet-agent",
+ "beamlet-message-zenoh",
  "serde_json",
  "tokio",
 ]
