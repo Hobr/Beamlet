@@ -9,3 +9,6 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+beamlet-agent = { workspace = true, features = ["test-support"] }
+
+tokio.workspace = true

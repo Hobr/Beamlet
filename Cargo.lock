@@ -34,6 +34,10 @@ version = "0.1.0"
 [[package]]
 name = "beamlet-console"
 version = "0.1.0"
+dependencies = [
+ "beamlet-agent",
+ "tokio",
+]
 
 [[package]]
 name = "beamlet-durable"
@@ -57,6 +61,11 @@ version = "0.1.0"
 [[package]]
 name = "beamlet-node"
 version = "0.1.0"
+dependencies = [
+ "beamlet-agent",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "bitflags"
