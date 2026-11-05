@@ -1,27 +1,37 @@
 //! 应用执行入口: 关联意图, 派发授权并收录完成证据, 不实现自主 Agent Loop
 
-use beamlet::{executor::Executor, memory::Authority};
+mod authority;
+mod work;
+
+pub use authority::Authority;
 use std::future::Future;
 use thiserror::Error;
+pub use work::Work;
+
+/// 显式启用的固定假任务与 v0 JSON 测试支持, 不属于通用 Agent 契约
+#[cfg(feature = "test-support")]
+pub mod testing;
 
 /// 应用只依赖本 crate 即可配置, 提交和查询, 不需要直接导入底层 crate
 pub use beamlet::{
     executor::ExecutorError,
     id,
     memory::{
-        Admission, Limits, OperationPhase, OperationView, StateError, Submission, WaitStatus,
+        Admission, Limits, OperationPhase, OperationView, ReportDisposition, StateError,
+        Submission, WaitStatus,
     },
     model, state,
 };
 use id::{AttemptId, NodeInstanceId, OperationId, ReportId};
-use model::{Delivery, DispatchAttempt, Message, Operation, SubmitReport};
+use model::{Delivery, DispatchAttempt, Operation, SubmitReport};
 
-/// 调用方显式推进的内存执行用例, 隐藏 Authority 与 Work 的组装循环
+/// 兼容的单进程组合入口, 将独立 Authority 与 Work 通过本地交付连接
+///
+/// 需要自行交付消息时, 分别使用 [`Authority`] 与 [`Work`]
 #[derive(Debug)]
 pub struct Agent<P, O, E> {
-    instance: NodeInstanceId,
     authority: Authority<P, O, E>,
-    executor: Executor<P, O, E>,
+    work: Work<P, O, E>,
 }
 
 impl<P, O, E> Agent<P, O, E>
@@ -40,9 +50,8 @@ where
         limits: Limits,
     ) -> Result<Self, AgentError> {
         Ok(Self {
-            instance,
             authority: Authority::new(instance, workers.clone(), limits)?,
-            executor: Executor::new(instance, workers, limits)?,
+            work: Work::new(instance, workers, limits)?,
         })
     }
 
@@ -57,16 +66,9 @@ where
         attempt: AttemptId,
     ) -> Result<Submission<P, O, E>, AgentError> {
         let id = operation.operation_id;
-        let accepted = self.authority.submit(
-            Delivery::new(
-                self.instance,
-                self.instance,
-                Message::SubmitOperation(operation),
-            ),
-            attempt,
-        )?;
+        let accepted = self.authority.submit(operation, attempt)?;
         if accepted.admission == Admission::New {
-            self.executor.accept(accepted.dispatch.clone())?;
+            self.work.receive_dispatch(accepted.dispatch.clone())?;
             self.authority.mark_dispatched(id)?;
         }
         Ok(accepted)
@@ -87,8 +89,7 @@ where
         F: Fn(DispatchAttempt<P>) -> Fut,
         Fut: Future<Output = SubmitReport<O, E>> + Send + 'static,
     {
-        self.executor.start_ready(execute);
-        let Some(report) = self.executor.complete_next().await? else {
+        let Some(report) = self.work.next_report(execute).await? else {
             return Ok(None);
         };
         self.authority.receive_report(report.clone())?;
@@ -125,7 +126,3 @@ pub enum AgentError {
     #[error(transparent)]
     Executor(#[from] ExecutorError),
 }
-
-/// 显式启用的固定假任务与 v0 JSON 测试支持, 不属于通用 Agent 契约
-#[cfg(feature = "test-support")]
-pub mod testing;
