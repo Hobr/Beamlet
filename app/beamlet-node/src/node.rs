@@ -184,6 +184,7 @@ pub async fn run(path: &str) -> Result<()> {
             .await?;
         let mut observations = Observations::new(authority.instance, &authority.workers)?;
         let mut local = HashMap::new();
+        let mut local_announcements = Vec::new();
         for worker in config
             .workers
             .iter()
@@ -199,20 +200,22 @@ pub async fn run(path: &str) -> Result<()> {
                     beamlet_agent::Limits::default(),
                 )?,
             );
-            observations.record(Announcement::started(
+            let announcement = Announcement::started(
                 config.node_id,
                 Uuid::from_u128(node_instance.as_u128()),
                 worker.id,
                 worker.instance,
                 worker.authority,
-            ))?;
+            );
+            observations.record(announcement.clone())?;
+            local_announcements.push(announcement);
         }
         authorities.push((
             combined,
             authority,
             local,
             prefix,
-            (observations, announcements),
+            (observations, announcements, local_announcements),
         ));
     }
     for worker in config.workers {
@@ -225,8 +228,13 @@ pub async fn run(path: &str) -> Result<()> {
         let inbox = roles::worker_inbox(worker.instance.as_u128().into());
         workers.push((transport.subscribe(&inbox).await?, worker));
     }
-    for ((requests, reports), authority, local, prefix, (observations, announcements)) in
-        authorities
+    for (
+        (requests, reports),
+        authority,
+        local,
+        prefix,
+        (observations, announcements, local_announcements),
+    ) in authorities
     {
         tasks.spawn(async move {
             tokio::try_join!(
@@ -242,7 +250,7 @@ pub async fn run(path: &str) -> Result<()> {
                     local,
                     prefix,
                 ),
-                observations.serve(announcements)
+                observations.serve(announcements, local_announcements)
             )
             .map(|_| ())
         });
@@ -258,10 +266,7 @@ pub async fn run(path: &str) -> Result<()> {
         let publisher = Arc::clone(&transport);
         tasks.spawn(async move {
             tokio::try_join!(
-                async {
-                    lifecycle::announce(&publisher, announcement).await;
-                    Ok::<_, anyhow::Error>(())
-                },
+                lifecycle::maintain(&publisher, announcement),
                 roles::serve_worker(
                     worker_transport,
                     worker.instance.as_u128().into(),
