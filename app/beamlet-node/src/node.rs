@@ -19,7 +19,10 @@ use serde::Deserialize;
 use tokio::{fs, task::JoinSet};
 use uuid::Uuid;
 
-use crate::roles;
+use crate::{
+    lifecycle::{self, Announcement, Observations},
+    roles,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -81,6 +84,10 @@ impl Config {
         }
         for authority in &self.authorities {
             let mut workers = HashSet::new();
+            ensure!(
+                authority.workers.len() <= lifecycle::MAX_WORKERS,
+                "每个 Authority 最多配置 64 个 Worker 实例"
+            );
             ensure!(
                 !authority.workers.is_empty(),
                 "Authority 至少需要一个 Worker"
@@ -148,13 +155,15 @@ pub async fn run(path: &str) -> Result<()> {
         println!("Worker 身份: 逻辑身份={id} 运行实例={instance} 所属 Node 实例={node_instance}");
     }
     let subscription = format!("beamlet/v0/node-session/{node_instance}/inbox");
-    let transport = Transport::node(
-        &config.listen,
-        &config.connect,
-        &subscription,
-        Limits::default(),
-    )
-    .await?;
+    let transport = Arc::new(
+        Transport::node(
+            &config.listen,
+            &config.connect,
+            &subscription,
+            Limits::default(),
+        )
+        .await?,
+    );
     let mut tasks = JoinSet::new();
     // 先声明所有订阅再启动角色, 避免共享会话中的局部启动顺序影响就绪
     let mut authorities = Vec::new();
@@ -170,6 +179,10 @@ pub async fn run(path: &str) -> Result<()> {
         let reports = transport.subscribe(&roles::report_inbox(instance)).await?;
         // 两种地址各有独立有界队列, 由同一 Authority 驱动处理
         let combined = (requests, reports);
+        let announcements = transport
+            .subscribe(&lifecycle::inbox(authority.instance))
+            .await?;
+        let mut observations = Observations::new(authority.instance, &authority.workers)?;
         let mut local = HashMap::new();
         for worker in config
             .workers
@@ -186,39 +199,77 @@ pub async fn run(path: &str) -> Result<()> {
                     beamlet_agent::Limits::default(),
                 )?,
             );
+            observations.record(Announcement::started(
+                config.node_id,
+                Uuid::from_u128(node_instance.as_u128()),
+                worker.id,
+                worker.instance,
+                worker.authority,
+            ))?;
         }
-        authorities.push((combined, authority, local, prefix));
+        authorities.push((
+            combined,
+            authority,
+            local,
+            prefix,
+            (observations, announcements),
+        ));
     }
     for worker in config.workers {
         if authorities
             .iter()
-            .any(|(_, a, _, _)| a.instance == worker.authority)
+            .any(|(_, a, _, _, _)| a.instance == worker.authority)
         {
             continue;
         }
         let inbox = roles::worker_inbox(worker.instance.as_u128().into());
         workers.push((transport.subscribe(&inbox).await?, worker));
     }
-    for ((requests, reports), authority, local, prefix) in authorities {
-        tasks.spawn(roles::serve_authority_pair(
-            Arc::new(requests),
-            Some(reports),
-            authority.instance.as_u128().into(),
-            authority
-                .workers
-                .into_iter()
-                .map(|id| id.as_u128().into())
-                .collect(),
-            local,
-            prefix,
-        ));
+    for ((requests, reports), authority, local, prefix, (observations, announcements)) in
+        authorities
+    {
+        tasks.spawn(async move {
+            tokio::try_join!(
+                roles::serve_authority_pair(
+                    Arc::new(requests),
+                    Some(reports),
+                    authority.instance.as_u128().into(),
+                    authority
+                        .workers
+                        .into_iter()
+                        .map(|id| id.as_u128().into())
+                        .collect(),
+                    local,
+                    prefix,
+                ),
+                observations.serve(announcements)
+            )
+            .map(|_| ())
+        });
     }
-    for (transport, worker) in workers {
-        tasks.spawn(roles::serve_worker(
-            transport,
-            worker.instance.as_u128().into(),
-            worker.authority.as_u128().into(),
-        ));
+    for (worker_transport, worker) in workers {
+        let announcement = Announcement::started(
+            config.node_id,
+            Uuid::from_u128(node_instance.as_u128()),
+            worker.id,
+            worker.instance,
+            worker.authority,
+        );
+        let publisher = Arc::clone(&transport);
+        tasks.spawn(async move {
+            tokio::try_join!(
+                async {
+                    lifecycle::announce(&publisher, announcement).await;
+                    Ok::<_, anyhow::Error>(())
+                },
+                roles::serve_worker(
+                    worker_transport,
+                    worker.instance.as_u128().into(),
+                    worker.authority.as_u128().into(),
+                ),
+            )
+            .map(|_| ())
+        });
     }
     println!("Node 已就绪: 消息会话共享; 角色数量={}", tasks.len());
     tokio::select! {

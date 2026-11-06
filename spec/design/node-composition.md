@@ -12,7 +12,7 @@ Node 是组合与生命周期容器, 不是业务执行角色. Client 提交意�
 
 目标稳定身份为 NodeId, AuthorityId, WorkerId; 每次启动独立生成 NodeInstanceId, AuthorityInstanceId, WorkerInstanceId. 角色重启不得复用旧运行身份. 公告与心跳只表达观察, 不自动建立信任或授权.
 
-配置模式必须提供稳定的 `node_id` 及每个角色的 `id`, 并单独提供角色运行 `instance`. Node 的运行 ID 每次启动随机生成, 启动日志记录 Node 与各角色的归属关系. 目前角色运行 ID 仍由启动方为本轮部署生成并通过静态配置交换, 不能复用旧值; 自动生成与公告解析尚未实现. `workers` 和 `authority` 引用仍是远端角色的运行实例 ID, Console 的 `--authority` 也仍指运行实例, 尚非稳定逻辑身份路由.
+配置模式必须提供稳定的 `node_id` 及每个角色的 `id`, 并单独提供角色运行 `instance`. Node 的运行 ID 每次启动随机生成, 启动日志记录 Node 与各角色的归属关系. 目前角色运行 ID 仍由启动方为本轮部署生成并通过静态配置交换, 不能复用旧值; 自动生成与公告驱动的实例解析尚未实现. `workers` 和 `authority` 引用仍是远端角色的运行实例 ID, Console 的 `--authority` 也仍指运行实例, 尚非稳定逻辑身份路由.
 
 目标由 Authority 在接纳提交时创建 OperationId. Client SDK 自动创建 SubmissionKey; 同一 Authority 内同键同定义返回原 Operation, 同键不同定义冲突. 去重映射和 Operation 必须作为一次本地接纳建立. 相同意图的新提交仍是新 Operation. Console 不组装底层授权和信封; SDK 暂时只提供 Zenoh, 未来可替换为 socket/HTTP. SDK 丢失提交键及 Operation 引用后, 本阶段不保证恢复请求.
 
@@ -28,6 +28,16 @@ Node 是组合与生命周期容器, 不是业务执行角色. Client 提交意�
 
 本阶段后续交付目标为有界, 纯内存的确认与重投: Attempt 接纳回执和 Report 保留回执分开; 先接纳/保留, 后确认; 重复消息重复确认, 不重复执行. 重投复用原身份和内容. 限制队列, 次数, 退避和截止时间. 达到上限保留未确认状态, 不重建授权或自动改派. 有限重试不保证任意故障下最终交付, 也不解决跨重启或效果恰好一次.
 
+## Worker 启动公告: 当前实现
+
+配置模式下, Authority 为 `beamlet/v0/authority/<authority-instance-simple>/lifecycle/worker/*` 声明独立有界订阅, 与业务收件箱共享同一 Zenoh 会话. Worker 向该前缀下的 `<worker-instance-simple>` 发布一次 `worker_started` 公告. 严格 JSON 包含 `protocol_version: 0`, `kind: "worker_started"`, `node_id`, `node_instance_id`, `worker_id`, `worker_instance_id`, `authority_instance_id`. 单条公告最多 4096 字节; 不接受未知字段或其他版本.
+
+每个 Authority 最多配置 64 个 Worker 实例, 观察表仅为这些实例预留槽位. 公告必须匹配实际路由及目标 Authority 实例. 同实例同内容为重复观察, 同实例更改 Worker 或 Node 归属时拒绝覆盖. 未配置的实例不能借公告进入观察表, 旧实例不会自动替换新实例. 同 Node 的 Worker 由组合入口直接交付同一类型的公告, 不编码或走网络.
+
+运行实例允许列表只是一项绑定校验, 不是网络身份认证. WorkerId 与 Node 归属是未认证的自报元数据; 首次记录不证明这些稳定身份的所有权. 公告不会建立新的信任关系, 不修改授权绑定, 不接纳 Operation 或 Attempt, 不代表 Worker 在线, 也不改变静态调度或收录的 Report.
+
+远端发送与接收 Attempt 并行, 等待订阅及发送共用 10 秒预算, 不自动重试. 发布成功也没有 Authority 收录确认; Authority 缺席或公告丢失时, Worker 仍可接收已配置 Authority 的 Attempt. 超时后才出现的 Authority 不保证见到该公告. 当前没有公告查询 API, 无跨重启保留; 重启后角色实例仍须由部署方更换. 旧 CLI 演示模式尚不发送启动公告.
+
 ## 本批实现状态
 
 已实现:
@@ -37,12 +47,13 @@ Node 是组合与生命周期容器, 不是业务执行角色. Client 提交意�
 - Console 新增 --authority UUID 定向选择配置模式的 Authority, 不再让多个 Authority 收到同一提交. 旧单 Authority 演示命令保持兼容.
 - 64 KiB 配置读取上限, 严格未知字段检查, 重复角色身份和冲突本地绑定在建连前拒绝.
 
+- 配置模式提供有界 Worker 启动公告及实例归属观察; 本地类型化记录, 远端独立订阅, 不影响业务执行语义.
 - 纯 Kernel 定义独立的 Node/Authority/Worker 稳定与运行身份类型, 领域交付只绑定 RoleInstanceId. 组合配置区分稳定 id 与角色运行 instance; Node 每次启动生成新运行 ID. Worker 命名迁移已完成.
 
 未实现, 不应由上述目标推断已经具备:
 
-- 角色运行 ID 的自动生成与公告解析, 稳定逻辑身份路由; 旧 CLI 演示不提供完整的稳定身份配置.
-- 公告, 心跳, Draining 与退出通知; 当前 Ctrl-C 仍退出易失驱动, 无暂停恢复保证.
+- 角色运行 ID 的自动生成与公告驱动的实例解析, 稳定逻辑身份路由; 旧 CLI 演示不提供完整的稳定身份配置.
+- 心跳, Draining 与退出通知; 当前 Ctrl-C 仍退出易失驱动, 无暂停恢复保证.
 - Authority 生成 OperationId, SubmissionKey 与独立 Client SDK. 当前演示仍使用 Console 提供的 OperationId.
 - 接纳回执与确认重投, 跨重启持久化, 在线调度与动态信任注册.
 
