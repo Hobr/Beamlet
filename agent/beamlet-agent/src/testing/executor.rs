@@ -77,7 +77,7 @@ impl WorkerExecutor {
     pub fn worker(&self) -> &Worker<TestTask, Value, String> {
         self.inner
             .worker(self.instance)
-            .expect("single worker remains configured")
+            .expect("单执行方配置必须始终存在")
     }
     /// 按原授权查询缓存证据的协议投影
     pub fn report(&self, id: AttemptId) -> Option<Envelope> {

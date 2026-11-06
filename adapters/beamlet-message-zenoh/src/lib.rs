@@ -232,15 +232,15 @@ impl Sender<'_> {
 #[non_exhaustive]
 pub enum Error {
     /// 字节或队列上限为零
-    #[error("transport limits must be positive")]
+    #[error("传输资源上限必须为正数")]
     InvalidLimits,
     /// 应用消息超过配置上限
-    #[error("message exceeds the transport byte limit")]
+    #[error("消息超过传输字节上限")]
     MessageTooLarge,
     /// 本 Adapter 只接收 Put
-    #[error("delete samples are not supported")]
+    #[error("不支持删除类型的消息")]
     UnexpectedDelete,
     /// 底层 Zenoh 配置或 I/O 错误
-    #[error("zenoh transport failed: {0}")]
+    #[error("Zenoh 传输失败: {0}")]
     Zenoh(#[from] zenoh::Error),
 }

@@ -66,6 +66,15 @@ pub enum Admission {
     Duplicate,
 }
 
+impl std::fmt::Display for Admission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::New => "首次接纳",
+            Self::Duplicate => "重复请求",
+        })
+    }
+}
+
 /// 将客户端请求接纳到内存后的结果
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -86,6 +95,16 @@ pub enum ReportDisposition {
     Additional,
     /// 相同的 Report 已经保留
     Duplicate,
+}
+
+impl std::fmt::Display for ReportDisposition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Adopted => "已收录并采用",
+            Self::Additional => "已收录额外证据",
+            Self::Duplicate => "重复报告",
+        })
+    }
 }
 
 /// 非持久化 Authority, 使用静态轮询, 每个请求只授权一个 Attempt
@@ -147,7 +166,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
         };
         if let Some(existing) = self.operations.get(&operation.operation_id) {
             let Message::DispatchAttempt(attempt) = &existing.dispatch.message else {
-                unreachable!("Authority<P, O, E> stores only DispatchAttempt envelopes");
+                unreachable!("授权方只能保留执行授权信封");
             };
             if attempt.operation != *operation {
                 return Err(StateError::OperationConflict);
@@ -193,7 +212,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
             return Ok(accepted);
         }
         let Message::DispatchAttempt(attempt) = &accepted.dispatch.message else {
-            unreachable!("preview returns only an authorization");
+            unreachable!("预览只能返回执行授权");
         };
         self.operations.insert(
             attempt.operation.operation_id,
@@ -259,7 +278,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
             .get_mut(&report.operation_id)
             .ok_or(StateError::InvalidBinding)?;
         let Message::DispatchAttempt(attempt) = &view.dispatch.message else {
-            unreachable!("Authority<P, O, E> stores only DispatchAttempt envelopes");
+            unreachable!("授权方只能保留执行授权信封");
         };
         if attempt.attempt_id != report.attempt_id
             || view.dispatch.target_instance_id != envelope.source_instance_id
@@ -395,7 +414,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Worker<P, O, E> {
         let record = self
             .attempts
             .get_mut(&id)
-            .expect("queued attempt must have a retained record");
+            .expect("排队中的执行授权必须有保留记录");
         record.phase = WorkerPhase::Running;
         self.running += 1;
         Some(record.dispatch.clone())
@@ -424,7 +443,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Worker<P, O, E> {
             .get_mut(&report.attempt_id)
             .ok_or(StateError::InvalidBinding)?;
         let Message::DispatchAttempt(attempt) = &record.dispatch.message else {
-            unreachable!("Worker<P, O, E> stores only DispatchAttempt envelopes");
+            unreachable!("执行方只能保留执行授权信封");
         };
         if attempt.operation.operation_id != report.operation_id {
             return Err(StateError::InvalidBinding);
@@ -472,42 +491,42 @@ pub enum StateError {
     #[error(transparent)]
     Rule(#[from] RuleError),
     /// 内存上限必须为正数
-    #[error("resource limits must be positive")]
+    #[error("资源上限必须为正数")]
     InvalidLimits,
     /// 静态 Worker 配置为空, 或存在重复的实例身份
-    #[error("workers must be nonempty and unique")]
+    #[error("执行方列表不能为空且实例不能重复")]
     InvalidWorkers,
     /// 消息的目标是另一个进程运行实例
-    #[error("message targets a different node incarnation")]
+    #[error("消息目标与当前角色运行实例不符")]
     WrongTarget,
     /// 当前状态转换不接收此消息类型
-    #[error("unexpected message kind")]
+    #[error("消息类型与预期不符")]
     WrongMessage,
     /// 发送方不是配置的 Authority 运行实例
-    #[error("sender is not the configured authority")]
+    #[error("发送方不是配置的授权方")]
     UntrustedAuthority,
     /// 该 Operation 身份已经绑定到不同的定义
-    #[error("operation identity conflicts with retained definition")]
+    #[error("请求身份与已保留定义冲突")]
     OperationConflict,
     /// 同一 Attempt 身份被用于不同的绑定或请求
-    #[error("attempt identity conflicts with retained authorization")]
+    #[error("执行授权身份与已保留授权冲突")]
     AttemptConflict,
     /// 同一 Report 身份被用于不同的证据
-    #[error("report identity conflicts with retained evidence")]
+    #[error("报告身份与已保留证据冲突")]
     ReportConflict,
     /// 证据与保留的 Operation, Attempt 或节点绑定不匹配
-    #[error("evidence does not match the retained authorization")]
+    #[error("证据与已保留授权不符")]
     InvalidBinding,
     /// 身份记录表已满; 不会淘汰已有记录
-    #[error("retained identity capacity is exhausted")]
+    #[error("身份记录保留容量已满")]
     Capacity,
     /// 等待队列已满, 本次新交付未被接纳
-    #[error("worker queue is full")]
+    #[error("执行方队列已满")]
     QueueFull,
     /// 不存在具有此身份的已接纳请求
-    #[error("operation is not retained")]
+    #[error("请求未被保留")]
     UnknownOperation,
     /// 当前 Worker 阶段不允许提交此完成结果
-    #[error("completion does not match the current worker phase")]
+    #[error("完成结果与执行方当前阶段不符")]
     InvalidTransition,
 }

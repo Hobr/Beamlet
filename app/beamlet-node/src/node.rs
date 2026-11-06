@@ -55,11 +55,11 @@ impl Config {
     fn validate(&self) -> Result<()> {
         ensure!(
             !self.listen.is_empty() || !self.connect.is_empty(),
-            "configure at least one listen or connect endpoint"
+            "至少配置一个监听或连接地址"
         );
         ensure!(
             self.authorities.len() + self.workers.len() <= 64,
-            "at most 64 role instances per node"
+            "每个节点最多配置 64 个角色实例"
         );
         let mut identities = HashSet::new();
         for identity in self
@@ -68,10 +68,7 @@ impl Config {
             .map(|a| a.id)
             .chain(self.workers.iter().map(|w| w.id))
         {
-            ensure!(
-                identities.insert(identity),
-                "duplicate logical role identity: {identity}"
-            );
+            ensure!(identities.insert(identity), "逻辑角色身份重复: {identity}");
         }
         let mut instances = HashSet::new();
         for instance in self
@@ -80,39 +77,30 @@ impl Config {
             .map(|a| a.instance)
             .chain(self.workers.iter().map(|w| w.instance))
         {
-            ensure!(
-                instances.insert(instance),
-                "duplicate role instance: {instance}"
-            );
+            ensure!(instances.insert(instance), "角色实例身份重复: {instance}");
         }
         for authority in &self.authorities {
             let mut workers = HashSet::new();
-            ensure!(
-                !authority.workers.is_empty(),
-                "authority requires at least one worker"
-            );
+            ensure!(!authority.workers.is_empty(), "授权方至少需要一个执行方");
             for worker in &authority.workers {
                 ensure!(
                     *worker != authority.instance && workers.insert(*worker),
-                    "invalid or duplicate worker binding"
+                    "执行方绑定无效或重复"
                 );
                 ensure!(
                     !self.authorities.iter().any(|a| a.instance == *worker),
-                    "worker target is an authority instance"
+                    "执行方目标指向了授权方实例"
                 );
                 if let Some(local) = self.workers.iter().find(|w| w.instance == *worker) {
                     ensure!(
                         local.authority == authority.instance,
-                        "local worker trusts another authority"
+                        "本地执行方绑定了其他授权方"
                     );
                 }
             }
         }
         for worker in &self.workers {
-            ensure!(
-                worker.instance != worker.authority,
-                "worker cannot authorize itself"
-            );
+            ensure!(worker.instance != worker.authority, "执行方不能授权自身");
             if let Some(local) = self
                 .authorities
                 .iter()
@@ -120,7 +108,7 @@ impl Config {
             {
                 ensure!(
                     local.workers.contains(&worker.instance),
-                    "local authority does not configure this worker"
+                    "本地授权方未配置此执行方"
                 );
             }
         }
@@ -135,29 +123,24 @@ impl Config {
 pub async fn run(path: &str) -> Result<()> {
     use tokio::io::AsyncReadExt;
 
-    let file = fs::File::open(path)
-        .await
-        .context("opening node configuration")?;
+    let file = fs::File::open(path).await.context("打开节点配置失败")?;
     let mut bytes = Vec::new();
     file.take(64 * 1024 + 1).read_to_end(&mut bytes).await?;
-    ensure!(
-        bytes.len() <= 64 * 1024,
-        "node configuration exceeds 64 KiB"
-    );
-    let config: Config = serde_json::from_slice(&bytes).context("decoding node configuration")?;
+    ensure!(bytes.len() <= 64 * 1024, "节点配置超过 64 KiB");
+    let config: Config = serde_json::from_slice(&bytes).context("解析节点配置失败")?;
     config.validate()?;
     let node_id = NodeId::from_u128(config.node_id.as_u128());
     let node_instance = NodeInstanceId::from_u128(Uuid::new_v4().as_u128());
-    println!("node identity: id={node_id} instance={node_instance}");
+    println!("节点身份: 逻辑身份={node_id} 运行实例={node_instance}");
     for authority in &config.authorities {
         let id = AuthorityId::from_u128(authority.id.as_u128());
         let instance = AuthorityInstanceId::from_u128(authority.instance.as_u128());
-        println!("authority identity: id={id} instance={instance} node={node_instance}");
+        println!("授权方身份: 逻辑身份={id} 运行实例={instance} 所属节点实例={node_instance}");
     }
     for worker in &config.workers {
         let id = WorkerId::from_u128(worker.id.as_u128());
         let instance = WorkerInstanceId::from_u128(worker.instance.as_u128());
-        println!("worker identity: id={id} instance={instance} node={node_instance}");
+        println!("执行方身份: 逻辑身份={id} 运行实例={instance} 所属节点实例={node_instance}");
     }
     let subscription = format!("beamlet/v0/node-session/{node_instance}/inbox");
     let transport = Transport::node(
@@ -232,11 +215,11 @@ pub async fn run(path: &str) -> Result<()> {
             worker.authority.as_u128().into(),
         ));
     }
-    println!("node ready: shared session; roles={}", tasks.len());
+    println!("节点已就绪: 消息会话共享; 角色数量={}", tasks.len());
     tokio::select! {
         finished = tasks.join_next(), if !tasks.is_empty() => {
-            finished.context("role completion is missing")?.context("role task failed")??;
-            bail!("role stopped unexpectedly");
+            finished.context("角色完成记录缺失")?.context("角色任务失败")??;
+            bail!("角色意外停止");
         }
         signal = tokio::signal::ctrl_c() => { signal?; }
     }

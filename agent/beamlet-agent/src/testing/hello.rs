@@ -87,7 +87,7 @@ impl Dispatch {
         delivery: &model::Delivery<Task, String, String>,
     ) -> Result<Self, ProtocolError> {
         let model::Message::DispatchAttempt(attempt) = &delivery.message else {
-            return Err(invalid_message("expected a dispatch attempt"));
+            return Err(invalid_message("预期为执行授权"));
         };
         Ok(Self {
             protocol_version: protocol::PROTOCOL_VERSION,
@@ -145,7 +145,7 @@ pub fn encode_report(
     limits: &Limits,
 ) -> Result<Vec<u8>, ProtocolError> {
     let model::Message::SubmitReport(report) = &delivery.message else {
-        return Err(invalid_message("expected a report"));
+        return Err(invalid_message("预期为执行报告"));
     };
     let response = Response::report(
         report,
@@ -153,7 +153,7 @@ pub fn encode_report(
         delivery.target_instance_id,
     );
     let ResponseMessage::Report(envelope) = response.message else {
-        return Err(invalid_message("expected a report envelope"));
+        return Err(invalid_message("预期为执行报告信封"));
     };
     envelope.to_json(limits)
 }
@@ -168,7 +168,7 @@ pub fn decode_report(
 ) -> Result<model::Delivery<Task, String, String>, ProtocolError> {
     let envelope = Envelope::from_json(bytes, limits)?;
     let Message::SubmitReport(report) = envelope.message else {
-        return Err(invalid_message("expected a report envelope"));
+        return Err(invalid_message("预期为执行报告信封"));
     };
     let effect = match report.effect {
         protocol::Effect::None => model::Effect::None,
@@ -180,7 +180,7 @@ pub fn decode_report(
             output: Value::String(output),
         } => model::ExecutionResult::Succeeded { output },
         ExecutionResult::Succeeded { .. } => {
-            return Err(invalid_message("hello output must be a string"));
+            return Err(invalid_message("hello 输出必须是字符串"));
         }
         ExecutionResult::Failed { error } => model::ExecutionResult::Failed { error },
         ExecutionResult::Rejected { error } => model::ExecutionResult::Rejected { error },
@@ -309,7 +309,7 @@ impl Response {
             report.validate(limits)?;
             if !matches!(report.message, Message::SubmitReport(_)) {
                 return Err(ProtocolError::Json(serde::de::Error::custom(
-                    "hello responses must contain a report",
+                    "hello 响应必须包含执行报告",
                 )));
             }
         }

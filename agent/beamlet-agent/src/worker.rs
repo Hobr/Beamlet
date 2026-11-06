@@ -60,7 +60,7 @@ where
                 .executor
                 .worker(instance)
                 .and_then(|worker| worker.report(attempt_id))
-                .expect("completed attempts retain their report");
+                .expect("已完成的执行授权必须保留报告");
             return Ok(Some(report.clone()));
         }
         Ok(None)

@@ -19,7 +19,17 @@ const ROUND_TRIP_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_LINE_BYTES: usize = 64 * 1024;
 
 #[tokio::main(worker_threads = 2)]
-async fn main() -> Result<()> {
+async fn main() -> std::process::ExitCode {
+    match run().await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("错误: {error:#}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<()> {
     let mut endpoint = String::from("tcp/127.0.0.1:7447");
     let mut authority = None;
     let mut message = None;
@@ -27,36 +37,37 @@ async fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--connect" => endpoint = args.next().context("--connect needs an endpoint")?,
+            "--connect" => endpoint = args.next().context("--connect 需要连接地址")?,
             "--authority" => {
                 authority = Some(
                     args.next()
-                        .context("--authority needs a UUID")?
-                        .parse::<Uuid>()?,
+                        .context("--authority 需要 UUID")?
+                        .parse::<Uuid>()
+                        .context("UUID 格式无效")?,
                 )
             }
-            "--message" => message = Some(args.next().context("--message needs a task")?),
+            "--message" => message = Some(args.next().context("--message 需要任务名称")?),
             "--operation-id" => {
                 operation_id = Some(
                     args.next()
-                        .context("--operation-id needs a UUID")?
+                        .context("--operation-id 需要 UUID")?
                         .parse::<Uuid>()
-                        .context("invalid operation UUID")?,
+                        .context("请求 UUID 无效")?,
                 );
             }
             "--demo" => return Ok(beamlet_agent::testing::demo::print().await?),
             "--help" | "-h" => {
                 println!(
-                    "beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--message hello [--operation-id UUID]] [--demo]"
+                    "用法: beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--message hello [--operation-id UUID]] [--demo]"
                 );
                 return Ok(());
             }
-            _ => bail!("unknown argument: {arg}"),
+            _ => bail!("未知参数: {arg}"),
         }
     }
 
     if operation_id.is_some() && message.is_none() {
-        bail!("--operation-id requires --message hello");
+        bail!("--operation-id 必须与 --message hello 一起使用");
     }
     let request = message
         .as_deref()
@@ -78,19 +89,19 @@ async fn main() -> Result<()> {
         Transport::connect(&endpoint, &inbox, Limits::default()),
     )
     .await
-    .context("connecting to node timed out")?
-    .context("connecting to node")?;
+    .context("连接节点超时")?
+    .context("连接节点失败")?;
     let sender = transport.sender(&destination).await?;
     timeout(ROUND_TRIP_TIMEOUT, sender.wait_for_receiver())
         .await
-        .context("node subscriber did not become ready")??;
-    println!("console connected: {endpoint} (session {console_id})");
+        .context("节点订阅尚未就绪")??;
+    println!("控制台已连接: {endpoint} (会话 {console_id})");
 
     if let Some(request) = request {
         return exchange(&transport, &sender, &request).await;
     }
 
-    println!("输入 hello 后按 Enter, 每次生成新 Operation; Ctrl-D 退出");
+    println!("输入 hello 后按回车, 每次生成新请求; Ctrl-D 退出");
     let mut input = BufReader::new(io::stdin());
     loop {
         let mut bytes = Vec::new();
@@ -102,7 +113,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         if bytes.len() > MAX_LINE_BYTES {
-            bail!("input line exceeds {MAX_LINE_BYTES} bytes");
+            bail!("输入行超过 {MAX_LINE_BYTES} 字节");
         }
         if bytes.last() == Some(&b'\n') {
             bytes.pop();
@@ -110,7 +121,7 @@ async fn main() -> Result<()> {
                 bytes.pop();
             }
         }
-        let command = String::from_utf8(bytes).context("task name must be UTF-8")?;
+        let command = String::from_utf8(bytes).context("任务名称必须是 UTF-8 文本")?;
         let request = match hello_request(&command, None) {
             Ok(request) => request,
             Err(error) => {
@@ -125,7 +136,7 @@ async fn main() -> Result<()> {
 fn hello_request(command: &str, operation_id: Option<Uuid>) -> Result<Request> {
     ensure!(
         command.trim().eq_ignore_ascii_case("hello"),
-        "only the fixed hello task is supported; input is no longer echoed"
+        "当前仅支持固定任务 hello, 不再原样回显输入"
     );
     Ok(Request::hello(operation_id.unwrap_or_else(Uuid::new_v4)))
 }
@@ -133,7 +144,7 @@ fn hello_request(command: &str, operation_id: Option<Uuid>) -> Result<Request> {
 async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request) -> Result<()> {
     let limits = ProtocolLimits::default();
     let bytes = request.to_json(&limits)?;
-    println!("operation: {}", request.operation_id());
+    println!("请求: {}", request.operation_id());
     timeout(ROUND_TRIP_TIMEOUT, async {
         sender.send(bytes).await?;
         let bytes = transport.recv().await?;
@@ -141,35 +152,34 @@ async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request)
         match response.message() {
             ResponseMessage::Report(delivery) => {
                 let Message::SubmitReport(report) = &delivery.message else {
-                    bail!("response does not contain an execution report");
+                    bail!("响应不包含执行报告");
                 };
                 ensure!(
                     report.operation_id == request.operation_id(),
-                    "received a report for another operation"
+                    "收到其他请求的执行报告"
                 );
-                println!("attempt: {}", report.attempt_id);
-                println!("report: {}", report.report_id);
+                println!("执行授权: {}", report.attempt_id);
+                println!("执行报告: {}", report.report_id);
                 match &report.result {
                     ExecutionResult::Succeeded { output } => {
-                        println!("status: succeeded; effect: {:?}", report.effect);
-                        println!("output: {output}");
+                        println!("状态: 成功; 外部效果: {}", report.effect);
+                        println!("输出: {output}");
                     }
-                    ExecutionResult::Failed { error } | ExecutionResult::Rejected { error } => {
-                        bail!(
-                            "execution report: {:?}; effect: {:?}; {error}",
-                            report.result,
-                            report.effect
-                        );
+                    ExecutionResult::Failed { error } => {
+                        bail!("执行失败; 外部效果: {}; 原因: {error}", report.effect);
                     }
-                    _ => bail!("unsupported execution outcome"),
+                    ExecutionResult::Rejected { error } => {
+                        bail!("执行前拒绝; 外部效果: {}; 原因: {error}", report.effect);
+                    }
+                    _ => bail!("不支持的执行结果"),
                 }
             }
             ResponseMessage::Pending { operation_id } => {
                 ensure!(
                     operation_id.as_u128() == request.operation_id().as_u128(),
-                    "pending response belongs to another operation"
+                    "待定响应属于其他请求"
                 );
-                println!("status: pending; no automatic retry or new authorization");
+                println!("状态: 待定; 不自动重试或创建新授权");
             }
             ResponseMessage::SubmissionError {
                 operation_id,
@@ -177,14 +187,14 @@ async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request)
             } => {
                 ensure!(
                     operation_id.as_u128() == request.operation_id().as_u128(),
-                    "submission response belongs to another operation"
+                    "提交响应属于其他请求"
                 );
-                bail!("submission returned an error, not an execution report: {error}");
+                bail!("提交返回错误, 不是执行报告: {error}");
             }
-            _ => bail!("unsupported response message"),
+            _ => bail!("不支持的响应消息"),
         }
         Ok::<_, anyhow::Error>(())
     })
     .await
-    .context("result wait timed out; operation may be retained or executing, no automatic retry")?
+    .context("等待结果超时; 请求可能已保留或正在执行, 不自动重试")?
 }

@@ -7,12 +7,22 @@ use beamlet_node::roles;
 use uuid::Uuid;
 
 #[tokio::main(worker_threads = 2)]
-async fn main() -> Result<()> {
+async fn main() -> std::process::ExitCode {
+    match run().await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("错误: {error:#}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<()> {
     let arguments: Vec<String> = env::args().skip(1).collect();
     if arguments.first().is_some_and(|arg| arg == "--config") {
         ensure!(
             arguments.len() == 2,
-            "--config requires exactly one JSON path and cannot be mixed with role flags"
+            "--config 需要且仅接受一个 JSON 路径, 不能与角色参数混用"
         );
         return beamlet_node::node::run(&arguments[1]).await;
     }
@@ -25,46 +35,50 @@ async fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--listen" => listen = Some(args.next().context("--listen needs an endpoint")?),
-            "--connect" => connect = Some(args.next().context("--connect needs an endpoint")?),
+            "--listen" => listen = Some(args.next().context("--listen 需要监听地址")?),
+            "--connect" => connect = Some(args.next().context("--connect 需要连接地址")?),
             "--role" => {
                 role = args
                     .next()
-                    .context("--role needs local, authority or worker")?
+                    .context("--role 需要 local, authority 或 worker")?
             }
             "--instance" => {
                 instance = Some(
                     args.next()
-                        .context("--instance needs a UUID")?
-                        .parse::<Uuid>()?,
+                        .context("--instance 需要 UUID")?
+                        .parse::<Uuid>()
+                        .context("UUID 格式无效")?,
                 );
             }
             "--authority" => {
                 authority = Some(
                     args.next()
-                        .context("--authority needs a UUID")?
-                        .parse::<Uuid>()?,
+                        .context("--authority 需要 UUID")?
+                        .parse::<Uuid>()
+                        .context("UUID 格式无效")?,
                 );
             }
             "--worker" => {
                 workers.push(
                     args.next()
-                        .context("--worker needs a UUID")?
-                        .parse::<Uuid>()?,
+                        .context("--worker 需要 UUID")?
+                        .parse::<Uuid>()
+                        .context("UUID 格式无效")?,
                 );
             }
             "--demo" => return Ok(beamlet_agent::testing::demo::print().await?),
             "--help" | "-h" => {
                 println!(
-                    "beamlet-node --config PATH.json\n\
+                    "用法:\n\
+                     beamlet-node --config PATH.json\n\
                      beamlet-node [--role local] [--listen ENDPOINT] [--demo]\n\
                      beamlet-node --role authority --instance UUID --worker UUID [--worker UUID ...] [--listen ENDPOINT]\n\
                      beamlet-node --role worker --instance UUID --authority UUID [--connect ENDPOINT]\n\
-                     ENDPOINT defaults to tcp/127.0.0.1:7447; use fresh instance UUIDs for each deployment"
+                     ENDPOINT 为连接或监听地址, 默认为 tcp/127.0.0.1:7447; PATH.json 为配置文件路径. 每轮部署必须使用新的实例 UUID"
                 );
                 return Ok(());
             }
-            _ => bail!("unknown argument: {arg}"),
+            _ => bail!("未知参数: {arg}"),
         }
     }
 
@@ -76,19 +90,19 @@ async fn main() -> Result<()> {
                     && instance.is_none()
                     && authority.is_none()
                     && workers.is_empty(),
-                "local mode only supports --listen"
+                "本地模式仅支持 --listen"
             );
             roles::run_local(listen.as_deref().unwrap_or(default_endpoint)).await
         }
         "authority" => {
             ensure!(
                 connect.is_none() && authority.is_none(),
-                "authority mode does not accept --connect or --authority"
+                "授权方模式不接受 --connect 或 --authority"
             );
-            let instance = instance.context("authority mode requires --instance UUID")?;
+            let instance = instance.context("授权方模式需要 --instance UUID")?;
             ensure!(
                 !workers.contains(&instance),
-                "authority and worker instances must differ"
+                "授权方与执行方的实例身份必须不同"
             );
             roles::run_authority(
                 listen.as_deref().unwrap_or(default_endpoint),
@@ -100,14 +114,11 @@ async fn main() -> Result<()> {
         "worker" => {
             ensure!(
                 listen.is_none() && workers.is_empty(),
-                "worker mode does not accept --listen or --worker"
+                "执行方模式不接受 --listen 或 --worker"
             );
-            let instance = instance.context("worker mode requires --instance UUID")?;
-            let authority = authority.context("worker mode requires --authority UUID")?;
-            ensure!(
-                instance != authority,
-                "authority and worker instances must differ"
-            );
+            let instance = instance.context("执行方模式需要 --instance UUID")?;
+            let authority = authority.context("执行方模式需要 --authority UUID")?;
+            ensure!(instance != authority, "授权方与执行方的实例身份必须不同");
             roles::run_worker(
                 connect.as_deref().unwrap_or(default_endpoint),
                 instance.as_u128().into(),
@@ -115,6 +126,6 @@ async fn main() -> Result<()> {
             )
             .await
         }
-        _ => bail!("unknown role: {role}"),
+        _ => bail!("未知角色: {role}"),
     }
 }

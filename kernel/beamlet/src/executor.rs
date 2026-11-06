@@ -79,7 +79,7 @@ where
         for worker in self.workers.values_mut() {
             while let Some(dispatch) = worker.start_next() {
                 let Message::DispatchAttempt(attempt) = dispatch.message else {
-                    unreachable!("Worker queues only authorizations");
+                    unreachable!("执行方队列只能包含执行授权");
                 };
                 let task = execute(attempt);
                 self.tasks.spawn(async move {
@@ -128,7 +128,7 @@ where
 #[derive(Debug, Error)]
 pub enum ExecutorError {
     /// Tokio 任务异常退出, 不推断执行效果
-    #[error("execution task terminated unexpectedly")]
+    #[error("执行任务意外终止")]
     Task(#[from] JoinError),
     /// 收录证据时违反领域或内存规则
     #[error(transparent)]

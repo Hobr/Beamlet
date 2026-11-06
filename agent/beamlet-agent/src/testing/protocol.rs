@@ -142,6 +142,16 @@ pub enum Effect {
     Unknown,
 }
 
+impl std::fmt::Display for Effect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::None => "无外部效果",
+            Self::Observed => "已观察到效果",
+            Self::Unknown => "效果未知",
+        })
+    }
+}
+
 /// 通过类型约束, 避免输出与错误字段同时存在的执行结果
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
@@ -316,22 +326,22 @@ impl Envelope {
 #[non_exhaustive]
 pub enum ProtocolError {
     /// 数量或字节上限为零
-    #[error("resource limits must be positive")]
+    #[error("资源上限必须为正数")]
     InvalidLimits,
     /// 整个消息信封超过配置的字节上限
-    #[error("message exceeds the configured byte limit")]
+    #[error("消息超过配置的字节上限")]
     MessageTooLarge,
     /// 接收方不支持此传输版本
-    #[error("unsupported protocol version {0}")]
+    #[error("不支持的协议版本 {0}")]
     UnsupportedVersion(u16),
     /// 延迟超过配置的最大值
-    #[error("delay exceeds the configured maximum")]
+    #[error("延迟超过配置的最大值")]
     DelayTooLarge,
     /// 执行前的拒绝不能同时声称可能产生了外部效果
-    #[error("a rejected execution must have no effects")]
+    #[error("执行前拒绝必须确认没有外部效果")]
     InvalidRejectionEffect,
     /// JSON 格式错误, 或不符合严格的消息结构
-    #[error("invalid protocol json: {0}")]
+    #[error("协议 JSON 无效: {0}")]
     Json(#[from] serde_json::Error),
 }
 

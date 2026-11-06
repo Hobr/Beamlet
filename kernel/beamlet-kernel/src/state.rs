@@ -15,6 +15,16 @@ pub enum OperationPhase {
     Reported,
 }
 
+impl std::fmt::Display for OperationPhase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Accepted => "已接纳",
+            Self::Dispatched => "已派发",
+            Self::Reported => "已收录报告",
+        })
+    }
+}
+
 /// 本地等待状态, 与执行情况和证据相互独立
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -55,9 +65,9 @@ impl WorkerPhase {
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 pub enum RuleError {
     /// 执行前拒绝不能附带可能存在的外部效果
-    #[error("a rejected execution must have no effects")]
+    #[error("执行前拒绝必须确认没有外部效果")]
     InvalidRejectionEffect,
     /// 当前阶段不允许此结果
-    #[error("illegal worker transition")]
+    #[error("执行方状态转换无效")]
     InvalidTransition,
 }
