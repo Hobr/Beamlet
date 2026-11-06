@@ -1,31 +1,31 @@
 //! 无外部效果的固定假任务 Adapter; 通用排队与后台驱动位于 kernel/beamlet
 
 use super::{
-    memory::{StateError, WorkPhase},
+    memory::{StateError, WorkerPhase},
     protocol::*,
 };
 use crate::model as domain;
-use beamlet::{executor::Executor, memory::Work};
+use beamlet::{executor::Executor, memory::Worker};
 use std::time::Duration;
 
 /// 底层后台错误不转换成普通业务失败
 pub use beamlet::executor::ExecutorError;
 
-/// 单个 Work 的假任务测试入口, 不持有自己的调度队列
+/// 单个 Worker 的假任务测试入口, 不持有自己的调度队列
 #[derive(Debug)]
-pub struct WorkExecutor {
+pub struct WorkerExecutor {
     inner: Executor<TestTask, Value, String>,
-    instance: NodeInstanceId,
+    instance: RoleInstanceId,
     limits: Limits,
 }
-impl WorkExecutor {
-    /// 创建单 Work 测试入口
+impl WorkerExecutor {
+    /// 创建单 Worker 测试入口
     ///
     /// # 错误
     /// 配置不合法时返回错误
     pub fn new(
-        instance: NodeInstanceId,
-        authority: NodeInstanceId,
+        instance: RoleInstanceId,
+        authority: RoleInstanceId,
         limits: Limits,
     ) -> Result<Self, StateError> {
         limits.validate()?;
@@ -39,7 +39,7 @@ impl WorkExecutor {
     ///
     /// # 错误
     /// 格式, 绑定, 定义, 容量或预期输出不合法时不入队
-    pub fn accept(&mut self, envelope: Envelope) -> Result<WorkPhase, StateError> {
+    pub fn accept(&mut self, envelope: Envelope) -> Result<WorkerPhase, StateError> {
         envelope.validate(&self.limits)?;
         let delivery = envelope.to_core();
         let domain::Message::DispatchAttempt(attempt) = &delivery.message else {
@@ -73,15 +73,15 @@ impl WorkExecutor {
     pub fn in_flight(&self) -> usize {
         self.inner.in_flight()
     }
-    /// 只读查询底层 Work 状态
-    pub fn work(&self) -> &Work<TestTask, Value, String> {
+    /// 只读查询底层 Worker 状态
+    pub fn worker(&self) -> &Worker<TestTask, Value, String> {
         self.inner
-            .work(self.instance)
+            .worker(self.instance)
             .expect("single worker remains configured")
     }
     /// 按原授权查询缓存证据的协议投影
     pub fn report(&self, id: AttemptId) -> Option<Envelope> {
-        self.work().report(id).map(Envelope::from_core)
+        self.worker().report(id).map(Envelope::from_core)
     }
 }
 

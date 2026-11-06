@@ -79,7 +79,7 @@ pub struct Dispatch {
 }
 
 impl Dispatch {
-    /// 编码已有授权, 不创建新的 Attempt 或选择其他 Work
+    /// 编码已有授权, 不创建新的 Attempt 或选择其他 Worker
     ///
     /// # 错误
     /// 领域消息不是 DispatchAttempt 时返回错误
@@ -102,7 +102,7 @@ impl Dispatch {
         })
     }
 
-    /// 还原原始实例绑定及授权, Work 仍须独立检查接纳规则
+    /// 还原原始实例绑定及授权, Worker 仍须独立检查接纳规则
     pub fn delivery(&self) -> model::Delivery<Task, String, String> {
         model::Delivery::new(
             self.source_instance_id.as_u128().into(),
@@ -124,7 +124,7 @@ impl Dispatch {
         encode(self, limits)
     }
 
-    /// 在 Work 接纳前检查字节预算, 严格字段与版本
+    /// 在 Worker 接纳前检查字节预算, 严格字段与版本
     ///
     /// # 错误
     /// 未知字段, 非 Hello 任务, 错误版本或消息超限时返回错误
@@ -136,7 +136,7 @@ impl Dispatch {
     }
 }
 
-/// 将 Work 已缓存的 Report 编码为原有 v0 信封, 不表示 Authority 已收录
+/// 将 Worker 已缓存的 Report 编码为原有 v0 信封, 不表示 Authority 已收录
 ///
 /// # 错误
 /// 消息种类, 证据内容, 上限或 JSON 编码无效时返回错误
@@ -248,8 +248,8 @@ impl Response {
     /// 将已收录的领域 Report 转为现有的字节协议表示
     pub fn report(
         report: &model::SubmitReport<String, String>,
-        work: crate::id::NodeInstanceId,
-        authority: crate::id::NodeInstanceId,
+        worker: crate::id::RoleInstanceId,
+        authority: crate::id::RoleInstanceId,
     ) -> Self {
         let report = SubmitReport {
             report_id: report.report_id,
@@ -273,7 +273,7 @@ impl Response {
             },
         };
         Self::new(ResponseMessage::Report(Envelope::new(
-            work,
+            worker,
             authority,
             Message::SubmitReport(report),
         )))

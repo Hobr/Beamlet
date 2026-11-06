@@ -1,7 +1,7 @@
 //! 固定假任务的 v0 JSON 测试 Adapter, 与领域对象显式转换
 
 /// 身份定义来自纯 Kernel; UUID 字符串编码仅由本 Adapter 实现
-pub use crate::id::{AttemptId, NodeInstanceId, OperationId, ReportId};
+pub use crate::id::{AttemptId, OperationId, ReportId, RoleInstanceId};
 use crate::model as domain;
 use serde::{Deserialize, Serialize};
 /// 不透明 JSON 测试数据
@@ -23,9 +23,9 @@ pub struct Limits {
     pub max_delay_ms: u64,
     /// 各请求, 执行授权或报告记录表分别允许保留的最大身份数量
     pub max_records: usize,
-    /// 每个 Work 中已接纳但尚未开始的 Attempt 数量上限
+    /// 每个 Worker 中已接纳但尚未开始的 Attempt 数量上限
     pub queue_capacity: usize,
-    /// 每个 Work 中标记为运行中的 Attempt 数量上限
+    /// 每个 Worker 中标记为运行中的 Attempt 数量上限
     pub max_concurrency: usize,
 }
 
@@ -164,7 +164,7 @@ pub enum ExecutionResult {
     },
 }
 
-/// 由绑定的 Work 运行实例发给其 Authority 的执行证据
+/// 由绑定的 Worker 运行实例发给其 Authority 的执行证据
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct SubmitReport {
@@ -214,9 +214,9 @@ impl SubmitReport {
 pub enum Message {
     /// 客户端发给 Authority 的请求
     SubmitOperation(SubmitOperation),
-    /// Authority 发给 Work 的执行授权
+    /// Authority 发给 Worker 的执行授权
     DispatchAttempt(DispatchAttempt),
-    /// Work 回报给 Authority 的执行证据
+    /// Worker 回报给 Authority 的执行证据
     SubmitReport(SubmitReport),
 }
 
@@ -229,17 +229,17 @@ pub struct Envelope {
     pub protocol_version: u16,
     /// 发送方进程的本次运行实例
     #[serde(with = "identity_json")]
-    pub source_instance_id: NodeInstanceId,
+    pub source_instance_id: RoleInstanceId,
     /// 目标接收进程的本次运行实例
     #[serde(with = "identity_json")]
-    pub target_instance_id: NodeInstanceId,
+    pub target_instance_id: RoleInstanceId,
     /// 具有明确类型的业务消息
     pub message: Message,
 }
 
 impl Envelope {
     /// 使用当前支持的传输版本构造消息信封
-    pub fn new(source: NodeInstanceId, target: NodeInstanceId, message: Message) -> Self {
+    pub fn new(source: RoleInstanceId, target: RoleInstanceId, message: Message) -> Self {
         Self {
             protocol_version: PROTOCOL_VERSION,
             source_instance_id: source,

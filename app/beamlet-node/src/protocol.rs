@@ -2,6 +2,6 @@
 
 pub use beamlet_agent::testing::protocol::{
     AttemptId, Constraints, DispatchAttempt, Effect, Envelope, ExecutionResult, Limits, Message,
-    NodeInstanceId, OperationId, PROTOCOL_VERSION, ProtocolError, ReportId, SubmitOperation,
+    OperationId, PROTOCOL_VERSION, ProtocolError, ReportId, RoleInstanceId, SubmitOperation,
     SubmitReport, TestTask, Uuid, Value,
 };

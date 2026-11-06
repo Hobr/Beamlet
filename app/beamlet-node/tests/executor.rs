@@ -1,16 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
 use beamlet_node::{
-    executor::WorkExecutor,
-    memory::{Authority, OperationPhase, ReportDisposition, StateError, WaitStatus, WorkPhase},
+    executor::WorkerExecutor,
+    memory::{Authority, OperationPhase, ReportDisposition, StateError, WaitStatus, WorkerPhase},
     protocol::{
-        AttemptId, Effect, Envelope, ExecutionResult, Limits, Message, NodeInstanceId, OperationId,
-        ProtocolError, SubmitOperation, SubmitReport, TestTask,
+        AttemptId, Effect, Envelope, ExecutionResult, Limits, Message, OperationId, ProtocolError,
+        RoleInstanceId, SubmitOperation, SubmitReport, TestTask,
     },
 };
 use serde_json::json;
 
-fn node(id: u128) -> NodeInstanceId {
+fn node(id: u128) -> RoleInstanceId {
     id.into()
 }
 
@@ -49,7 +49,7 @@ fn report(envelope: &Envelope) -> &SubmitReport {
 async fn echo_runs_from_submission_to_authority_result() {
     let limits = Limits::default();
     let mut authority = Authority::new(node(2), vec![node(3)], limits).unwrap();
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     let accepted = authority
         .submit(
             request(
@@ -63,7 +63,10 @@ async fn echo_runs_from_submission_to_authority_result() {
     executor.accept(accepted.dispatch).unwrap();
     authority.mark_dispatched(operation(1)).unwrap();
     assert_eq!(executor.start_ready(), 1);
-    assert_eq!(executor.work().phase(attempt(1)), Some(WorkPhase::Running));
+    assert_eq!(
+        executor.worker().phase(attempt(1)),
+        Some(WorkerPhase::Running)
+    );
 
     let completed = executor.complete_next().await.unwrap().unwrap();
     let evidence = report(&completed);
@@ -79,8 +82,8 @@ async fn echo_runs_from_submission_to_authority_result() {
         }
     );
     assert_eq!(
-        executor.work().phase(attempt(1)),
-        Some(WorkPhase::Completed)
+        executor.worker().phase(attempt(1)),
+        Some(WorkerPhase::Completed)
     );
     assert_eq!(executor.report(attempt(1)), Some(completed.clone()));
 
@@ -98,7 +101,7 @@ async fn echo_runs_from_submission_to_authority_result() {
 async fn delay_returns_after_the_requested_virtual_time() {
     let limits = Limits::default();
     let mut authority = Authority::new(node(2), vec![node(3)], limits).unwrap();
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     let dispatch = authority
         .submit(
             request(
@@ -132,7 +135,7 @@ async fn task_failure_returns_evidence_and_releases_its_slot() {
     let mut limits = Limits::default();
     limits.max_concurrency = 1;
     let mut authority = Authority::new(node(2), vec![node(3)], limits).unwrap();
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     for (id, task) in [
         (
             1,
@@ -180,7 +183,7 @@ async fn task_failure_returns_evidence_and_releases_its_slot() {
 async fn concurrency_is_bounded_and_short_tasks_do_not_wait_for_long_ones() {
     let mut limits = Limits::default();
     limits.max_concurrency = 2;
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     for (id, task) in [
         (
             1,
@@ -203,7 +206,10 @@ async fn concurrency_is_bounded_and_short_tasks_do_not_wait_for_long_ones() {
     assert_eq!(executor.start_ready(), 2);
     assert_eq!(executor.start_ready(), 0);
     assert_eq!(executor.in_flight(), 2);
-    assert_eq!(executor.work().phase(attempt(3)), Some(WorkPhase::Queued));
+    assert_eq!(
+        executor.worker().phase(attempt(3)),
+        Some(WorkerPhase::Queued)
+    );
 
     let started = tokio::time::Instant::now();
     let short = executor.complete_next().await.unwrap().unwrap();
@@ -224,7 +230,7 @@ async fn concurrency_is_bounded_and_short_tasks_do_not_wait_for_long_ones() {
 
 #[tokio::test(start_paused = true)]
 async fn duplicate_dispatches_never_start_another_task_or_replace_the_report() {
-    let mut executor = WorkExecutor::new(node(3), node(2), Limits::default()).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), Limits::default()).unwrap();
     let dispatch = authorized(
         1,
         TestTask::Delay {
@@ -234,16 +240,16 @@ async fn duplicate_dispatches_never_start_another_task_or_replace_the_report() {
     );
     assert_eq!(
         executor.accept(dispatch.clone()).unwrap(),
-        WorkPhase::Queued
+        WorkerPhase::Queued
     );
     assert_eq!(
         executor.accept(dispatch.clone()).unwrap(),
-        WorkPhase::Queued
+        WorkerPhase::Queued
     );
     assert_eq!(executor.start_ready(), 1);
     assert_eq!(
         executor.accept(dispatch.clone()).unwrap(),
-        WorkPhase::Running
+        WorkerPhase::Running
     );
     assert_eq!(executor.start_ready(), 0);
     assert_eq!(executor.in_flight(), 1);
@@ -252,7 +258,7 @@ async fn duplicate_dispatches_never_start_another_task_or_replace_the_report() {
     for _ in 0..3 {
         assert_eq!(
             executor.accept(dispatch.clone()).unwrap(),
-            WorkPhase::Completed
+            WorkerPhase::Completed
         );
         assert_eq!(executor.report(attempt(1)), Some(completed.clone()));
         assert_eq!(executor.start_ready(), 0);
@@ -264,7 +270,7 @@ async fn duplicate_dispatches_never_start_another_task_or_replace_the_report() {
 async fn cancelling_a_wait_keeps_execution_alive_and_late_evidence_is_adopted() {
     let limits = Limits::default();
     let mut authority = Authority::new(node(2), vec![node(3)], limits).unwrap();
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     let original = request(
         1,
         TestTask::Delay {
@@ -289,7 +295,10 @@ async fn cancelling_a_wait_keeps_execution_alive_and_late_evidence_is_adopted() 
     assert!(waiting.is_err());
     authority.mark_wait_timeout(operation(1)).unwrap();
     assert_eq!(executor.in_flight(), 1);
-    assert_eq!(executor.work().phase(attempt(1)), Some(WorkPhase::Running));
+    assert_eq!(
+        executor.worker().phase(attempt(1)),
+        Some(WorkerPhase::Running)
+    );
     assert_eq!(
         authority.operation(operation(1)).unwrap().phase,
         OperationPhase::Dispatched
@@ -332,12 +341,12 @@ async fn oversized_expected_report_is_refused_before_work_admission() {
     let dispatch = authorized(1, TestTask::Echo(json!("x".repeat(1024))));
     let mut limits = Limits::default();
     limits.max_message_bytes = dispatch.to_json(&limits).unwrap().len();
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     assert!(matches!(
         executor.accept(dispatch),
         Err(StateError::Protocol(ProtocolError::MessageTooLarge))
     ));
-    assert_eq!(executor.work().phase(attempt(1)), None);
+    assert_eq!(executor.worker().phase(attempt(1)), None);
     assert_eq!(executor.start_ready(), 0);
     assert_eq!(executor.in_flight(), 0);
 
@@ -380,10 +389,10 @@ async fn invalid_deliveries_never_start_execution() {
     }
     invalid.push(delay);
 
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     for delivery in invalid {
         assert!(executor.accept(delivery).is_err());
-        assert_eq!(executor.work().phase(attempt(1)), None);
+        assert_eq!(executor.worker().phase(attempt(1)), None);
         assert_eq!(executor.start_ready(), 0);
         assert_eq!(executor.in_flight(), 0);
         assert!(executor.complete_next().await.unwrap().is_none());
@@ -396,7 +405,7 @@ async fn queue_and_retention_limits_apply_before_spawning() {
     limits.queue_capacity = 1;
     limits.max_concurrency = 1;
     limits.max_records = 2;
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     let first = authorized(1, TestTask::Echo(json!("first")));
     let second = authorized(2, TestTask::Echo(json!("second")));
     executor.accept(first.clone()).unwrap();
@@ -404,8 +413,8 @@ async fn queue_and_retention_limits_apply_before_spawning() {
         executor.accept(second.clone()),
         Err(StateError::QueueFull)
     ));
-    assert_eq!(executor.work().phase(attempt(2)), None);
-    assert_eq!(executor.accept(first.clone()).unwrap(), WorkPhase::Queued);
+    assert_eq!(executor.worker().phase(attempt(2)), None);
+    assert_eq!(executor.accept(first.clone()).unwrap(), WorkerPhase::Queued);
 
     assert_eq!(executor.start_ready(), 1);
     executor.accept(second).unwrap();
@@ -420,7 +429,7 @@ async fn queue_and_retention_limits_apply_before_spawning() {
         executor.accept(authorized(3, TestTask::Echo(json!("full")))),
         Err(StateError::Capacity)
     ));
-    assert_eq!(executor.accept(first).unwrap(), WorkPhase::Completed);
+    assert_eq!(executor.accept(first).unwrap(), WorkerPhase::Completed);
     assert_eq!(executor.report(attempt(1)), Some(original.clone()));
     assert_eq!(executor.start_ready(), 0);
 }
@@ -429,7 +438,7 @@ async fn queue_and_retention_limits_apply_before_spawning() {
 async fn zero_delay_needs_no_clock_advance() {
     let mut limits = Limits::default();
     limits.max_delay_ms = 0;
-    let mut executor = WorkExecutor::new(node(3), node(2), limits).unwrap();
+    let mut executor = WorkerExecutor::new(node(3), node(2), limits).unwrap();
     executor
         .accept(authorized(
             1,
@@ -459,8 +468,8 @@ async fn one_hundred_operations_execute_on_two_workers_without_cross_talk() {
     limits.max_records = 128;
     let mut authority = Authority::new(node(2), vec![node(3), node(4)], limits).unwrap();
     let mut workers = [
-        WorkExecutor::new(node(3), node(2), limits).unwrap(),
-        WorkExecutor::new(node(4), node(2), limits).unwrap(),
+        WorkerExecutor::new(node(3), node(2), limits).unwrap(),
+        WorkerExecutor::new(node(4), node(2), limits).unwrap(),
     ];
     let mut identities = HashMap::new();
     for id in 1..=100 {

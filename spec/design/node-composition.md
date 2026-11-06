@@ -2,7 +2,7 @@
 
 ## 已确认的目标
 
-Node 是组合与生命周期容器, 不是业务执行角色. Client 提交意图和读取结果, Authority 持有权威 Operation 记录并授权, Worker 接纳授权并执行. Runner 可指 Worker 内部的执行机制, 不作为对外角色名. 旧代码中的 Work 名称将分批迁移, 不表示另一种角色.
+Node 是组合与生命周期容器, 不是业务执行角色. Client 提交意图和读取结果, Authority 持有权威 Operation 记录并授权, Worker 接纳授权并执行. Runner 可指 Worker 内部的执行机制, 不作为对外角色名. 执行角色统一使用 Worker, 不保留 Work 作为另一种角色名.
 
 消息会话, 网络监听与连接, 遥测导出, 生命周期管理及未来存储是 Node 基础设施. 它们独立于业务角色配置. 内嵌消息会话不等于内嵌 broker/router; 遥测 exporter 不等于 collector. 当前不新增遥测平台或通用插件框架. 多个角色可共享消息会话, 但不共享授权权力或账本.
 
@@ -37,7 +37,7 @@ Node 是组合与生命周期容器, 不是业务执行角色. Client 提交意�
 
 未实现, 不应由上述目标推断已经具备:
 
-- 稳定/运行身份分层, 代码 Work 到 Worker 的全面重命名.
+- 配置中的稳定/运行身份分层及自动启动身份管理; 纯 Kernel 已定义独立的 Node/Authority/Worker 身份类型, 交付使用 RoleInstanceId, Worker 命名迁移已完成.
 - 公告, 心跳, Draining 与退出通知; 当前 Ctrl-C 仍退出易失驱动, 无暂停恢复保证.
 - Authority 生成 OperationId, SubmissionKey 与独立 Client SDK. 当前演示仍使用 Console 提供的 OperationId.
 - 接纳回执与确认重投, 跨重启持久化, 在线调度与动态信任注册.

@@ -1,11 +1,11 @@
-//! 静态 Authority/Work 进程, 只在应用边界交付已有授权和证据
+//! 静态 Authority/Worker 进程, 只在应用边界交付已有授权和证据
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
 use beamlet_agent::{
-    Admission, Agent, AgentError, Authority, StateError, Work,
-    id::{NodeInstanceId, OperationId},
+    Admission, Agent, AgentError, Authority, StateError, Worker,
+    id::{OperationId, RoleInstanceId},
     model::{Delivery, DispatchAttempt, Effect, ExecutionResult, Message, SubmitReport},
     testing::{
         hello::{self, Dispatch, Request, Response, ResponseMessage, Task},
@@ -26,7 +26,7 @@ type HelloAgent = Agent<Task, String, String>;
 
 type HelloAuthority = Authority<Task, String, String>;
 
-// 留出 Console 的 10 秒等待预算, 只结束本次观察, 不取消 Work
+// 留出 Console 的 10 秒等待预算, 只结束本次观察, 不取消 Worker
 const REPLY_WAIT: Duration = Duration::from_secs(5);
 
 struct Waiter {
@@ -54,8 +54,8 @@ type Sends = JoinSet<(SendPurpose, Result<()>)>;
 /// 配置, 会话, 驱动状态或后台任务无法继续时返回错误
 pub async fn run_authority(
     endpoint: &str,
-    instance: NodeInstanceId,
-    workers: Vec<NodeInstanceId>,
+    instance: RoleInstanceId,
+    workers: Vec<RoleInstanceId>,
 ) -> Result<()> {
     let transport = Arc::new(
         Transport::listen(
@@ -77,9 +77,9 @@ pub async fn run_authority(
 
 pub(crate) async fn serve_authority(
     transport: Arc<Transport>,
-    instance: NodeInstanceId,
-    workers: Vec<NodeInstanceId>,
-    local_workers: HashMap<NodeInstanceId, Work<Task, String, String>>,
+    instance: RoleInstanceId,
+    workers: Vec<RoleInstanceId>,
+    local_workers: HashMap<RoleInstanceId, Worker<Task, String, String>>,
     request_prefix: String,
 ) -> Result<()> {
     serve_authority_pair(
@@ -96,9 +96,9 @@ pub(crate) async fn serve_authority(
 pub(crate) async fn serve_authority_pair(
     transport: Arc<Transport>,
     report_transport: Option<Transport>,
-    instance: NodeInstanceId,
-    workers: Vec<NodeInstanceId>,
-    mut local_workers: HashMap<NodeInstanceId, Work<Task, String, String>>,
+    instance: RoleInstanceId,
+    workers: Vec<RoleInstanceId>,
+    mut local_workers: HashMap<RoleInstanceId, Worker<Task, String, String>>,
     request_prefix: String,
 ) -> Result<()> {
     let limits = beamlet_agent::Limits::default();
@@ -192,7 +192,7 @@ pub(crate) async fn serve_authority_pair(
                     }
                     Err(error) => return Err(error.into()),
                 };
-                println!("authority accepted: operation={operation} work={} admission={:?}", submission.dispatch.target_instance_id, submission.admission);
+                println!("authority accepted: operation={operation} worker={} admission={:?}", submission.dispatch.target_instance_id, submission.admission);
                 if let Some(report_id) = adopted {
                     let report = authority.report(report_id).context("adopted report is missing")?;
                     queue_reply(&mut sends, &transport, console, response_for(report, operation)?, &protocol)?;
@@ -215,7 +215,7 @@ pub(crate) async fn serve_authority_pair(
                     }
                     let bytes = Dispatch::from_delivery(&submission.dispatch)?.to_json(&protocol)?;
                     queue_send(&mut sends, &transport, Outgoing {
-                        destination: work_inbox(submission.dispatch.target_instance_id),
+                        destination: worker_inbox(submission.dispatch.target_instance_id),
                         bytes,
                         purpose: SendPurpose::Dispatch(operation),
                     });
@@ -226,7 +226,7 @@ pub(crate) async fn serve_authority_pair(
                 match (purpose, result) {
                     (SendPurpose::Dispatch(operation), Ok(())) => {
                         authority.mark_dispatched(operation)?;
-                        println!("authority dispatch sent: operation={operation}; work acceptance unknown until evidence");
+                        println!("authority dispatch sent: operation={operation}; worker acceptance unknown until evidence");
                     }
                     (SendPurpose::Dispatch(operation), Err(error)) => eprintln!("dispatch not confirmed: operation={operation}; {error}; retained without retry or new authorization"),
                     (SendPurpose::Reply, Err(error)) => eprintln!("console reply not confirmed: {error}; evidence retained without retry"),
@@ -322,47 +322,50 @@ async fn send(transport: &Transport, destination: &str, bytes: Vec<u8>) -> Resul
     .context("send timed out; no automatic retry")?
 }
 
-/// 启动只执行绑定 Authority 授权的静态 Work 进程
+/// 启动只执行绑定 Authority 授权的静态 Worker 进程
 ///
 /// # 错误
 /// 配置, 连接, 接收或内部执行驱动失败时返回错误
-pub async fn run_work(
+pub async fn run_worker(
     endpoint: &str,
-    instance: NodeInstanceId,
-    authority: NodeInstanceId,
+    instance: RoleInstanceId,
+    authority: RoleInstanceId,
 ) -> Result<()> {
-    let inbox = work_inbox(instance);
+    let inbox = worker_inbox(instance);
     let transport = timeout(
         SEND_TIMEOUT,
         Transport::connect(endpoint, &inbox, Limits::default()),
     )
     .await
-    .context("connecting work timed out")??;
+    .context("connecting worker timed out")??;
     serve_worker(transport, instance, authority).await
 }
 
 pub(crate) async fn serve_worker(
     transport: Transport,
-    instance: NodeInstanceId,
-    authority: NodeInstanceId,
+    instance: RoleInstanceId,
+    authority: RoleInstanceId,
 ) -> Result<()> {
-    let mut work = Work::<Task, String, String>::new(
+    let mut worker = Worker::<Task, String, String>::new(
         authority,
         vec![instance],
         beamlet_agent::Limits::default(),
     )?;
     let protocol = ProtocolLimits::default();
-    let inbox = work_inbox(instance);
+    let inbox = worker_inbox(instance);
     println!("worker ready: instance={instance} authority={authority}");
     loop {
         let message = tokio::select! {
-            received = transport.recv_message() => received.context("receiving work dispatch")?,
+            received = transport.recv_message() => received.context("receiving worker dispatch")?,
             signal = tokio::signal::ctrl_c() => {
                 signal?;
                 return Ok(());
             }
         };
-        ensure!(message.key_expr == inbox, "unexpected work message address");
+        ensure!(
+            message.key_expr == inbox,
+            "unexpected worker message address"
+        );
         let dispatch = match Dispatch::from_json(&message.payload, &protocol) {
             Ok(dispatch) => dispatch.delivery(),
             Err(error) => {
@@ -370,7 +373,7 @@ pub(crate) async fn serve_worker(
                 continue;
             }
         };
-        let cached = match work.receive_dispatch(dispatch) {
+        let cached = match worker.receive_dispatch(dispatch) {
             Ok(cached) => cached,
             Err(error) => {
                 eprintln!("dispatch not admitted: {error}");
@@ -379,16 +382,16 @@ pub(crate) async fn serve_worker(
         };
         let report = match cached {
             Some(report) => report,
-            None => work
+            None => worker
                 .next_report(execute_hello)
                 .await?
-                .context("admitted work did not produce a report")?,
+                .context("admitted worker did not produce a report")?,
         };
         let Message::SubmitReport(evidence) = &report.message else {
-            anyhow::bail!("work completion did not contain a report");
+            anyhow::bail!("worker completion did not contain a report");
         };
         println!(
-            "work cached report: operation={} attempt={} report={}",
+            "worker cached report: operation={} attempt={} report={}",
             evidence.operation_id, evidence.attempt_id, evidence.report_id
         );
         let bytes = hello::encode_report(&report, &protocol)?;
@@ -398,21 +401,21 @@ pub(crate) async fn serve_worker(
     }
 }
 
-pub(crate) fn work_inbox(instance: NodeInstanceId) -> String {
+pub(crate) fn worker_inbox(instance: RoleInstanceId) -> String {
     format!(
-        "beamlet/v0/work/{}/inbox",
+        "beamlet/v0/worker/{}/inbox",
         Uuid::from_u128(instance.as_u128()).simple()
     )
 }
 
-pub(crate) fn report_inbox(instance: NodeInstanceId) -> String {
+pub(crate) fn report_inbox(instance: RoleInstanceId) -> String {
     format!(
         "{NODE_INBOX_PREFIX}reports-{}",
         Uuid::from_u128(instance.as_u128()).simple()
     )
 }
 
-/// 启动原有的本地 Hello 演示, Authority 与 Work 仍在同一进程
+/// 启动原有的本地 Hello 演示, Authority 与 Worker 仍在同一进程
 ///
 /// # 错误
 /// 配置, 接纳, 内部驱动或收发出现无法处理的错误时返回错误
@@ -428,7 +431,7 @@ pub async fn run_local(endpoint: &str) -> Result<()> {
     let protocol_limits = ProtocolLimits::default();
     println!("node listening: {endpoint}");
     println!(
-        "volatile authority={authority} work={worker}; retained operation limit={}",
+        "volatile authority={authority} worker={worker}; retained operation limit={}",
         runtime_limits.max_records
     );
 
@@ -547,7 +550,7 @@ fn response_for(
 async fn execute_hello(attempt: DispatchAttempt<Task>) -> SubmitReport<String, String> {
     let output = hello().to_owned();
     println!(
-        "work executed hello: operation={} attempt={}",
+        "worker executed hello: operation={} attempt={}",
         attempt.operation.operation_id, attempt.attempt_id
     );
     SubmitReport {

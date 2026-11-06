@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     Agent, AgentError,
-    id::{NodeInstanceId, OperationId},
+    id::{OperationId, RoleInstanceId},
     model::{ExecutionResult, Message, Operation},
 };
 use thiserror::Error;
@@ -20,7 +20,7 @@ pub struct DemoResult {
     pub succeeded: usize,
     /// 固定 fail 分支的报告数
     pub failed: usize,
-    /// 两个静态 Work 各完成多少请求
+    /// 两个静态 Worker 各完成多少请求
     pub worker_counts: [usize; 2],
     /// 按原 OperationId 查询到的首份报告
     pub sample: Envelope,
@@ -32,8 +32,8 @@ pub struct DemoResult {
 /// 返回配置, 驱动或结果关联错误, 不自动重跑
 pub async fn run() -> Result<DemoResult, DemoError> {
     let limits = Limits::default();
-    let authority: NodeInstanceId = Uuid::new_v4().as_u128().into();
-    let workers: [NodeInstanceId; 2] = [
+    let authority: RoleInstanceId = Uuid::new_v4().as_u128().into();
+    let workers: [RoleInstanceId; 2] = [
         Uuid::new_v4().as_u128().into(),
         Uuid::new_v4().as_u128().into(),
     ];
@@ -105,13 +105,13 @@ pub async fn run() -> Result<DemoResult, DemoError> {
 /// 执行或结果编码失败时返回错误
 pub async fn print() -> Result<(), DemoError> {
     let result = run().await?;
-    println!("单进程内存演示：1 个 Authority，2 个 Work；无网络、无持久化。");
+    println!("单进程内存演示：1 个 Authority，2 个 Worker；无网络、无持久化。");
     println!(
         "完成 {}/100；成功 {}，预期失败 {}。",
         result.completed, result.succeeded, result.failed
     );
     println!(
-        "Work 分别完成：{}、{}。",
+        "Worker 分别完成：{}、{}。",
         result.worker_counts[0], result.worker_counts[1]
     );
     println!(

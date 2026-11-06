@@ -1,7 +1,7 @@
 use beamlet_kernel::{
-    id::{AttemptId, NodeInstanceId, OperationId, ReportId},
+    id::{AttemptId, OperationId, ReportId, RoleInstanceId},
     model::{Effect, ExecutionResult, Operation, SubmitReport},
-    state::{RuleError, WorkPhase},
+    state::{RuleError, WorkerPhase},
 };
 
 #[test]
@@ -10,7 +10,7 @@ fn identities_preserve_bits_without_uuid_or_serialization_dependencies() {
     assert_eq!(OperationId::from_u128(raw).as_u128(), raw);
     assert_eq!(AttemptId::from(raw).as_u128(), raw);
     assert_eq!(ReportId::from(raw).as_u128(), raw);
-    assert_eq!(NodeInstanceId::from(raw).as_u128(), raw);
+    assert_eq!(RoleInstanceId::from(raw).as_u128(), raw);
     assert_eq!(
         OperationId::from(raw).to_string(),
         "00112233-4455-6677-8899-aabbccddeeff"
@@ -55,24 +55,27 @@ fn completion_rule_distinguishes_rejection_from_execution() {
     let failed = ExecutionResult::<u8, u8>::Failed { error: 2 };
     let rejected = ExecutionResult::<u8, u8>::Rejected { error: 3 };
     assert_eq!(
-        WorkPhase::Queued.finish(&rejected),
-        Ok(WorkPhase::Completed)
+        WorkerPhase::Queued.finish(&rejected),
+        Ok(WorkerPhase::Completed)
     );
     assert_eq!(
-        WorkPhase::Running.finish(&succeeded),
-        Ok(WorkPhase::Completed)
+        WorkerPhase::Running.finish(&succeeded),
+        Ok(WorkerPhase::Completed)
     );
-    assert_eq!(WorkPhase::Running.finish(&failed), Ok(WorkPhase::Completed));
     assert_eq!(
-        WorkPhase::Queued.finish(&succeeded),
+        WorkerPhase::Running.finish(&failed),
+        Ok(WorkerPhase::Completed)
+    );
+    assert_eq!(
+        WorkerPhase::Queued.finish(&succeeded),
         Err(RuleError::InvalidTransition)
     );
     assert_eq!(
-        WorkPhase::Running.finish(&rejected),
+        WorkerPhase::Running.finish(&rejected),
         Err(RuleError::InvalidTransition)
     );
     assert_eq!(
-        WorkPhase::Completed.finish(&succeeded),
+        WorkerPhase::Completed.finish(&succeeded),
         Err(RuleError::InvalidTransition)
     );
 }

@@ -1,7 +1,7 @@
 //! 与编码, 任务种类和运行时无关的执行领域对象
 
 use crate::{
-    id::{AttemptId, NodeInstanceId, OperationId, ReportId},
+    id::{AttemptId, OperationId, ReportId, RoleInstanceId},
     state::RuleError,
 };
 
@@ -97,16 +97,16 @@ pub enum Message<P, O, E> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Delivery<P, O, E> {
     /// 交付来源实例
-    pub source_instance_id: NodeInstanceId,
+    pub source_instance_id: RoleInstanceId,
     /// 交付目标实例
-    pub target_instance_id: NodeInstanceId,
+    pub target_instance_id: RoleInstanceId,
     /// 已脱离传输格式的领域输入
     pub message: Message<P, O, E>,
 }
 
 impl<P, O, E> Delivery<P, O, E> {
     /// 关联实例身份与领域输入, 不执行传输或认证
-    pub fn new(source: NodeInstanceId, target: NodeInstanceId, message: Message<P, O, E>) -> Self {
+    pub fn new(source: RoleInstanceId, target: RoleInstanceId, message: Message<P, O, E>) -> Self {
         Self {
             source_instance_id: source,
             target_instance_id: target,

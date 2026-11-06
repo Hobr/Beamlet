@@ -1,36 +1,36 @@
-//! 独立 Work 消息入口, 执行并缓存证据, 不持有 Authority
+//! 独立 Worker 消息入口, 执行并缓存证据, 不持有 Authority
 
 use crate::{
     ExecutorError, Limits, StateError,
-    id::NodeInstanceId,
+    id::RoleInstanceId,
     model::{Delivery, DispatchAttempt, Message, SubmitReport},
-    state::WorkPhase,
+    state::WorkerPhase,
 };
 use beamlet::executor::Executor;
 use std::future::Future;
 
-/// 独立 Work 驱动, 可以承载同一进程内静态配置的一个或多个 Work
+/// 独立 Worker 驱动, 可以承载同一进程内静态配置的一个或多个 Worker
 ///
 /// 调用方负责交付返回的 Report, 本对象不直接修改 Authority
 /// 丢弃驱动会中止未完成的本地任务并丢失内存记录
 #[derive(Debug)]
-pub struct Work<P, O, E> {
+pub struct Worker<P, O, E> {
     executor: Executor<P, O, E>,
 }
 
-impl<P, O, E> Work<P, O, E>
+impl<P, O, E> Worker<P, O, E>
 where
     P: Clone + Eq + Send + 'static,
     O: Clone + Eq + Send + 'static,
     E: Clone + Eq + Send + 'static,
 {
-    /// 为配置的 Authority 和本地 Work 实例创建独立执行驱动
+    /// 为配置的 Authority 和本地 Worker 实例创建独立执行驱动
     ///
     /// # 错误
-    /// 资源上限无效, Work 列表为空或实例身份重复时返回错误
+    /// 资源上限无效, Worker 列表为空或实例身份重复时返回错误
     pub fn new(
-        authority: NodeInstanceId,
-        workers: Vec<NodeInstanceId>,
+        authority: RoleInstanceId,
+        workers: Vec<RoleInstanceId>,
         limits: Limits,
     ) -> Result<Self, StateError> {
         Ok(Self {
@@ -55,11 +55,11 @@ where
         let attempt_id = attempt.attempt_id;
         let instance = dispatch.target_instance_id;
         let phase = self.executor.accept(dispatch)?;
-        if phase == WorkPhase::Completed {
+        if phase == WorkerPhase::Completed {
             let report = self
                 .executor
-                .work(instance)
-                .and_then(|work| work.report(attempt_id))
+                .worker(instance)
+                .and_then(|worker| worker.report(attempt_id))
                 .expect("completed attempts retain their report");
             return Ok(Some(report.clone()));
         }

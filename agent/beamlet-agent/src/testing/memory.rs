@@ -3,7 +3,7 @@
 use super::protocol::*;
 use beamlet::memory as runtime;
 /// 状态与接纳结论来自底层实现
-pub use beamlet::memory::{Admission, OperationPhase, ReportDisposition, WaitStatus, WorkPhase};
+pub use beamlet::memory::{Admission, OperationPhase, ReportDisposition, WaitStatus, WorkerPhase};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -45,8 +45,8 @@ impl Authority {
     /// # 错误
     /// 配置无效时返回错误
     pub fn new(
-        instance: NodeInstanceId,
-        workers: Vec<NodeInstanceId>,
+        instance: RoleInstanceId,
+        workers: Vec<RoleInstanceId>,
         limits: Limits,
     ) -> Result<Self, StateError> {
         limits.validate()?;
@@ -138,26 +138,26 @@ impl Authority {
     }
 }
 
-/// 对单个内存 Work 进行协议校验, 不创建后台任务
+/// 对单个内存 Worker 进行协议校验, 不创建后台任务
 #[derive(Debug)]
-pub struct Work {
-    inner: runtime::Work<TestTask, Value, String>,
+pub struct Worker {
+    inner: runtime::Worker<TestTask, Value, String>,
     limits: Limits,
     reports: HashMap<AttemptId, Envelope>,
 }
-impl Work {
+impl Worker {
     /// 创建受限协议投影
     ///
     /// # 错误
     /// 资源配置无效时返回错误
     pub fn new(
-        instance: NodeInstanceId,
-        authority: NodeInstanceId,
+        instance: RoleInstanceId,
+        authority: RoleInstanceId,
         limits: Limits,
     ) -> Result<Self, StateError> {
         limits.validate()?;
         Ok(Self {
-            inner: runtime::Work::new(instance, authority, limits.core())?,
+            inner: runtime::Worker::new(instance, authority, limits.core())?,
             limits,
             reports: HashMap::new(),
         })
@@ -166,7 +166,7 @@ impl Work {
     ///
     /// # 错误
     /// 格式, 身份, 实例或容量不合法时返回错误
-    pub fn accept(&mut self, envelope: Envelope) -> Result<WorkPhase, StateError> {
+    pub fn accept(&mut self, envelope: Envelope) -> Result<WorkerPhase, StateError> {
         envelope.validate(&self.limits)?;
         Ok(self.inner.accept(envelope.to_core())?)
     }
@@ -188,7 +188,7 @@ impl Work {
         Ok(())
     }
     /// 查询底层推进阶段
-    pub fn phase(&self, id: AttemptId) -> Option<WorkPhase> {
+    pub fn phase(&self, id: AttemptId) -> Option<WorkerPhase> {
         self.inner.phase(id)
     }
     /// 查询已经缓存的同一份协议证据
@@ -204,7 +204,7 @@ pub enum StateError {
     /// 消息在修改状态前未通过传输格式校验
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
-    /// 静态 Work 配置为空, 或存在重复的实例身份
+    /// 静态 Worker 配置为空, 或存在重复的实例身份
     #[error("workers must be nonempty and unique")]
     InvalidWorkers,
     /// 消息的目标是另一个进程运行实例
@@ -232,13 +232,13 @@ pub enum StateError {
     #[error("retained identity capacity is exhausted")]
     Capacity,
     /// 等待队列已满, 本次新交付未被接纳
-    #[error("work queue is full")]
+    #[error("worker queue is full")]
     QueueFull,
     /// 不存在具有此身份的已接纳请求
     #[error("operation is not retained")]
     UnknownOperation,
-    /// 当前 Work 阶段不允许提交此完成结果
-    #[error("completion does not match the current work phase")]
+    /// 当前 Worker 阶段不允许提交此完成结果
+    #[error("completion does not match the current worker phase")]
     InvalidTransition,
 }
 

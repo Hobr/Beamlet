@@ -1,9 +1,9 @@
 //! 有界内存账本与静态路由, 不包含编码, 网络或任务种类
 
 /// 领域状态由纯 Kernel 定义
-pub use beamlet_kernel::state::{OperationPhase, WaitStatus, WorkPhase};
+pub use beamlet_kernel::state::{OperationPhase, WaitStatus, WorkerPhase};
 use beamlet_kernel::{
-    id::{AttemptId, NodeInstanceId, OperationId, ReportId},
+    id::{AttemptId, OperationId, ReportId, RoleInstanceId},
     model::{Delivery, DispatchAttempt, Message},
     state::RuleError,
 };
@@ -15,9 +15,9 @@ use thiserror::Error;
 pub struct Limits {
     /// 每种身份记录表的容量上限
     pub max_records: usize,
-    /// 每个 Work 的等待队列上限
+    /// 每个 Worker 的等待队列上限
     pub queue_capacity: usize,
-    /// 每个 Work 的在途执行上限
+    /// 每个 Worker 的在途执行上限
     pub max_concurrency: usize,
 }
 impl Default for Limits {
@@ -91,8 +91,8 @@ pub enum ReportDisposition {
 /// 非持久化 Authority, 使用静态轮询, 每个请求只授权一个 Attempt
 #[derive(Debug)]
 pub struct Authority<P, O, E> {
-    instance: NodeInstanceId,
-    workers: Vec<NodeInstanceId>,
+    instance: RoleInstanceId,
+    workers: Vec<RoleInstanceId>,
     next_worker: usize,
     limits: Limits,
     operations: HashMap<OperationId, OperationView<P, O, E>>,
@@ -100,13 +100,13 @@ pub struct Authority<P, O, E> {
 }
 
 impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
-    /// 使用非空的静态 Work 运行实例列表创建有界记录表
+    /// 使用非空的静态 Worker 运行实例列表创建有界记录表
     ///
     /// # 错误
-    /// 资源上限无效, Work 列表为空或实例身份重复时返回错误
+    /// 资源上限无效, Worker 列表为空或实例身份重复时返回错误
     pub fn new(
-        instance: NodeInstanceId,
-        workers: Vec<NodeInstanceId>,
+        instance: RoleInstanceId,
+        workers: Vec<RoleInstanceId>,
         limits: Limits,
     ) -> Result<Self, StateError> {
         limits.validate()?;
@@ -299,32 +299,32 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
 }
 
 #[derive(Debug)]
-struct WorkRecord<P, O, E> {
+struct WorkerRecord<P, O, E> {
     dispatch: Delivery<P, O, E>,
-    phase: WorkPhase,
+    phase: WorkerPhase,
     report: Option<ReportId>,
 }
 
-/// 单个 Work 运行实例使用的有界内存队列与去重记录表
+/// 单个 Worker 运行实例使用的有界内存队列与去重记录表
 #[derive(Debug)]
-pub struct Work<P, O, E> {
-    instance: NodeInstanceId,
-    authority: NodeInstanceId,
+pub struct Worker<P, O, E> {
+    instance: RoleInstanceId,
+    authority: RoleInstanceId,
     limits: Limits,
-    attempts: HashMap<AttemptId, WorkRecord<P, O, E>>,
+    attempts: HashMap<AttemptId, WorkerRecord<P, O, E>>,
     reports: HashMap<ReportId, Delivery<P, O, E>>,
     queue: VecDeque<AttemptId>,
     running: usize,
 }
 
-impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Work<P, O, E> {
-    /// 创建空的 Work, 并绑定到配置的 Authority 运行实例
+impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Worker<P, O, E> {
+    /// 创建空的 Worker, 并绑定到配置的 Authority 运行实例
     ///
     /// # 错误
     /// 资源上限无效时返回错误
     pub fn new(
-        instance: NodeInstanceId,
-        authority: NodeInstanceId,
+        instance: RoleInstanceId,
+        authority: RoleInstanceId,
         limits: Limits,
     ) -> Result<Self, StateError> {
         limits.validate()?;
@@ -347,7 +347,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Work<P, O, E> {
     /// # 错误
     /// 实例错误, 消息无效, 身份冲突或记录与队列容量耗尽时返回错误
     /// 容量耗尽后仍允许查询重复请求
-    pub fn accept(&mut self, envelope: Delivery<P, O, E>) -> Result<WorkPhase, StateError> {
+    pub fn accept(&mut self, envelope: Delivery<P, O, E>) -> Result<WorkerPhase, StateError> {
         envelope.validate()?;
         if envelope.target_instance_id != self.instance {
             return Err(StateError::WrongTarget);
@@ -374,14 +374,14 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Work<P, O, E> {
         }
         self.attempts.insert(
             id,
-            WorkRecord {
+            WorkerRecord {
                 dispatch: envelope,
-                phase: WorkPhase::Queued,
+                phase: WorkerPhase::Queued,
                 report: None,
             },
         );
         self.queue.push_back(id);
-        Ok(WorkPhase::Queued)
+        Ok(WorkerPhase::Queued)
     }
 
     /// 有空闲并发槽位时取出一个排队中的 Attempt
@@ -396,7 +396,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Work<P, O, E> {
             .attempts
             .get_mut(&id)
             .expect("queued attempt must have a retained record");
-        record.phase = WorkPhase::Running;
+        record.phase = WorkerPhase::Running;
         self.running += 1;
         Some(record.dispatch.clone())
     }
@@ -424,7 +424,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Work<P, O, E> {
             .get_mut(&report.attempt_id)
             .ok_or(StateError::InvalidBinding)?;
         let Message::DispatchAttempt(attempt) = &record.dispatch.message else {
-            unreachable!("Work<P, O, E> stores only DispatchAttempt envelopes");
+            unreachable!("Worker<P, O, E> stores only DispatchAttempt envelopes");
         };
         if attempt.operation.operation_id != report.operation_id {
             return Err(StateError::InvalidBinding);
@@ -441,8 +441,8 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Work<P, O, E> {
             .finish(&report.result)
             .map_err(|_| StateError::InvalidTransition)?;
         match record.phase {
-            WorkPhase::Queued => self.queue.retain(|id| *id != report.attempt_id),
-            WorkPhase::Running => self.running -= 1,
+            WorkerPhase::Queued => self.queue.retain(|id| *id != report.attempt_id),
+            WorkerPhase::Running => self.running -= 1,
             _ => return Err(StateError::InvalidTransition),
         }
         record.phase = completed;
@@ -452,7 +452,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Work<P, O, E> {
     }
 
     /// 返回已接纳 Attempt 的当前去重状态
-    pub fn phase(&self, id: AttemptId) -> Option<WorkPhase> {
+    pub fn phase(&self, id: AttemptId) -> Option<WorkerPhase> {
         self.attempts.get(&id).map(|record| record.phase)
     }
 
@@ -474,7 +474,7 @@ pub enum StateError {
     /// 内存上限必须为正数
     #[error("resource limits must be positive")]
     InvalidLimits,
-    /// 静态 Work 配置为空, 或存在重复的实例身份
+    /// 静态 Worker 配置为空, 或存在重复的实例身份
     #[error("workers must be nonempty and unique")]
     InvalidWorkers,
     /// 消息的目标是另一个进程运行实例
@@ -502,12 +502,12 @@ pub enum StateError {
     #[error("retained identity capacity is exhausted")]
     Capacity,
     /// 等待队列已满, 本次新交付未被接纳
-    #[error("work queue is full")]
+    #[error("worker queue is full")]
     QueueFull,
     /// 不存在具有此身份的已接纳请求
     #[error("operation is not retained")]
     UnknownOperation,
-    /// 当前 Work 阶段不允许提交此完成结果
-    #[error("completion does not match the current work phase")]
+    /// 当前 Worker 阶段不允许提交此完成结果
+    #[error("completion does not match the current worker phase")]
     InvalidTransition,
 }

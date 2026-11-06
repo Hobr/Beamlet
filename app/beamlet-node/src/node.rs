@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use beamlet_agent::{Work, id::NodeInstanceId, testing::hello::Task};
+use beamlet_agent::{Worker, id::RoleInstanceId, testing::hello::Task};
 use beamlet_message_zenoh::{Limits, Transport};
 use serde::Deserialize;
 use tokio::{fs, task::JoinSet};
@@ -142,7 +142,7 @@ pub async fn run(path: &str) -> Result<()> {
             authority.instance.simple()
         );
         let requests = transport.subscribe(&format!("{prefix}*")).await?;
-        let instance: NodeInstanceId = authority.instance.as_u128().into();
+        let instance: RoleInstanceId = authority.instance.as_u128().into();
         let reports = transport.subscribe(&roles::report_inbox(instance)).await?;
         // 两种地址各有独立有界队列, 由同一 Authority 驱动处理
         let combined = (requests, reports);
@@ -155,7 +155,7 @@ pub async fn run(path: &str) -> Result<()> {
             let worker_id = worker.instance.as_u128().into();
             local.insert(
                 worker_id,
-                Work::<Task, String, String>::new(
+                Worker::<Task, String, String>::new(
                     instance,
                     vec![worker_id],
                     beamlet_agent::Limits::default(),
@@ -171,7 +171,7 @@ pub async fn run(path: &str) -> Result<()> {
         {
             continue;
         }
-        let inbox = roles::work_inbox(worker.instance.as_u128().into());
+        let inbox = roles::worker_inbox(worker.instance.as_u128().into());
         workers.push((transport.subscribe(&inbox).await?, worker));
     }
     for ((requests, reports), authority, local, prefix) in authorities {

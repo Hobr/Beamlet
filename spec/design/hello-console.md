@@ -1,8 +1,8 @@
 # Hello Console 执行演示
 
-Node 组合模式已支持共享消息会话及多个 Authority/Worker, 见 [Node 与角色组合](node-composition.md). 本页下文保留旧 CLI 的单 Authority 演示; 它不代表组合模式的拓扑限制. 目标角色名为 Worker, 下文 Work 和代码标识暂待统一迁移.
+Node 组合模式已支持共享消息会话及多个 Authority/Worker, 见 [Node 与角色组合](node-composition.md). 本页下文保留旧 CLI 的单 Authority 演示; 它不代表组合模式的拓扑限制. 执行角色已统一命名为 Worker, Rust 接口与授权消息地址同步采用该名称.
 
-当前里程碑: Console 经 Zenoh 提交 Operation, Authority 授权, Work 实际调用 `hello()` 返回 `"World"`, Authority 收录 Report 后向提交方返回证据副本. Node 支持本地组合模式, 也支持独立 Authority/Work 进程.
+当前里程碑: Console 经 Zenoh 提交 Operation, Authority 授权, Worker 实际调用 `hello()` 返回 `"World"`, Authority 收录 Report 后向提交方返回证据副本. Node 支持本地组合模式, 也支持独立 Authority/Worker 进程.
 
 这不是原样回显, 也不是 Durable 执行系统. 两种模式均只保留内存状态. 固定演示编码位于 Agent 的可选 `test-support` 下, 不属于通用 Agent 契约.
 
@@ -43,19 +43,19 @@ cargo run -p beamlet-console --offline --locked -- \
   --message hello --operation-id 00000000-0000-0000-0000-000000000001
 ```
 
-两次返回应具有相同的 Attempt ID 和 Report ID; Node 的 `work executed hello` 日志对该 Operation 只出现一次. `--operation-id` 仅适用于 `--message hello`, 不会变成交互模式中所有输入共享的身份.
+两次返回应具有相同的 Attempt ID 和 Report ID; Node 的 `worker executed hello` 日志对该 Operation 只出现一次. `--operation-id` 仅适用于 `--message hello`, 不会变成交互模式中所有输入共享的身份.
 
 多个 Console 仍各自使用随机会话回复地址. Console 会话 ID 与 Operation ID 独立; 同一 Operation 可通过新的 Console 会话再次提交并读取原有证据. 路由 ID 不是认证凭证.
 
 原有单进程混合假任务演示保留在两个程序的 `--demo` 参数下.
 
-## 独立 Authority/Work 进程
+## 独立 Authority/Worker 进程
 
-以下命令使用同一个静态 TCP 连接地址, 不需要另行启动 zenohd. 该网络只运行一个 Authority; Console 不需要知道 Work 的地址或身份.
+以下命令使用同一个静态 TCP 连接地址, 不需要另行启动 zenohd. 该网络只运行一个 Authority; Console 不需要知道 Worker 的地址或身份.
 
-示例 UUID 只适用于一轮全新的部署. 实例 UUID 不是稳定节点名: 重启整组进程时必须生成三个新 UUID 并一致替换所有命令中的对应值. 当前不支持单个 Work 重启后复用旧实例身份, 也不支持在线修改静态 Work 列表. 身份绑定不等于网络认证.
+示例 UUID 只适用于一轮全新的部署. 实例 UUID 不是稳定节点名: 重启整组进程时必须生成三个新 UUID 并一致替换所有命令中的对应值. 当前不支持单个 Worker 重启后复用旧实例身份, 也不支持在线修改静态 Worker 列表. 身份绑定不等于网络认证.
 
-1. 终端 A 启动 Authority, 显式配置两个 Work 实例:
+1. 终端 A 启动 Authority, 显式配置两个 Worker 实例:
 
    ```bash
    cargo run -p beamlet-node --offline --locked -- \
@@ -65,20 +65,20 @@ cargo run -p beamlet-console --offline --locked -- \
      --worker 00000000-0000-0000-0000-000000000202
    ```
 
-2. 终端 B 启动第一个 Work:
+2. 终端 B 启动第一个 Worker:
 
    ```bash
    cargo run -p beamlet-node --offline --locked -- \
-     --role work --connect tcp/127.0.0.1:7447 \
+     --role worker --connect tcp/127.0.0.1:7447 \
      --instance 00000000-0000-0000-0000-000000000201 \
      --authority 00000000-0000-0000-0000-000000000100
    ```
 
-3. 终端 C 启动第二个 Work:
+3. 终端 C 启动第二个 Worker:
 
    ```bash
    cargo run -p beamlet-node --offline --locked -- \
-     --role work --connect tcp/127.0.0.1:7447 \
+     --role worker --connect tcp/127.0.0.1:7447 \
      --instance 00000000-0000-0000-0000-000000000202 \
      --authority 00000000-0000-0000-0000-000000000100
    ```
@@ -89,21 +89,21 @@ cargo run -p beamlet-console --offline --locked -- \
    cargo run -p beamlet-console --offline --locked
    ```
 
-新 Operation 按静态列表轮转, 两个 Work 终端应分别出现 `work executed hello` 日志. 使用上面的 `--operation-id` 命令重复提交时, 应复用原有 Attempt 和 Report, 不新增执行日志. 也可以仅配置一个 `--worker` 运行最小的三进程闭环.
+新 Operation 按静态列表轮转, 两个 Worker 终端应分别出现 `worker executed hello` 日志. 使用上面的 `--operation-id` 命令重复提交时, 应复用原有 Attempt 和 Report, 不新增执行日志. 也可以仅配置一个 `--worker` 运行最小的三进程闭环.
 
-停止一个 Work 不会触发故障转移: 分配给它的请求保持待定, 不自动改派另一个 Work. 分配给仍运行 Work 的新请求仍可完成. 若原始派发尚在等待订阅就绪, Work 在该次 10 秒发送等待结束前首次连接, 原消息仍可能被交付; 这是同一次发送, 不是自动重投.
+停止一个 Worker 不会触发故障转移: 分配给它的请求保持待定, 不自动改派另一个 Worker. 分配给仍运行 Worker 的新请求仍可完成. 若原始派发尚在等待订阅就绪, Worker 在该次 10 秒发送等待结束前首次连接, 原消息仍可能被交付; 这是同一次发送, 不是自动重投.
 
 ## 处理路径
 
-本地组合模式继续使用 `Agent::submit` 和 `Agent::next_report`; 分进程模式使用已有的独立 Authority/Work 驱动:
+本地组合模式继续使用 `Agent::submit` 和 `Agent::next_report`; 分进程模式使用已有的独立 Authority/Worker 驱动:
 
 1. Console 生成或读取稳定 Operation ID, 将固定 Hello 请求编码一次.
 2. Authority 在接纳前检查消息大小, 严格 JSON 字段, 协议版本和固定任务种类.
-3. `Authority::submit` 保留授权, 只有新接纳请求才向指定 Work 发送原始 DispatchAttempt. 发送确认单独记录, 不代表 Work 接纳.
-4. `Work::receive_dispatch` 检查实例及授权绑定; `Work::next_report` 执行普通 `hello()` 函数, 缓存 Report 后尝试发送. Authority 通过 `receive_report` 校验并收录证据.
+3. `Authority::submit` 保留授权, 只有新接纳请求才向指定 Worker 发送原始 DispatchAttempt. 发送确认单独记录, 不代表 Worker 接纳.
+4. `Worker::receive_dispatch` 检查实例及授权绑定; `Worker::next_report` 执行普通 `hello()` 函数, 缓存 Report 后尝试发送. Authority 通过 `receive_report` 校验并收录证据.
 5. Authority 向等待的 Console 专用地址发送已收录的证据副本. 交付失败不移除已保留的结果, 也不自动重新执行.
 
-已完成 Operation 的重复提交直接读取原有 Report, 不生成第二次执行. 仍无证据的原有请求返回 Pending, 不自动重新派发或创建新 Attempt. 预期的提交错误独立于执行 Report 返回, 并附带当前保留状态; Work 拒绝入队时 Authority 可能已经接纳. 驱动或内部状态错误停止 Node, 不伪造普通失败证据.
+已完成 Operation 的重复提交直接读取原有 Report, 不生成第二次执行. 仍无证据的原有请求返回 Pending, 不自动重新派发或创建新 Attempt. 预期的提交错误独立于执行 Report 返回, 并附带当前保留状态; Worker 拒绝入队时 Authority 可能已经接纳. 驱动或内部状态错误停止 Node, 不伪造普通失败证据.
 
 ## 编码与边界
 
@@ -119,19 +119,19 @@ Console 请求是当前 Node 连接上的固定演示包装:
 }
 ```
 
-响应包装区分 `report`, `pending`, `submission_error`. `report` 包装的是已有 [v0 协议](volatile-protocol.md) 的 Work-to-Authority `SubmitReport` 信封副本, 保留原始实例绑定及 Operation/Attempt/Report 身份. 不会把原信封的目标实例改写成 Console, 也没有为既有三种业务消息添加通用查询或能力注册协议.
+响应包装区分 `report`, `pending`, `submission_error`. `report` 包装的是已有 [v0 协议](volatile-protocol.md) 的 Worker-to-Authority `SubmitReport` 信封副本, 保留原始实例绑定及 Operation/Attempt/Report 身份. 不会把原信封的目标实例改写成 Console, 也没有为既有三种业务消息添加通用查询或能力注册协议.
 
-跨进程 DispatchAttempt 使用同一 Hello 演示模块中的严格 `Dispatch` 编码, 携带源/目标实例, 原有 Attempt ID 及完整固定 Operation. Work 的 SubmitReport 使用已有 v0 信封编码. Authority 的报告地址为 `beamlet/v0/node/inbox/reports-<authority-id>`, Work 的授权地址为 `beamlet/v0/work/<work-id>/inbox`; 地址中的实例 ID 使用 32 位十六进制表示. Console 的现有请求/响应编码和专用回复地址保持不变. 没有新增业务消息种类, 能力注册或通用消息总线.
+跨进程 DispatchAttempt 使用同一 Hello 演示模块中的严格 `Dispatch` 编码, 携带源/目标实例, 原有 Attempt ID 及完整固定 Operation. Worker 的 SubmitReport 使用已有 v0 信封编码. Authority 的报告地址为 `beamlet/v0/node/inbox/reports-<authority-id>`, Worker 的授权地址为 `beamlet/v0/worker/<worker-id>/inbox`; 地址中的实例 ID 使用 32 位十六进制表示. Console 的现有请求/响应编码和专用回复地址保持不变. 没有新增业务消息种类, 能力注册或通用消息总线.
 
-当前请求, 跨进程授权, Report 及完整 Console 响应包装分别受 64 KiB 应用消息预算限制. Authority 默认保留 1024 个 Operation, 满后拒绝新的身份, 不淘汰旧记录来重新执行. 每个 Work 的记录同样受限. 本地模式及每个 Work 当前逐条执行 Hello, 不承诺慢任务之间的公平性或并行调度.
+当前请求, 跨进程授权, Report 及完整 Console 响应包装分别受 64 KiB 应用消息预算限制. Authority 默认保留 1024 个 Operation, 满后拒绝新的身份, 不淘汰旧记录来重新执行. 每个 Worker 的记录同样受限. 本地模式及每个 Worker 当前逐条执行 Hello, 不承诺慢任务之间的公平性或并行调度.
 
-分进程 Authority 的等待回复记录和后台发送任务各自最多 256 个. 添加后台发送任务前检查上限, 避免离线 Work 或消失的 Console 阻塞接收循环. 等待记录满时返回独立提交错误; 发送任务已满时不再提交本次请求, Console 可能等待超时. 两者均不生成失败 Report 或新授权. 这些应用上限不涵盖 Zenoh 自身所有内部缓冲区.
+分进程 Authority 的等待回复记录和后台发送任务各自最多 256 个. 添加后台发送任务前检查上限, 避免离线 Worker 或消失的 Console 阻塞接收循环. 等待记录满时返回独立提交错误; 发送任务已满时不再提交本次请求, Console 可能等待超时. 两者均不生成失败 Report 或新授权. 这些应用上限不涵盖 Zenoh 自身所有内部缓冲区.
 
 分进程 Authority 等待约 5 秒仍无 Report 时, 准备返回 Pending 并释放本次等待记录, 不取消执行或结束原有发送等待. 网络发送各自最多等待 10 秒; 背压或发送任务占满时不保证 Pending 在 Console 截止时间前送达. 没有 Console 等待时收到的迟到 Report 仍被收录, 后续使用原 Operation ID 可读取该证据.
 
-Console 的 10 秒结果等待超时不取消 Work, 不证明未接纳或没有效果, 不自动重新提交. 有需要时可在同一仍运行的 Authority 上使用原 Operation ID 再次提交. 尚未完成请求的重复提交不会自动重发原 DispatchAttempt; Report 发送失败也不会自动重投, 即使 Work 缓存仍在. 本轮没有可靠交付保证.
+Console 的 10 秒结果等待超时不取消 Worker, 不证明未接纳或没有效果, 不自动重新提交. 有需要时可在同一仍运行的 Authority 上使用原 Operation ID 再次提交. 尚未完成请求的重复提交不会自动重发原 DispatchAttempt; Report 发送失败也不会自动重投, 即使 Worker 缓存仍在. 本轮没有可靠交付保证.
 
-Authority 重启会丢失全部请求和收录证据; Work 重启会丢失其执行记录和报告缓存. 原 Operation ID 不提供跨重启去重或恢复保证. 此里程碑不包含持久化, Outbox, 自动重投, 身份认证, 能力注册, 真实 Tool 或 LLM.
+Authority 重启会丢失全部请求和收录证据; Worker 重启会丢失其执行记录和报告缓存. 原 Operation ID 不提供跨重启去重或恢复保证. 此里程碑不包含持久化, Outbox, 自动重投, 身份认证, 能力注册, 真实 Tool 或 LLM.
 
 ## 接收路径选择
 

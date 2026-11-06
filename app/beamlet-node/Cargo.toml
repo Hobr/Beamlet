@@ -1,5 +1,6 @@
 [package]
 name = "beamlet-node"
+autoexamples = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,6 +8,10 @@ readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
+
+[[example]]
+name = "volatile"
+path = "examples/volatile.rs"
 
 [dependencies]
 beamlet-agent = { workspace = true, features = ["test-support"] }

@@ -1,20 +1,20 @@
-//! 同进程内一个或多个 Work 的有界 Tokio 驱动, 不认识任何具体任务
+//! 同进程内一个或多个 Worker 的有界 Tokio 驱动, 不认识任何具体任务
 
 use crate::{
-    id::NodeInstanceId,
-    memory::{Limits, StateError, Work, WorkPhase},
+    id::RoleInstanceId,
+    memory::{Limits, StateError, Worker, WorkerPhase},
     model::{Delivery, DispatchAttempt, Message, SubmitReport},
 };
 use std::{collections::HashMap, future::Future};
 use thiserror::Error;
 use tokio::task::{JoinError, JoinSet};
 
-/// 多个本地 Work 共用完成队列; 每个 Work 仍有独立排队与并发上限
+/// 多个本地 Worker 共用完成队列; 每个 Worker 仍有独立排队与并发上限
 ///
 /// 本对象没有网络或恢复机制. 丢弃它会中止尚未完成的任务并丢失状态
 #[derive(Debug)]
 pub struct Executor<P, O, E> {
-    workers: HashMap<NodeInstanceId, Work<P, O, E>>,
+    workers: HashMap<RoleInstanceId, Worker<P, O, E>>,
     tasks: JoinSet<Delivery<P, O, E>>,
 }
 
@@ -29,15 +29,15 @@ where
     /// # 错误
     /// 实例为空, 重复或资源上限无效时返回错误
     pub fn new(
-        authority: NodeInstanceId,
-        workers: Vec<NodeInstanceId>,
+        authority: RoleInstanceId,
+        workers: Vec<RoleInstanceId>,
         limits: Limits,
     ) -> Result<Self, StateError> {
         limits.validate()?;
         let mut records = HashMap::new();
         for instance in workers {
             if records
-                .insert(instance, Work::new(instance, authority, limits)?)
+                .insert(instance, Worker::new(instance, authority, limits)?)
                 .is_some()
             {
                 return Err(StateError::InvalidWorkers);
@@ -56,7 +56,7 @@ where
     ///
     /// # 错误
     /// 目标, 授权, 定义或容量不满足要求时返回错误
-    pub fn accept(&mut self, delivery: Delivery<P, O, E>) -> Result<WorkPhase, StateError> {
+    pub fn accept(&mut self, delivery: Delivery<P, O, E>) -> Result<WorkerPhase, StateError> {
         self.workers
             .get_mut(&delivery.target_instance_id)
             .ok_or(StateError::WrongTarget)?
@@ -66,7 +66,7 @@ where
     /// 仅在取得槽位后调用执行函数; 不注册处理器或创建无限等待许可的任务
     ///
     /// 执行函数接收普通授权, 并负责返回带有身份与效果证据的报告
-    /// 报告仍须通过 Work 的关联与阶段校验
+    /// 报告仍须通过 Worker 的关联与阶段校验
     ///
     /// # 恐慌
     /// 有任务可启动却不在 Tokio 运行时内, 或执行函数构造过程发生恐慌时终止
@@ -79,7 +79,7 @@ where
         for worker in self.workers.values_mut() {
             while let Some(dispatch) = worker.start_next() {
                 let Message::DispatchAttempt(attempt) = dispatch.message else {
-                    unreachable!("Work queues only authorizations");
+                    unreachable!("Worker queues only authorizations");
                 };
                 let task = execute(attempt);
                 self.tasks.spawn(async move {
@@ -118,8 +118,8 @@ where
         self.tasks.len()
     }
 
-    /// 只读访问某个 Work 的阶段与缓存证据
-    pub fn work(&self, instance: NodeInstanceId) -> Option<&Work<P, O, E>> {
+    /// 只读访问某个 Worker 的阶段与缓存证据
+    pub fn worker(&self, instance: RoleInstanceId) -> Option<&Worker<P, O, E>> {
         self.workers.get(&instance)
     }
 }

@@ -2,5 +2,5 @@
 
 pub use beamlet_agent::testing::memory::{
     Admission, Authority, OperationPhase, OperationView, ReportDisposition, StateError, Submission,
-    WaitStatus, Work, WorkPhase,
+    WaitStatus, Worker, WorkerPhase,
 };

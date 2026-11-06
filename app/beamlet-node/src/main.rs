@@ -1,4 +1,4 @@
-//! 静态 Zenoh 节点, 支持本地执行或独立 Authority/Work 进程
+//! 静态 Zenoh 节点, 支持本地执行或独立 Authority/Worker 进程
 
 use std::env;
 
@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
                     "beamlet-node --config PATH.json\n\
                      beamlet-node [--role local] [--listen ENDPOINT] [--demo]\n\
                      beamlet-node --role authority --instance UUID --worker UUID [--worker UUID ...] [--listen ENDPOINT]\n\
-                     beamlet-node --role work --instance UUID --authority UUID [--connect ENDPOINT]\n\
+                     beamlet-node --role worker --instance UUID --authority UUID [--connect ENDPOINT]\n\
                      ENDPOINT defaults to tcp/127.0.0.1:7447; use fresh instance UUIDs for each deployment"
                 );
                 return Ok(());
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
             let instance = instance.context("authority mode requires --instance UUID")?;
             ensure!(
                 !workers.contains(&instance),
-                "authority and work instances must differ"
+                "authority and worker instances must differ"
             );
             roles::run_authority(
                 listen.as_deref().unwrap_or(default_endpoint),
@@ -97,18 +97,18 @@ async fn main() -> Result<()> {
             )
             .await
         }
-        "worker" | "work" => {
+        "worker" => {
             ensure!(
                 listen.is_none() && workers.is_empty(),
-                "work mode does not accept --listen or --worker"
+                "worker mode does not accept --listen or --worker"
             );
-            let instance = instance.context("work mode requires --instance UUID")?;
-            let authority = authority.context("work mode requires --authority UUID")?;
+            let instance = instance.context("worker mode requires --instance UUID")?;
+            let authority = authority.context("worker mode requires --authority UUID")?;
             ensure!(
                 instance != authority,
-                "authority and work instances must differ"
+                "authority and worker instances must differ"
             );
-            roles::run_work(
+            roles::run_worker(
                 connect.as_deref().unwrap_or(default_endpoint),
                 instance.as_u128().into(),
                 authority.as_u128().into(),

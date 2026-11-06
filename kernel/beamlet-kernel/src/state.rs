@@ -3,7 +3,7 @@
 use crate::model::ExecutionResult;
 use thiserror::Error;
 
-/// Authority 的观察状态; 已派发不代表 Work 已经开始执行
+/// Authority 的观察状态; 已派发不代表 Worker 已经开始执行
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum OperationPhase {
@@ -25,10 +25,10 @@ pub enum WaitStatus {
     TimedOut,
 }
 
-/// Work 的推进状态, 不承诺持久接纳, 也不证明实际执行情况
+/// Worker 的推进状态, 不承诺持久接纳, 也不证明实际执行情况
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum WorkPhase {
+pub enum WorkerPhase {
     /// Attempt 正在有界队列中等待
     Queued,
     /// 调用方已取走 Attempt, 准备在本模块之外执行
@@ -37,7 +37,7 @@ pub enum WorkPhase {
     Completed,
 }
 
-impl WorkPhase {
+impl WorkerPhase {
     /// 根据当前阶段与结果决定是否允许完成, 不修改任何存储
     ///
     /// # 错误
@@ -58,6 +58,6 @@ pub enum RuleError {
     #[error("a rejected execution must have no effects")]
     InvalidRejectionEffect,
     /// 当前阶段不允许此结果
-    #[error("illegal work transition")]
+    #[error("illegal worker transition")]
     InvalidTransition,
 }

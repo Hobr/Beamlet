@@ -2,7 +2,7 @@
 
 use crate::{
     Limits, OperationView, ReportDisposition, StateError, Submission,
-    id::{AttemptId, NodeInstanceId, OperationId, ReportId},
+    id::{AttemptId, OperationId, ReportId, RoleInstanceId},
     model::{Delivery, Message, Operation},
 };
 use beamlet::memory::Authority as Ledger;
@@ -13,18 +13,18 @@ use beamlet::memory::Authority as Ledger;
 /// 所有记录仅在内存中保留, 不提供可靠重投或重启恢复
 #[derive(Debug)]
 pub struct Authority<P, O, E> {
-    instance: NodeInstanceId,
+    instance: RoleInstanceId,
     ledger: Ledger<P, O, E>,
 }
 
 impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
-    /// 使用静态 Work 实例列表创建独立 Authority
+    /// 使用静态 Worker 实例列表创建独立 Authority
     ///
     /// # 错误
-    /// 资源上限无效, Work 列表为空或实例身份重复时返回错误
+    /// 资源上限无效, Worker 列表为空或实例身份重复时返回错误
     pub fn new(
-        instance: NodeInstanceId,
-        workers: Vec<NodeInstanceId>,
+        instance: RoleInstanceId,
+        workers: Vec<RoleInstanceId>,
         limits: Limits,
     ) -> Result<Self, StateError> {
         Ok(Self {
@@ -33,7 +33,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
         })
     }
 
-    /// 接纳本地应用请求并返回待交付授权, 不自动发送或接触 Work
+    /// 接纳本地应用请求并返回待交付授权, 不自动发送或接触 Worker
     ///
     /// 重复提交只返回原有授权, 不表示应当自动重新交付
     ///
@@ -54,7 +54,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
         )
     }
 
-    /// 调用方确认已发出后记录派发观察, 不代表 Work 已接纳
+    /// 调用方确认已发出后记录派发观察, 不代表 Worker 已接纳
     ///
     /// # 错误
     /// 请求尚未被接纳时返回错误
@@ -73,7 +73,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
         self.ledger.receive_report(report)
     }
 
-    /// 查询请求的当前观察, 不访问 Work 的状态
+    /// 查询请求的当前观察, 不访问 Worker 的状态
     pub fn operation(&self, operation: OperationId) -> Option<&OperationView<P, O, E>> {
         self.ledger.operation(operation)
     }

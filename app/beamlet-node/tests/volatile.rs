@@ -1,17 +1,17 @@
 use beamlet_node::{
     memory::{
-        Admission, Authority, OperationPhase, ReportDisposition, StateError, WaitStatus, Work,
-        WorkPhase,
+        Admission, Authority, OperationPhase, ReportDisposition, StateError, WaitStatus, Worker,
+        WorkerPhase,
     },
     protocol::{
         AttemptId, DispatchAttempt, Effect, Envelope, ExecutionResult, Limits, Message,
-        NodeInstanceId, OperationId, ProtocolError, ReportId, SubmitOperation, SubmitReport,
+        OperationId, ProtocolError, ReportId, RoleInstanceId, SubmitOperation, SubmitReport,
         TestTask,
     },
 };
 use serde_json::{Value, json};
 
-fn node(id: u128) -> NodeInstanceId {
+fn node(id: u128) -> RoleInstanceId {
     id.into()
 }
 fn operation(id: u128) -> OperationId {
@@ -280,19 +280,19 @@ fn work_deduplicates_queued_running_and_completed_attempts() {
     let limits = Limits::default();
     let mut a = authority(limits);
     let d = dispatch(&mut a, 1);
-    let mut w = Work::new(node(3), node(2), limits).expect("valid Work");
+    let mut w = Worker::new(node(3), node(2), limits).expect("valid Worker");
     assert_eq!(
         w.accept(d.clone()).expect("first delivery"),
-        WorkPhase::Queued
+        WorkerPhase::Queued
     );
     assert_eq!(
         w.accept(d.clone()).expect("queued duplicate"),
-        WorkPhase::Queued
+        WorkerPhase::Queued
     );
     assert_eq!(w.start_next(), Some(d.clone()));
     assert_eq!(
         w.accept(d.clone()).expect("running duplicate"),
-        WorkPhase::Running
+        WorkerPhase::Running
     );
     assert!(
         w.start_next().is_none(),
@@ -303,7 +303,7 @@ fn work_deduplicates_queued_running_and_completed_attempts() {
     w.complete(report.clone()).expect("duplicate completion");
     assert_eq!(
         w.accept(d).expect("completed duplicate"),
-        WorkPhase::Completed
+        WorkerPhase::Completed
     );
     assert_eq!(w.report(attempt(1)), Some(&report));
     assert!(w.start_next().is_none());
@@ -315,7 +315,7 @@ fn queue_and_running_limits_are_independent_and_invalid_completion_keeps_slot() 
     limits.queue_capacity = 1;
     limits.max_concurrency = 1;
     let mut a = Authority::new(node(2), vec![node(3)], limits).expect("valid Authority");
-    let mut w = Work::new(node(3), node(2), limits).expect("valid Work");
+    let mut w = Worker::new(node(3), node(2), limits).expect("valid Worker");
     let d1 = dispatch(&mut a, 1);
     let d2 = dispatch(&mut a, 2);
     let d3 = dispatch(&mut a, 3);
@@ -349,7 +349,7 @@ fn work_refuses_wrong_incarnation_untrusted_authority_and_conflicting_attempt() 
     let limits = Limits::default();
     let mut a = authority(limits);
     let d = dispatch(&mut a, 1);
-    let mut w = Work::new(node(3), node(2), limits).expect("valid Work");
+    let mut w = Worker::new(node(3), node(2), limits).expect("valid Worker");
     let mut wrong = d.clone();
     wrong.target_instance_id = node(30);
     assert!(matches!(w.accept(wrong), Err(StateError::WrongTarget)));
@@ -513,13 +513,13 @@ fn identity_capacity_does_not_evict_records_or_prevent_duplicate_lookup() {
         a.operation(operation(1)).expect("request").adopted_report,
         Some(report_id(1))
     );
-    let mut w = Work::new(node(3), node(2), limits).expect("valid Work");
+    let mut w = Worker::new(node(3), node(2), limits).expect("valid Worker");
     w.accept(d.clone()).expect("first attempt");
     w.start_next().expect("start first");
     w.complete(first).expect("complete first");
     assert_eq!(
         w.accept(d).expect("duplicate at capacity"),
-        WorkPhase::Completed
+        WorkerPhase::Completed
     );
     let mut other_authority =
         Authority::new(node(2), vec![node(3)], Limits::default()).expect("fixture Authority");
@@ -538,13 +538,13 @@ fn queued_attempt_can_be_rejected_but_cannot_claim_execution_before_start() {
     let limits = Limits::default();
     let mut a = authority(limits);
     let d = dispatch(&mut a, 1);
-    let mut w = Work::new(node(3), node(2), limits).expect("valid Work");
+    let mut w = Worker::new(node(3), node(2), limits).expect("valid Worker");
     w.accept(d.clone()).expect("queued attempt");
     assert!(matches!(
         w.complete(success(&d, 1)),
         Err(StateError::InvalidTransition)
     ));
-    assert_eq!(w.phase(attempt(1)), Some(WorkPhase::Queued));
+    assert_eq!(w.phase(attempt(1)), Some(WorkerPhase::Queued));
     let rejected = evidence(
         &d,
         2,
@@ -563,7 +563,7 @@ fn completed_attempt_cannot_be_completed_again_with_different_evidence() {
     let limits = Limits::default();
     let mut a = authority(limits);
     let d = dispatch(&mut a, 1);
-    let mut w = Work::new(node(3), node(2), limits).expect("valid Work");
+    let mut w = Worker::new(node(3), node(2), limits).expect("valid Worker");
     w.accept(d.clone()).expect("queued");
     w.start_next().expect("running");
     let first = success(&d, 1);
@@ -577,7 +577,7 @@ fn restarted_incarnations_never_adopt_or_resume_old_messages() {
     let limits = Limits::default();
     let mut old_authority = authority(limits);
     let d = dispatch(&mut old_authority, 1);
-    let mut restarted_work = Work::new(node(30), node(2), limits).expect("restarted Work");
+    let mut restarted_work = Worker::new(node(30), node(2), limits).expect("restarted Worker");
     assert!(matches!(
         restarted_work.accept(d.clone()),
         Err(StateError::WrongTarget)
@@ -657,7 +657,7 @@ fn invalid_limits_and_worker_lists_are_rejected() {
             2 => invalid.max_concurrency = 0,
             _ => invalid.max_message_bytes = 0,
         }
-        assert!(Work::new(node(3), node(2), invalid).is_err());
+        assert!(Worker::new(node(3), node(2), invalid).is_err());
     }
 }
 
@@ -666,8 +666,8 @@ fn one_hundred_operations_route_and_report_without_cross_talk() {
     let limits = Limits::default();
     let mut a = authority(limits);
     let mut workers = [
-        Work::new(node(3), node(2), limits).expect("Work B"),
-        Work::new(node(4), node(2), limits).expect("Work C"),
+        Worker::new(node(3), node(2), limits).expect("Worker B"),
+        Worker::new(node(4), node(2), limits).expect("Worker C"),
     ];
     let mut counts = [0, 0];
     for id in 100..200 {
@@ -682,7 +682,7 @@ fn one_hundred_operations_route_and_report_without_cross_talk() {
     }
     assert_eq!(counts, [50, 50]);
     let mut next_report = 1000;
-    // 反转 Work 与批次内的完成顺序, 验证乱序回报
+    // 反转 Worker 与批次内的完成顺序, 验证乱序回报
     for w in workers.iter_mut().rev() {
         loop {
             let mut batch = Vec::new();
