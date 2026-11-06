@@ -44,7 +44,7 @@ tokio-stream = { version = "0.1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["full"] }
 
 async-nats = "0.51"
-zenoh = { version = "1.10", features = ["shared-memory", "stats", "uring"] }
+zenoh = { version = "1.10", features = ["shared-memory", "stats"] }
 
 axum = { version = "0.8", features = ["http2", "ws"] }
 tower = "0.5"
