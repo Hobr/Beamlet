@@ -6,7 +6,14 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use beamlet_agent::{Worker, id::RoleInstanceId, testing::hello::Task};
+use beamlet_agent::{
+    Worker,
+    id::{
+        AuthorityId, AuthorityInstanceId, NodeId, NodeInstanceId, RoleInstanceId, WorkerId,
+        WorkerInstanceId,
+    },
+    testing::hello::Task,
+};
 use beamlet_message_zenoh::{Limits, Transport};
 use serde::Deserialize;
 use tokio::{fs, task::JoinSet};
@@ -17,6 +24,7 @@ use crate::roles;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
+    node_id: Uuid,
     #[serde(default)]
     listen: Vec<String>,
     #[serde(default)]
@@ -30,6 +38,7 @@ struct Config {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AuthorityConfig {
+    id: Uuid,
     instance: Uuid,
     workers: Vec<Uuid>,
 }
@@ -37,6 +46,7 @@ struct AuthorityConfig {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WorkerConfig {
+    id: Uuid,
     instance: Uuid,
     authority: Uuid,
 }
@@ -51,6 +61,18 @@ impl Config {
             self.authorities.len() + self.workers.len() <= 64,
             "at most 64 role instances per node"
         );
+        let mut identities = HashSet::new();
+        for identity in self
+            .authorities
+            .iter()
+            .map(|a| a.id)
+            .chain(self.workers.iter().map(|w| w.id))
+        {
+            ensure!(
+                identities.insert(identity),
+                "duplicate logical role identity: {identity}"
+            );
+        }
         let mut instances = HashSet::new();
         for instance in self
             .authorities
@@ -124,7 +146,20 @@ pub async fn run(path: &str) -> Result<()> {
     );
     let config: Config = serde_json::from_slice(&bytes).context("decoding node configuration")?;
     config.validate()?;
-    let subscription = format!("beamlet/v0/node-session/{}/inbox", Uuid::new_v4().simple());
+    let node_id = NodeId::from_u128(config.node_id.as_u128());
+    let node_instance = NodeInstanceId::from_u128(Uuid::new_v4().as_u128());
+    println!("node identity: id={node_id} instance={node_instance}");
+    for authority in &config.authorities {
+        let id = AuthorityId::from_u128(authority.id.as_u128());
+        let instance = AuthorityInstanceId::from_u128(authority.instance.as_u128());
+        println!("authority identity: id={id} instance={instance} node={node_instance}");
+    }
+    for worker in &config.workers {
+        let id = WorkerId::from_u128(worker.id.as_u128());
+        let instance = WorkerInstanceId::from_u128(worker.instance.as_u128());
+        println!("worker identity: id={id} instance={instance} node={node_instance}");
+    }
+    let subscription = format!("beamlet/v0/node-session/{node_instance}/inbox");
     let transport = Transport::node(
         &config.listen,
         &config.connect,
@@ -142,7 +177,8 @@ pub async fn run(path: &str) -> Result<()> {
             authority.instance.simple()
         );
         let requests = transport.subscribe(&format!("{prefix}*")).await?;
-        let instance: RoleInstanceId = authority.instance.as_u128().into();
+        let instance: RoleInstanceId =
+            AuthorityInstanceId::from_u128(authority.instance.as_u128()).into();
         let reports = transport.subscribe(&roles::report_inbox(instance)).await?;
         // 两种地址各有独立有界队列, 由同一 Authority 驱动处理
         let combined = (requests, reports);
@@ -152,7 +188,8 @@ pub async fn run(path: &str) -> Result<()> {
             .iter()
             .filter(|w| w.authority == authority.instance)
         {
-            let worker_id = worker.instance.as_u128().into();
+            let worker_id: RoleInstanceId =
+                WorkerInstanceId::from_u128(worker.instance.as_u128()).into();
             local.insert(
                 worker_id,
                 Worker::<Task, String, String>::new(
