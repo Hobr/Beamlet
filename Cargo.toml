@@ -21,8 +21,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.99.1"
 readme = "README.md"
-homepage = "https://github.com/Hobr/Beamlet"
-repository = "https://github.com/Hobr/Beamlet"
+homepage = "https://github.com/Everfold/Beamlet"
+repository = "https://github.com/Everfold/Beamlet"
 license = "Apache-2.0"
 
 [workspace.dependencies]

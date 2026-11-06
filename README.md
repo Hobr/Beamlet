@@ -8,11 +8,11 @@
 
 ```bash
 # List
-nix flake show github:Hobr/Beamlet
+nix flake show github:Everfold/Beamlet
 
 # Node
-nix run github:Hobr/Beamlet#beamlet-node -- --version
-nix run github:Hobr/Beamlet#beamlet-console -- --version
+nix run github:Everfold/Beamlet#beamlet-node -- --version
+nix run github:Everfold/Beamlet#beamlet-console -- --version
 ```
 
 ## Build
