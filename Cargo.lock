@@ -244,6 +244,7 @@ dependencies = [
  "beamlet-message-zenoh",
  "serde_json",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

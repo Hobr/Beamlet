@@ -13,6 +13,7 @@ beamlet-agent = { workspace = true, features = ["test-support"] }
 beamlet-message-zenoh.workspace = true
 
 tokio.workspace = true
+uuid.workspace = true
 
 anyhow.workspace = true
 
