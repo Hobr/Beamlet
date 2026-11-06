@@ -12,7 +12,10 @@ use beamlet_agent::{
         AuthorityId, AuthorityInstanceId, NodeId, NodeInstanceId, RoleInstanceId, WorkerId,
         WorkerInstanceId,
     },
-    testing::hello::Task,
+    testing::{
+        hello::Task,
+        lifecycle::{Role, RoleStarted},
+    },
 };
 use beamlet_message_zenoh::{Limits, Transport};
 use serde::Deserialize;
@@ -142,7 +145,15 @@ pub async fn run(path: &str) -> Result<()> {
     let node_id = NodeId::from_u128(config.node_id.as_u128());
     let node_instance = NodeInstanceId::from_u128(Uuid::new_v4().as_u128());
     println!("Node 身份: 逻辑身份={node_id} 运行实例={node_instance}");
+    let mut notices = Vec::new();
     for authority in &config.authorities {
+        notices.push(RoleStarted::new(
+            Role::Authority,
+            config.node_id,
+            Uuid::from_u128(node_instance.as_u128()),
+            authority.id,
+            authority.instance,
+        ));
         let id = AuthorityId::from_u128(authority.id.as_u128());
         let instance = AuthorityInstanceId::from_u128(authority.instance.as_u128());
         println!(
@@ -150,6 +161,13 @@ pub async fn run(path: &str) -> Result<()> {
         );
     }
     for worker in &config.workers {
+        notices.push(RoleStarted::new(
+            Role::Worker,
+            config.node_id,
+            Uuid::from_u128(node_instance.as_u128()),
+            worker.id,
+            worker.instance,
+        ));
         let id = WorkerId::from_u128(worker.id.as_u128());
         let instance = WorkerInstanceId::from_u128(worker.instance.as_u128());
         println!("Worker 身份: 逻辑身份={id} 运行实例={instance} 所属 Node 实例={node_instance}");
@@ -276,11 +294,16 @@ pub async fn run(path: &str) -> Result<()> {
             .map(|_| ())
         });
     }
-    println!("Node 已就绪: 消息会话共享; 角色数量={}", tasks.len());
+    let role_count = tasks.len();
+    if !notices.is_empty() {
+        let publisher = Arc::clone(&transport);
+        tasks.spawn(async move { lifecycle::publish_starts(&publisher, notices).await });
+    }
+    println!("Node 已就绪: 消息会话共享; 角色数量={role_count}");
     tokio::select! {
         finished = tasks.join_next(), if !tasks.is_empty() => {
-            finished.context("角色完成记录缺失")?.context("角色任务失败")??;
-            bail!("角色意外停止");
+            finished.context("Node 后台完成记录缺失")?.context("Node 后台任务失败")??;
+            bail!("Node 后台任务意外停止");
         }
         signal = tokio::signal::ctrl_c() => { signal?; }
     }

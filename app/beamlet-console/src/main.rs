@@ -14,6 +14,7 @@ use tokio::{
 };
 use uuid::Uuid;
 
+mod notifications;
 const NODE_INBOX: &str = "beamlet/v0/node/inbox";
 const ROUND_TRIP_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_LINE_BYTES: usize = 64 * 1024;
@@ -34,6 +35,7 @@ async fn run() -> Result<()> {
     let mut authority = None;
     let mut message = None;
     let mut operation_id = None;
+    let mut subscribe = false;
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -55,10 +57,11 @@ async fn run() -> Result<()> {
                         .context("Operation UUID 无效")?,
                 );
             }
+            "--subscribe" => subscribe = true,
             "--demo" => return Ok(beamlet_agent::testing::demo::print().await?),
             "--help" | "-h" => {
                 println!(
-                    "用法: beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--message hello [--operation-id UUID]] [--demo]"
+                    "用法: beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--subscribe] [--message hello [--operation-id UUID]] [--demo]\n--subscribe 启用只读角色启动通知; 输入结束后继续订阅, Ctrl-C 退出"
                 );
                 return Ok(());
             }
@@ -91,17 +94,47 @@ async fn run() -> Result<()> {
     .await
     .context("连接 Node 超时")?
     .context("连接 Node 失败")?;
+    let subscription = if subscribe {
+        Some(
+            transport
+                .subscribe(beamlet_agent::testing::lifecycle::SUBSCRIPTION)
+                .await?,
+        )
+    } else {
+        None
+    };
     let sender = transport.sender(&destination).await?;
-    timeout(ROUND_TRIP_TIMEOUT, sender.wait_for_receiver())
-        .await
-        .context("Node 订阅尚未就绪")??;
-    println!("Console 已连接: {endpoint} (会话 {console_id})");
-
-    if let Some(request) = request {
-        return exchange(&transport, &sender, &request).await;
+    if !subscribe {
+        timeout(ROUND_TRIP_TIMEOUT, sender.wait_for_receiver())
+            .await
+            .context("Node 订阅尚未就绪")??;
     }
+    println!("Console 已连接: {endpoint} (会话 {console_id})");
+    let business = async {
+        if let Some(request) = request {
+            return exchange(&transport, &sender, &request).await;
+        }
+        interactive(&transport, &sender).await?;
+        if subscribe {
+            std::future::pending::<Result<()>>().await
+        } else {
+            Ok(())
+        }
+    };
+    if let Some(subscription) = subscription {
+        println!("Client 已启用生命周期订阅; 不发布 Client 生命周期通知");
+        tokio::select! {
+            result = business => result,
+            result = notifications::receive(subscription) => result,
+            signal = tokio::signal::ctrl_c() => { signal?; Ok(()) }
+        }
+    } else {
+        business.await
+    }
+}
 
-    println!("输入 hello 后按回车, 每次生成新 Operation; Ctrl-D 退出");
+async fn interactive(transport: &Transport, sender: &Sender<'_>) -> Result<()> {
+    println!("输入 hello 后按回车, 每次生成新 Operation; Ctrl-D 结束输入");
     let mut input = BufReader::new(io::stdin());
     loop {
         let mut bytes = Vec::new();
@@ -129,7 +162,7 @@ async fn run() -> Result<()> {
                 continue;
             }
         };
-        exchange(&transport, &sender, &request).await?;
+        exchange(transport, sender, &request).await?;
     }
 }
 
@@ -146,6 +179,7 @@ async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request)
     let bytes = request.to_json(&limits)?;
     println!("Operation: {}", request.operation_id());
     timeout(ROUND_TRIP_TIMEOUT, async {
+        sender.wait_for_receiver().await?;
         sender.send(bytes).await?;
         let bytes = transport.recv().await?;
         let response = Response::from_json(&bytes, &limits)?;

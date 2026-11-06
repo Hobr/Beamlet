@@ -48,6 +48,27 @@ Authority 使用本地单调时钟记录收到有效递增序号的时间, 每 2
 
 心跳不改变静态轮转调度, 可疑 Worker 仍可能被选中, 相关 Operation 保持原有等待和 Pending 语义. 心跳超时不删除绑定, Attempt 或 Report, 不证明执行停止或无效果, 不自动创建新 Attempt 或改派. Draining 和退出通知尚未实现.
 
+## Client 可选启动通知订阅: 当前实现
+
+统一使用 Client, 不新增 Observer 身份或另一种业务角色. Client 可以提交 Operation, 也可以只读订阅角色通知, 两种能力可以同时使用. Client 不发布自己的启动, 心跳或退出通知. 当前 Console 仍使用随机回复会话区分业务请求, 这不是生命周期身份公告.
+
+配置模式的 Node 为自己承载的每个 Authority 和 Worker 向 `beamlet/v0/lifecycle/roles/<authority|worker>/<role-instance-simple>` 发布 `kind: "role_started"` 通知. 严格 JSON 包含 `protocol_version: 0`, `kind`, `role`, `node_id`, `node_instance_id`, `role_id`, `role_instance_id`. 角色枚举仅有 Authority 和 Worker, 单条最多 4096 字节. 本地组合与远端独立角色均对外可见, 与 Authority 内部的 Worker 公告/心跳收件箱分开. 同 Node 的业务执行交付仍为类型化交付, 不为公共通知强制改走网络.
+
+公共启动事实在角色任务启动后发布, 每 2 秒尝试重播相同内容, 便于晚加入的 Client 观察. 每个 Node 仅一个独立发布任务, 配置最多 64 个角色, 每次发送预算 250 毫秒, 不等待 Client 存在, 不缓存逐 Client 的待发消息. 错过周期时跳过, 实际重播间隔还受调度和整轮发送耗时影响. 这是易失性尽力发布, 无收录 ACK, 不承诺必达或历史重放. 启动重播不证明角色目前在线, 也不替代心跳, 状态快照或身份认证.
+
+Console 以 `--subscribe` 启用订阅, 默认不开启. 订阅使用原连接的独立有界队列, 不与 Report 回复混收. 未配置业务 Authority 的 Node 也可供 Client 连接并订阅实际可达的通知; 不需要等待提交收件箱就绪. `--authority` 仍只选择提交目标, 不过滤通知. 普通 peer 不等于消息 router, 独立 Node 间仍须提供实际可达连接.
+
+```bash
+cargo run -p beamlet-console --offline -- \
+  --subscribe --authority 00000000-0000-0000-0000-000000000100
+```
+
+同一 Console 可输入 `hello` 提交并接收 Report, 同时显示公告. 输入 EOF 后保持订阅, Ctrl-C 退出. 加上 `--message hello` 则在一次提交完成后退出, 只接收该进程存活期间到达的通知, 不等待通知列表完整. 不开启订阅时保留原有提交行为.
+
+Client 严格检查消息版本, 种类, 字段和实际路由. 按运行实例保留最多 256 个启动事实, 相同内容重播不重复显示, 同运行实例的归属变化拒绝覆盖. 同一逻辑身份的新运行实例分别记录, 不推断哪一个是当前实例. 满后拒绝新增记录, 不静默淘汰旧身份. 非法通知不会被当作 Report 或改变提交目标. 当前公共编解码暂位于 Agent 的可选 `test-support` 原型 Adapter, 不是完整 Client SDK 或已承诺兼容的公共协议.
+
+本批只实现启动通知与只读订阅. Authority/Worker 的对外退出通知仍须在 Draining 及在途证据处理完成后接入; 强制终止可能没有退出通知, 不能从启动事实或心跳缺失伪造退出结论.
+
 ## 本批实现状态
 
 已实现:
@@ -58,6 +79,7 @@ Authority 使用本地单调时钟记录收到有效递增序号的时间, 每 2
 - 64 KiB 配置读取上限, 严格未知字段检查, 重复角色身份和冲突本地绑定在建连前拒绝.
 
 - 配置模式提供有界 Worker 启动公告, 实例归属及心跳在线/可疑观察; 本地类型化记录, 远端独立订阅, 不影响业务执行语义.
+- 配置模式为 Authority/Worker 提供统一对外启动公告, 本地与远端一致; Client 可选只读订阅, 与业务提交并行, 不发布 Client 生命周期消息.
 - 纯 Kernel 定义独立的 Node/Authority/Worker 稳定与运行身份类型, 领域交付只绑定 RoleInstanceId. 组合配置区分稳定 id 与角色运行 instance; Node 每次启动生成新运行 ID. Worker 命名迁移已完成.
 
 未实现, 不应由上述目标推断已经具备:

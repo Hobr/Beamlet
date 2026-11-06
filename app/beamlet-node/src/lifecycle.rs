@@ -380,6 +380,40 @@ async fn heartbeats(transport: &Transport, announcement: &Announcement) -> Resul
     }
 }
 
+pub(crate) async fn publish_starts(
+    transport: &Transport,
+    notices: Vec<beamlet_agent::testing::lifecycle::RoleStarted>,
+) -> Result<()> {
+    let messages = notices
+        .into_iter()
+        .map(|notice| Ok::<_, anyhow::Error>((notice.topic(), notice.to_json()?)))
+        .collect::<Result<Vec<_>>>()?;
+    let mut clock = interval(Duration::from_secs(2));
+    clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut publication_failed = false;
+    loop {
+        clock.tick().await;
+        let mut failed = false;
+        for (topic, bytes) in &messages {
+            // 公共公告不等待 Client 存在, 后续重播仍沿用同一启动事实
+            let result = timeout(Duration::from_millis(250), async {
+                transport.sender(topic).await?.send(bytes.clone()).await
+            })
+            .await;
+            if !matches!(result, Ok(Ok(()))) {
+                failed = true;
+            }
+        }
+        if failed && !publication_failed {
+            eprintln!("角色启动公告发布未确认; 不阻塞业务驱动");
+        }
+        if !failed && publication_failed {
+            println!("角色启动公告发布恢复; 未确认 Client 收录");
+        }
+        publication_failed = failed;
+    }
+}
+
 pub(crate) async fn maintain(transport: &Transport, announcement: Announcement) -> Result<()> {
     tokio::try_join!(
         async {

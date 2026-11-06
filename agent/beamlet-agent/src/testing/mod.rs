@@ -2,5 +2,6 @@
 pub mod demo;
 pub mod executor;
 pub mod hello;
+pub mod lifecycle;
 pub mod memory;
 pub mod protocol;
