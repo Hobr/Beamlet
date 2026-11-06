@@ -145,9 +145,9 @@ pub enum Effect {
 impl std::fmt::Display for Effect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::None => "无外部效果",
-            Self::Observed => "已观察到效果",
-            Self::Unknown => "效果未知",
+            Self::None => "None",
+            Self::Observed => "Observed",
+            Self::Unknown => "Unknown",
         })
     }
 }

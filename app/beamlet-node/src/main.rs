@@ -97,12 +97,12 @@ async fn run() -> Result<()> {
         "authority" => {
             ensure!(
                 connect.is_none() && authority.is_none(),
-                "授权方模式不接受 --connect 或 --authority"
+                "Authority 模式不接受 --connect 或 --authority"
             );
-            let instance = instance.context("授权方模式需要 --instance UUID")?;
+            let instance = instance.context("Authority 模式需要 --instance UUID")?;
             ensure!(
                 !workers.contains(&instance),
-                "授权方与执行方的实例身份必须不同"
+                "Authority 与 Worker 的实例身份必须不同"
             );
             roles::run_authority(
                 listen.as_deref().unwrap_or(default_endpoint),
@@ -114,11 +114,14 @@ async fn run() -> Result<()> {
         "worker" => {
             ensure!(
                 listen.is_none() && workers.is_empty(),
-                "执行方模式不接受 --listen 或 --worker"
+                "Worker 模式不接受 --listen 或 --worker"
             );
-            let instance = instance.context("执行方模式需要 --instance UUID")?;
-            let authority = authority.context("执行方模式需要 --authority UUID")?;
-            ensure!(instance != authority, "授权方与执行方的实例身份必须不同");
+            let instance = instance.context("Worker 模式需要 --instance UUID")?;
+            let authority = authority.context("Worker 模式需要 --authority UUID")?;
+            ensure!(
+                instance != authority,
+                "Authority 与 Worker 的实例身份必须不同"
+            );
             roles::run_worker(
                 connect.as_deref().unwrap_or(default_endpoint),
                 instance.as_u128().into(),

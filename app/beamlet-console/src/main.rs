@@ -52,7 +52,7 @@ async fn run() -> Result<()> {
                     args.next()
                         .context("--operation-id 需要 UUID")?
                         .parse::<Uuid>()
-                        .context("请求 UUID 无效")?,
+                        .context("Operation UUID 无效")?,
                 );
             }
             "--demo" => return Ok(beamlet_agent::testing::demo::print().await?),
@@ -89,19 +89,19 @@ async fn run() -> Result<()> {
         Transport::connect(&endpoint, &inbox, Limits::default()),
     )
     .await
-    .context("连接节点超时")?
-    .context("连接节点失败")?;
+    .context("连接 Node 超时")?
+    .context("连接 Node 失败")?;
     let sender = transport.sender(&destination).await?;
     timeout(ROUND_TRIP_TIMEOUT, sender.wait_for_receiver())
         .await
-        .context("节点订阅尚未就绪")??;
-    println!("控制台已连接: {endpoint} (会话 {console_id})");
+        .context("Node 订阅尚未就绪")??;
+    println!("Console 已连接: {endpoint} (会话 {console_id})");
 
     if let Some(request) = request {
         return exchange(&transport, &sender, &request).await;
     }
 
-    println!("输入 hello 后按回车, 每次生成新请求; Ctrl-D 退出");
+    println!("输入 hello 后按回车, 每次生成新 Operation; Ctrl-D 退出");
     let mut input = BufReader::new(io::stdin());
     loop {
         let mut bytes = Vec::new();
@@ -144,7 +144,7 @@ fn hello_request(command: &str, operation_id: Option<Uuid>) -> Result<Request> {
 async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request) -> Result<()> {
     let limits = ProtocolLimits::default();
     let bytes = request.to_json(&limits)?;
-    println!("请求: {}", request.operation_id());
+    println!("Operation: {}", request.operation_id());
     timeout(ROUND_TRIP_TIMEOUT, async {
         sender.send(bytes).await?;
         let bytes = transport.recv().await?;
@@ -152,24 +152,24 @@ async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request)
         match response.message() {
             ResponseMessage::Report(delivery) => {
                 let Message::SubmitReport(report) = &delivery.message else {
-                    bail!("响应不包含执行报告");
+                    bail!("响应不包含 Report");
                 };
                 ensure!(
                     report.operation_id == request.operation_id(),
-                    "收到其他请求的执行报告"
+                    "收到其他 Operation 的 Report"
                 );
-                println!("执行授权: {}", report.attempt_id);
-                println!("执行报告: {}", report.report_id);
+                println!("Attempt: {}", report.attempt_id);
+                println!("Report: {}", report.report_id);
                 match &report.result {
                     ExecutionResult::Succeeded { output } => {
-                        println!("状态: 成功; 外部效果: {}", report.effect);
+                        println!("状态: 成功; Effect: {}", report.effect);
                         println!("输出: {output}");
                     }
                     ExecutionResult::Failed { error } => {
-                        bail!("执行失败; 外部效果: {}; 原因: {error}", report.effect);
+                        bail!("执行失败; Effect: {}; 原因: {error}", report.effect);
                     }
                     ExecutionResult::Rejected { error } => {
-                        bail!("执行前拒绝; 外部效果: {}; 原因: {error}", report.effect);
+                        bail!("执行前拒绝; Effect: {}; 原因: {error}", report.effect);
                     }
                     _ => bail!("不支持的执行结果"),
                 }
@@ -177,7 +177,7 @@ async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request)
             ResponseMessage::Pending { operation_id } => {
                 ensure!(
                     operation_id.as_u128() == request.operation_id().as_u128(),
-                    "待定响应属于其他请求"
+                    "待定响应属于其他 Operation"
                 );
                 println!("状态: 待定; 不自动重试或创建新授权");
             }
@@ -187,14 +187,14 @@ async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request)
             } => {
                 ensure!(
                     operation_id.as_u128() == request.operation_id().as_u128(),
-                    "提交响应属于其他请求"
+                    "提交响应属于其他 Operation"
                 );
-                bail!("提交返回错误, 不是执行报告: {error}");
+                bail!("提交返回错误, 不是 Report: {error}");
             }
             _ => bail!("不支持的响应消息"),
         }
         Ok::<_, anyhow::Error>(())
     })
     .await
-    .context("等待结果超时; 请求可能已保留或正在执行, 不自动重试")?
+    .context("等待结果超时; Operation 可能已保留或正在执行, 不自动重试")?
 }

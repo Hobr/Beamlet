@@ -105,13 +105,13 @@ pub async fn run() -> Result<DemoResult, DemoError> {
 /// 执行或结果编码失败时返回错误
 pub async fn print() -> Result<(), DemoError> {
     let result = run().await?;
-    println!("单进程内存演示: 1 个授权方, 2 个执行方; 无网络, 无持久化.");
+    println!("单进程内存演示: 1 个 Authority, 2 个 Worker; 无网络, 无持久化.");
     println!(
         "完成 {}/100；成功 {}，预期失败 {}。",
         result.completed, result.succeeded, result.failed
     );
     println!(
-        "两个执行方分别完成: {}, {}.",
+        "两个 Worker 分别完成: {}, {}.",
         result.worker_counts[0], result.worker_counts[1]
     );
     println!(

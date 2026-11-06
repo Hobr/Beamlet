@@ -79,7 +79,7 @@ where
         for worker in self.workers.values_mut() {
             while let Some(dispatch) = worker.start_next() {
                 let Message::DispatchAttempt(attempt) = dispatch.message else {
-                    unreachable!("执行方队列只能包含执行授权");
+                    unreachable!("Worker 队列只能包含 Attempt");
                 };
                 let task = execute(attempt);
                 self.tasks.spawn(async move {

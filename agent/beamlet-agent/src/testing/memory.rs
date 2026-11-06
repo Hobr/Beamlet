@@ -70,7 +70,7 @@ impl Authority {
         dispatch.validate(&self.limits)?;
         let accepted = self.inner.submit(delivery, id)?;
         let Message::DispatchAttempt(attempt) = &dispatch.message else {
-            unreachable!("预览结果必须是执行授权");
+            unreachable!("预览结果必须是 Attempt");
         };
         self.refresh(attempt.operation.operation_id);
         Ok(Submission {
@@ -121,7 +121,7 @@ impl Authority {
         envelope.validate(&self.limits)?;
         let disposition = self.inner.receive_report(envelope.to_core())?;
         let Message::SubmitReport(report) = &envelope.message else {
-            unreachable!("接纳的证据必须是执行报告");
+            unreachable!("接纳的证据必须是 Report");
         };
         self.refresh(report.operation_id);
         self.reports.insert(report.report_id, envelope);
@@ -182,7 +182,7 @@ impl Worker {
         envelope.validate(&self.limits)?;
         self.inner.complete(envelope.to_core())?;
         let Message::SubmitReport(report) = &envelope.message else {
-            unreachable!("完成证据必须是执行报告");
+            unreachable!("完成证据必须是 Report");
         };
         self.reports.insert(report.attempt_id, envelope);
         Ok(())
@@ -205,7 +205,7 @@ pub enum StateError {
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
     /// 静态 Worker 配置为空, 或存在重复的实例身份
-    #[error("执行方列表不能为空且实例不能重复")]
+    #[error("Worker 列表不能为空且实例不能重复")]
     InvalidWorkers,
     /// 消息的目标是另一个进程运行实例
     #[error("消息目标与当前角色运行实例不符")]
@@ -214,16 +214,16 @@ pub enum StateError {
     #[error("消息类型与预期不符")]
     WrongMessage,
     /// 发送方不是配置的 Authority 运行实例
-    #[error("发送方不是配置的授权方")]
+    #[error("发送方不是配置的 Authority")]
     UntrustedAuthority,
     /// 该 Operation 身份已经绑定到不同的定义
-    #[error("请求身份与已保留定义冲突")]
+    #[error("Operation 身份与已保留定义冲突")]
     OperationConflict,
     /// 同一 Attempt 身份被用于不同的绑定或请求
-    #[error("执行授权身份与已保留授权冲突")]
+    #[error("Attempt 身份与已保留授权冲突")]
     AttemptConflict,
     /// 同一 Report 身份被用于不同的证据
-    #[error("报告身份与已保留证据冲突")]
+    #[error("Report 身份与已保留证据冲突")]
     ReportConflict,
     /// 证据与保留的 Operation, Attempt 或节点绑定不匹配
     #[error("证据与已保留授权不符")]
@@ -232,13 +232,13 @@ pub enum StateError {
     #[error("身份记录保留容量已满")]
     Capacity,
     /// 等待队列已满, 本次新交付未被接纳
-    #[error("执行方队列已满")]
+    #[error("Worker 队列已满")]
     QueueFull,
     /// 不存在具有此身份的已接纳请求
-    #[error("请求未被保留")]
+    #[error("Operation 未被保留")]
     UnknownOperation,
     /// 当前 Worker 阶段不允许提交此完成结果
-    #[error("完成结果与执行方当前阶段不符")]
+    #[error("完成结果与 Worker 当前阶段不符")]
     InvalidTransition,
 }
 

@@ -59,7 +59,7 @@ impl Config {
         );
         ensure!(
             self.authorities.len() + self.workers.len() <= 64,
-            "每个节点最多配置 64 个角色实例"
+            "每个 Node 最多配置 64 个角色实例"
         );
         let mut identities = HashSet::new();
         for identity in self
@@ -81,26 +81,29 @@ impl Config {
         }
         for authority in &self.authorities {
             let mut workers = HashSet::new();
-            ensure!(!authority.workers.is_empty(), "授权方至少需要一个执行方");
+            ensure!(
+                !authority.workers.is_empty(),
+                "Authority 至少需要一个 Worker"
+            );
             for worker in &authority.workers {
                 ensure!(
                     *worker != authority.instance && workers.insert(*worker),
-                    "执行方绑定无效或重复"
+                    "Worker 绑定无效或重复"
                 );
                 ensure!(
                     !self.authorities.iter().any(|a| a.instance == *worker),
-                    "执行方目标指向了授权方实例"
+                    "Worker 目标指向了 Authority 实例"
                 );
                 if let Some(local) = self.workers.iter().find(|w| w.instance == *worker) {
                     ensure!(
                         local.authority == authority.instance,
-                        "本地执行方绑定了其他授权方"
+                        "本地 Worker 绑定了其他 Authority"
                     );
                 }
             }
         }
         for worker in &self.workers {
-            ensure!(worker.instance != worker.authority, "执行方不能授权自身");
+            ensure!(worker.instance != worker.authority, "Worker 不能授权自身");
             if let Some(local) = self
                 .authorities
                 .iter()
@@ -108,7 +111,7 @@ impl Config {
             {
                 ensure!(
                     local.workers.contains(&worker.instance),
-                    "本地授权方未配置此执行方"
+                    "本地 Authority 未配置此 Worker"
                 );
             }
         }
@@ -123,24 +126,26 @@ impl Config {
 pub async fn run(path: &str) -> Result<()> {
     use tokio::io::AsyncReadExt;
 
-    let file = fs::File::open(path).await.context("打开节点配置失败")?;
+    let file = fs::File::open(path).await.context("打开 Node 配置失败")?;
     let mut bytes = Vec::new();
     file.take(64 * 1024 + 1).read_to_end(&mut bytes).await?;
-    ensure!(bytes.len() <= 64 * 1024, "节点配置超过 64 KiB");
-    let config: Config = serde_json::from_slice(&bytes).context("解析节点配置失败")?;
+    ensure!(bytes.len() <= 64 * 1024, "Node 配置超过 64 KiB");
+    let config: Config = serde_json::from_slice(&bytes).context("解析 Node 配置失败")?;
     config.validate()?;
     let node_id = NodeId::from_u128(config.node_id.as_u128());
     let node_instance = NodeInstanceId::from_u128(Uuid::new_v4().as_u128());
-    println!("节点身份: 逻辑身份={node_id} 运行实例={node_instance}");
+    println!("Node 身份: 逻辑身份={node_id} 运行实例={node_instance}");
     for authority in &config.authorities {
         let id = AuthorityId::from_u128(authority.id.as_u128());
         let instance = AuthorityInstanceId::from_u128(authority.instance.as_u128());
-        println!("授权方身份: 逻辑身份={id} 运行实例={instance} 所属节点实例={node_instance}");
+        println!(
+            "Authority 身份: 逻辑身份={id} 运行实例={instance} 所属 Node 实例={node_instance}"
+        );
     }
     for worker in &config.workers {
         let id = WorkerId::from_u128(worker.id.as_u128());
         let instance = WorkerInstanceId::from_u128(worker.instance.as_u128());
-        println!("执行方身份: 逻辑身份={id} 运行实例={instance} 所属节点实例={node_instance}");
+        println!("Worker 身份: 逻辑身份={id} 运行实例={instance} 所属 Node 实例={node_instance}");
     }
     let subscription = format!("beamlet/v0/node-session/{node_instance}/inbox");
     let transport = Transport::node(
@@ -215,7 +220,7 @@ pub async fn run(path: &str) -> Result<()> {
             worker.authority.as_u128().into(),
         ));
     }
-    println!("节点已就绪: 消息会话共享; 角色数量={}", tasks.len());
+    println!("Node 已就绪: 消息会话共享; 角色数量={}", tasks.len());
     tokio::select! {
         finished = tasks.join_next(), if !tasks.is_empty() => {
             finished.context("角色完成记录缺失")?.context("角色任务失败")??;

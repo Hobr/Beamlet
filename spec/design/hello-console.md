@@ -25,14 +25,14 @@ cargo run -p beamlet-console --offline --locked -- --message hello
 正常输出包含:
 
 ```text
-请求: <请求身份>
-执行授权: <授权身份>
-执行报告: <报告身份>
-状态: 成功; 外部效果: 无外部效果
+Operation: <OperationId>
+Attempt: <AttemptId>
+Report: <ReportId>
+状态: 成功; Effect: None
 输出: "World"
 ```
 
-程序自有的日志, 帮助和错误提示使用中文. CLI 参数, JSON 字段与协议标识保持不变; 第三方库及系统原始诊断不承诺中文化. 日志文本不是机器交互协议.
+程序自有的日志, 帮助和错误提示使用中文说明, Operation, Attempt, Report, Authority, Worker, Node, Console, Effect 等领域名词及枚举标识保留原文. CLI 参数, JSON 字段与协议标识保持不变; 第三方库及系统原始诊断不承诺中文化. 日志文本不是机器交互协议.
 
 `Effect::None` 来自该固定函数不执行外部效果, 不是从成功状态推导出的结论.
 
@@ -45,7 +45,7 @@ cargo run -p beamlet-console --offline --locked -- \
   --message hello --operation-id 00000000-0000-0000-0000-000000000001
 ```
 
-两次返回应具有相同的 Attempt ID 和 Report ID; Node 的 `执行方已执行 hello` 日志对该 Operation 只出现一次. `--operation-id` 仅适用于 `--message hello`, 不会变成交互模式中所有输入共享的身份.
+两次返回应具有相同的 Attempt ID 和 Report ID; Node 的 `Worker 已执行 hello` 日志对该 Operation 只出现一次. `--operation-id` 仅适用于 `--message hello`, 不会变成交互模式中所有输入共享的身份.
 
 多个 Console 仍各自使用随机会话回复地址. Console 会话 ID 与 Operation ID 独立; 同一 Operation 可通过新的 Console 会话再次提交并读取原有证据. 路由 ID 不是认证凭证.
 
@@ -91,7 +91,7 @@ cargo run -p beamlet-console --offline --locked -- \
    cargo run -p beamlet-console --offline --locked
    ```
 
-新 Operation 按静态列表轮转, 两个 Worker 终端应分别出现 `执行方已执行 hello` 日志. 使用上面的 `--operation-id` 命令重复提交时, 应复用原有 Attempt 和 Report, 不新增执行日志. 也可以仅配置一个 `--worker` 运行最小的三进程闭环.
+新 Operation 按静态列表轮转, 两个 Worker 终端应分别出现 `Worker 已执行 hello` 日志. 使用上面的 `--operation-id` 命令重复提交时, 应复用原有 Attempt 和 Report, 不新增执行日志. 也可以仅配置一个 `--worker` 运行最小的三进程闭环.
 
 停止一个 Worker 不会触发故障转移: 分配给它的请求保持待定, 不自动改派另一个 Worker. 分配给仍运行 Worker 的新请求仍可完成. 若原始派发尚在等待订阅就绪, Worker 在该次 10 秒发送等待结束前首次连接, 原消息仍可能被交付; 这是同一次发送, 不是自动重投.
 

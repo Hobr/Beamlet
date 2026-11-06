@@ -20,7 +20,7 @@ impl std::fmt::Display for OperationPhase {
         f.write_str(match self {
             Self::Accepted => "已接纳",
             Self::Dispatched => "已派发",
-            Self::Reported => "已收录报告",
+            Self::Reported => "已收录 Report",
         })
     }
 }
@@ -68,6 +68,6 @@ pub enum RuleError {
     #[error("执行前拒绝必须确认没有外部效果")]
     InvalidRejectionEffect,
     /// 当前阶段不允许此结果
-    #[error("执行方状态转换无效")]
+    #[error("Worker 状态转换无效")]
     InvalidTransition,
 }

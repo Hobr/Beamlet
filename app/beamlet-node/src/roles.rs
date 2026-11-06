@@ -109,7 +109,7 @@ pub(crate) async fn serve_authority_pair(
     let mut sends = Sends::new();
     let mut tick = interval(Duration::from_millis(100));
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    println!("授权方已就绪: 实例={instance}");
+    println!("Authority 已就绪: 实例={instance}");
     println!(
         "内存记录上限={}; 等待回复与发送任务各自上限={}",
         limits.max_records, limits.queue_capacity
@@ -135,18 +135,18 @@ pub(crate) async fn serve_authority_pair(
                     transport.recv_message().await
                 }
             } => {
-                let message = received.context("授权方接收消息失败")?;
+                let message = received.context("Authority 接收消息失败")?;
                 if message.key_expr == reports {
                     let delivery = match hello::decode_report(&message.payload, &protocol) {
                         Ok(delivery) => delivery,
                         Err(error) => {
-                            eprintln!("已忽略无效报告: {error}");
+                            eprintln!("已忽略无效 Report: {error}");
                             continue;
                         }
                     };
                     match authority.receive_report(delivery) {
-                        Ok(disposition) => println!("授权方已接收报告: {disposition}"),
-                        Err(error) => eprintln!("报告未收录: {error}"),
+                        Ok(disposition) => println!("Authority 已接收 Report: {disposition}"),
+                        Err(error) => eprintln!("Report 未收录: {error}"),
                     }
                     continue;
                 }
@@ -154,19 +154,19 @@ pub(crate) async fn serve_authority_pair(
                     continue;
                 };
                 if console.len() != 32 || !console.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                    eprintln!("已忽略无效控制台路由: {console:?}");
+                    eprintln!("已忽略无效 Console 路由: {console:?}");
                     continue;
                 }
                 let request = match Request::from_json(&message.payload, &protocol) {
                     Ok(request) => request,
                     Err(error) => {
-                        eprintln!("请求无效, 未接纳: {error}");
+                        eprintln!("Operation 无效, 未接纳: {error}");
                         continue;
                     }
                 };
                 // 先检查发送任务上限, 不在无界后台任务中接纳更多请求
                 if sends.len() >= limits.queue_capacity {
-                    eprintln!("请求未提交: 发送任务已满; 请求={}", request.operation_id());
+                    eprintln!("Operation 未提交: 发送任务已满; Operation={}", request.operation_id());
                     continue;
                 }
                 let operation = request.operation_id();
@@ -192,9 +192,9 @@ pub(crate) async fn serve_authority_pair(
                     }
                     Err(error) => return Err(error.into()),
                 };
-                println!("授权方已接纳: 请求={operation} 执行方={} 接纳结果={}", submission.dispatch.target_instance_id, submission.admission);
+                println!("Authority 已接纳: Operation={operation} Worker={} 接纳结果={}", submission.dispatch.target_instance_id, submission.admission);
                 if let Some(report_id) = adopted {
-                    let report = authority.report(report_id).context("已采用的报告缺失")?;
+                    let report = authority.report(report_id).context("已采用的 Report 缺失")?;
                     queue_reply(&mut sends, &transport, console, response_for(report, operation)?, &protocol)?;
                     continue;
                 }
@@ -207,10 +207,10 @@ pub(crate) async fn serve_authority_pair(
                         authority.mark_dispatched(operation)?;
                         let report = match cached {
                             Some(report) => report,
-                            None => worker.next_report(execute_hello).await?.context("本地执行方未产生报告")?,
+                            None => worker.next_report(execute_hello).await?.context("本地 Worker 未产生 Report")?,
                         };
                         authority.receive_report(report)?;
-                        println!("本地类型化交付: 请求={operation}");
+                        println!("本地类型化交付: Operation={operation}");
                         continue;
                     }
                     let bytes = Dispatch::from_delivery(&submission.dispatch)?.to_json(&protocol)?;
@@ -226,10 +226,10 @@ pub(crate) async fn serve_authority_pair(
                 match (purpose, result) {
                     (SendPurpose::Dispatch(operation), Ok(())) => {
                         authority.mark_dispatched(operation)?;
-                        println!("授权方已发出授权: 请求={operation}; 尚无证据确认执行方接纳");
+                        println!("Authority 已发出授权: Operation={operation}; 尚无证据确认 Worker 接纳");
                     }
-                    (SendPurpose::Dispatch(operation), Err(error)) => eprintln!("授权发送未确认: 请求={operation}; {error}; 保留原记录, 不重试或创建新授权"),
-                    (SendPurpose::Reply, Err(error)) => eprintln!("控制台回复未确认: {error}; 证据已保留, 不重试"),
+                    (SendPurpose::Dispatch(operation), Err(error)) => eprintln!("授权发送未确认: Operation={operation}; {error}; 保留原记录, 不重试或创建新授权"),
+                    (SendPurpose::Reply, Err(error)) => eprintln!("Console 回复未确认: {error}; 证据已保留, 不重试"),
                     (SendPurpose::Reply, Ok(())) => {}
                 }
             }
@@ -264,12 +264,14 @@ fn flush_replies(
             .operation(waiter.operation)
             .and_then(|view| view.adopted_report);
         let response = if let Some(report_id) = report_id {
-            let report = authority.report(report_id).context("已采用的报告缺失")?;
+            let report = authority
+                .report(report_id)
+                .context("已采用的 Report 缺失")?;
             response_for(report, waiter.operation)?
         } else {
             authority.mark_wait_timeout(waiter.operation)?;
             println!(
-                "授权方待定: 请求={}; 不自动重试或创建新授权",
+                "Authority 待定: Operation={}; 不自动重试或创建新授权",
                 waiter.operation
             );
             Response::new(ResponseMessage::Pending {
@@ -335,7 +337,7 @@ pub async fn run_worker(
         Transport::connect(endpoint, &inbox, Limits::default()),
     )
     .await
-    .context("执行方连接超时")??;
+    .context("Worker 连接超时")??;
     serve_worker(transport, instance, authority).await
 }
 
@@ -351,16 +353,16 @@ pub(crate) async fn serve_worker(
     )?;
     let protocol = ProtocolLimits::default();
     let inbox = worker_inbox(instance);
-    println!("执行方已就绪: 实例={instance} 授权方={authority}");
+    println!("Worker 已就绪: 实例={instance} Authority={authority}");
     loop {
         let message = tokio::select! {
-            received = transport.recv_message() => received.context("执行方接收授权失败")?,
+            received = transport.recv_message() => received.context("Worker 接收授权失败")?,
             signal = tokio::signal::ctrl_c() => {
                 signal?;
                 return Ok(());
             }
         };
-        ensure!(message.key_expr == inbox, "执行方消息地址与预期不符");
+        ensure!(message.key_expr == inbox, "Worker 消息地址与预期不符");
         let dispatch = match Dispatch::from_json(&message.payload, &protocol) {
             Ok(dispatch) => dispatch.delivery(),
             Err(error) => {
@@ -380,18 +382,18 @@ pub(crate) async fn serve_worker(
             None => worker
                 .next_report(execute_hello)
                 .await?
-                .context("执行方接纳后未产生报告")?,
+                .context("Worker 接纳后未产生 Report")?,
         };
         let Message::SubmitReport(evidence) = &report.message else {
-            anyhow::bail!("执行方完成结果不包含报告");
+            anyhow::bail!("Worker 完成结果不包含 Report");
         };
         println!(
-            "执行方已缓存报告: 请求={} 执行授权={} 报告={}",
+            "Worker 已缓存 Report: Operation={} Attempt={} Report={}",
             evidence.operation_id, evidence.attempt_id, evidence.report_id
         );
         let bytes = hello::encode_report(&report, &protocol)?;
         if let Err(error) = send(&transport, &report_inbox(authority), bytes).await {
-            eprintln!("报告发送未确认: {error}; 已缓存, 不自动重试");
+            eprintln!("Report 发送未确认: {error}; 已缓存, 不自动重试");
         }
     }
 }
@@ -418,21 +420,21 @@ pub async fn run_local(endpoint: &str) -> Result<()> {
     let inbox = format!("{NODE_INBOX_PREFIX}*");
     let transport = Transport::listen(endpoint, &inbox, Limits::default())
         .await
-        .context("启动节点监听失败")?;
+        .context("启动 Node 监听失败")?;
     let authority = Uuid::new_v4().as_u128().into();
     let worker = Uuid::new_v4().as_u128().into();
     let runtime_limits = beamlet_agent::Limits::default();
     let mut agent = HelloAgent::new(authority, vec![worker], runtime_limits)?;
     let protocol_limits = ProtocolLimits::default();
-    println!("节点正在监听: {endpoint}");
+    println!("Node 正在监听: {endpoint}");
     println!(
-        "内存授权方={authority} 执行方={worker}; 请求保留上限={}",
+        "内存 Authority={authority} Worker={worker}; Operation 保留上限={}",
         runtime_limits.max_records
     );
 
     loop {
         let message = tokio::select! {
-            received = transport.recv_message() => received.context("接收控制台消息失败")?,
+            received = transport.recv_message() => received.context("接收 Console 消息失败")?,
             signal = tokio::signal::ctrl_c() => {
                 signal?;
                 return Ok(());
@@ -444,13 +446,13 @@ pub async fn run_local(endpoint: &str) -> Result<()> {
         };
         // 路由 ID 只用于区分 Console, 不作为认证凭证或任意回复地址
         if console_id.len() != 32 || !console_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            eprintln!("已忽略无效控制台路由: {console_id:?}");
+            eprintln!("已忽略无效 Console 路由: {console_id:?}");
             continue;
         }
         let request = match Request::from_json(&message.payload, &protocol_limits) {
             Ok(request) => request,
             Err(error) => {
-                eprintln!("控制台[{console_id}]请求无效, 未接纳: {error}");
+                eprintln!("Console[{console_id}]Operation 无效, 未接纳: {error}");
                 continue;
             }
         };
@@ -464,12 +466,12 @@ pub async fn run_local(endpoint: &str) -> Result<()> {
         })
         .await;
         match outcome {
-            Ok(Ok(())) => println!("节点 -> 控制台[{console_id}]: 回复已发出"),
+            Ok(Ok(())) => println!("Node -> Console[{console_id}]: 回复已发出"),
             Ok(Err(error)) => {
-                eprintln!("回复控制台[{console_id}]失败, 不重试: {error}");
+                eprintln!("回复 Console[{console_id}]失败, 不重试: {error}");
             }
             Err(_) => {
-                eprintln!("回复控制台[{console_id}]超时, 不重试");
+                eprintln!("回复 Console[{console_id}]超时, 不重试");
             }
         }
     }
@@ -497,10 +499,10 @@ async fn submit(agent: &mut HelloAgent, request: &Request) -> Result<Response> {
         Err(error) => return Err(error.into()),
     };
     let Message::DispatchAttempt(attempt) = &submission.dispatch.message else {
-        bail!("提交后未保留执行授权");
+        bail!("提交后未保留 Attempt");
     };
     println!(
-        "授权方: 请求={operation_id} 执行授权={} 接纳结果={}",
+        "Authority: Operation={operation_id} Attempt={} 接纳结果={}",
         attempt.attempt_id, submission.admission
     );
 
@@ -508,7 +510,7 @@ async fn submit(agent: &mut HelloAgent, request: &Request) -> Result<Response> {
         .operation(operation_id)
         .and_then(|view| view.adopted_report)
     {
-        let retained = agent.report(report_id).context("已采用的报告缺失")?;
+        let retained = agent.report(report_id).context("已采用的 Report 缺失")?;
         return response_for(retained, operation_id);
     }
 
@@ -526,11 +528,14 @@ fn response_for(
     operation: OperationId,
 ) -> Result<Response> {
     let Message::SubmitReport(report) = &delivery.message else {
-        bail!("完成结果不包含执行报告");
+        bail!("完成结果不包含 Report");
     };
-    ensure!(report.operation_id == operation, "报告属于其他请求");
+    ensure!(
+        report.operation_id == operation,
+        "Report 属于其他 Operation"
+    );
     println!(
-        "授权方已收录: 请求={} 执行授权={} 报告={}",
+        "Authority 已收录: Operation={} Attempt={} Report={}",
         report.operation_id, report.attempt_id, report.report_id
     );
     Ok(Response::report(
@@ -543,7 +548,7 @@ fn response_for(
 async fn execute_hello(attempt: DispatchAttempt<Task>) -> SubmitReport<String, String> {
     let output = hello().to_owned();
     println!(
-        "执行方已执行 hello: 请求={} 执行授权={}",
+        "Worker 已执行 hello: Operation={} Attempt={}",
         attempt.operation.operation_id, attempt.attempt_id
     );
     SubmitReport {

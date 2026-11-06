@@ -70,7 +70,7 @@ impl std::fmt::Display for Admission {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::New => "首次接纳",
-            Self::Duplicate => "重复请求",
+            Self::Duplicate => "重复 Operation",
         })
     }
 }
@@ -102,7 +102,7 @@ impl std::fmt::Display for ReportDisposition {
         f.write_str(match self {
             Self::Adopted => "已收录并采用",
             Self::Additional => "已收录额外证据",
-            Self::Duplicate => "重复报告",
+            Self::Duplicate => "重复 Report",
         })
     }
 }
@@ -166,7 +166,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
         };
         if let Some(existing) = self.operations.get(&operation.operation_id) {
             let Message::DispatchAttempt(attempt) = &existing.dispatch.message else {
-                unreachable!("授权方只能保留执行授权信封");
+                unreachable!("Authority 只能保留 Attempt 信封");
             };
             if attempt.operation != *operation {
                 return Err(StateError::OperationConflict);
@@ -212,7 +212,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
             return Ok(accepted);
         }
         let Message::DispatchAttempt(attempt) = &accepted.dispatch.message else {
-            unreachable!("预览只能返回执行授权");
+            unreachable!("预览只能返回 Attempt");
         };
         self.operations.insert(
             attempt.operation.operation_id,
@@ -278,7 +278,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Authority<P, O, E> {
             .get_mut(&report.operation_id)
             .ok_or(StateError::InvalidBinding)?;
         let Message::DispatchAttempt(attempt) = &view.dispatch.message else {
-            unreachable!("授权方只能保留执行授权信封");
+            unreachable!("Authority 只能保留 Attempt 信封");
         };
         if attempt.attempt_id != report.attempt_id
             || view.dispatch.target_instance_id != envelope.source_instance_id
@@ -414,7 +414,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Worker<P, O, E> {
         let record = self
             .attempts
             .get_mut(&id)
-            .expect("排队中的执行授权必须有保留记录");
+            .expect("排队中的 Attempt 必须有保留记录");
         record.phase = WorkerPhase::Running;
         self.running += 1;
         Some(record.dispatch.clone())
@@ -443,7 +443,7 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Worker<P, O, E> {
             .get_mut(&report.attempt_id)
             .ok_or(StateError::InvalidBinding)?;
         let Message::DispatchAttempt(attempt) = &record.dispatch.message else {
-            unreachable!("执行方只能保留执行授权信封");
+            unreachable!("Worker 只能保留 Attempt 信封");
         };
         if attempt.operation.operation_id != report.operation_id {
             return Err(StateError::InvalidBinding);
@@ -494,7 +494,7 @@ pub enum StateError {
     #[error("资源上限必须为正数")]
     InvalidLimits,
     /// 静态 Worker 配置为空, 或存在重复的实例身份
-    #[error("执行方列表不能为空且实例不能重复")]
+    #[error("Worker 列表不能为空且实例不能重复")]
     InvalidWorkers,
     /// 消息的目标是另一个进程运行实例
     #[error("消息目标与当前角色运行实例不符")]
@@ -503,16 +503,16 @@ pub enum StateError {
     #[error("消息类型与预期不符")]
     WrongMessage,
     /// 发送方不是配置的 Authority 运行实例
-    #[error("发送方不是配置的授权方")]
+    #[error("发送方不是配置的 Authority")]
     UntrustedAuthority,
     /// 该 Operation 身份已经绑定到不同的定义
-    #[error("请求身份与已保留定义冲突")]
+    #[error("Operation 身份与已保留定义冲突")]
     OperationConflict,
     /// 同一 Attempt 身份被用于不同的绑定或请求
-    #[error("执行授权身份与已保留授权冲突")]
+    #[error("Attempt 身份与已保留授权冲突")]
     AttemptConflict,
     /// 同一 Report 身份被用于不同的证据
-    #[error("报告身份与已保留证据冲突")]
+    #[error("Report 身份与已保留证据冲突")]
     ReportConflict,
     /// 证据与保留的 Operation, Attempt 或节点绑定不匹配
     #[error("证据与已保留授权不符")]
@@ -521,12 +521,12 @@ pub enum StateError {
     #[error("身份记录保留容量已满")]
     Capacity,
     /// 等待队列已满, 本次新交付未被接纳
-    #[error("执行方队列已满")]
+    #[error("Worker 队列已满")]
     QueueFull,
     /// 不存在具有此身份的已接纳请求
-    #[error("请求未被保留")]
+    #[error("Operation 未被保留")]
     UnknownOperation,
     /// 当前 Worker 阶段不允许提交此完成结果
-    #[error("完成结果与执行方当前阶段不符")]
+    #[error("完成结果与 Worker 当前阶段不符")]
     InvalidTransition,
 }
