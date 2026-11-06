@@ -47,22 +47,22 @@ macro_rules! identity {
     };
 }
 
-identity!(OperationId, "标识不可变逻辑请求; 身份不由输入内容决定.");
-identity!(AttemptId, "标识一次执行授权, 而非一次消息交付.");
-identity!(ReportId, "标识执行证据, 与证据是否被采用无关.");
+identity!(OperationId, "标识不可变逻辑请求; 身份不由输入内容决定");
+identity!(AttemptId, "标识一次执行授权, 而非一次消息交付");
+identity!(ReportId, "标识执行证据, 与证据是否被采用无关");
 
-identity!(NodeId, "标识 Node 的稳定逻辑身份, 不表示运行实例.");
-identity!(NodeInstanceId, "标识 Node 的一次运行, 不用于角色交付绑定.");
+identity!(NodeId, "标识 Node 的稳定逻辑身份, 不表示运行实例");
+identity!(NodeInstanceId, "标识 Node 的一次运行, 不用于角色交付绑定");
 
-identity!(AuthorityId, "标识 Authority 的稳定逻辑身份.");
-identity!(AuthorityInstanceId, "标识 Authority 的一次运行.");
+identity!(AuthorityId, "标识 Authority 的稳定逻辑身份");
+identity!(AuthorityInstanceId, "标识 Authority 的一次运行");
 
-identity!(WorkerId, "标识 Worker 的稳定逻辑身份.");
-identity!(WorkerInstanceId, "标识 Worker 的一次运行.");
+identity!(WorkerId, "标识 Worker 的稳定逻辑身份");
+identity!(WorkerInstanceId, "标识 Worker 的一次运行");
 
 identity!(
     RoleInstanceId,
-    "标识领域交付绑定的角色运行实例, 不等于 Node 运行身份."
+    "标识领域交付绑定的角色运行实例, 不等于 Node 运行身份"
 );
 
 impl From<AuthorityInstanceId> for RoleInstanceId {
