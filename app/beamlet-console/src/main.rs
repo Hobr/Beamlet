@@ -21,12 +21,20 @@ const MAX_LINE_BYTES: usize = 64 * 1024;
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Result<()> {
     let mut endpoint = String::from("tcp/127.0.0.1:7447");
+    let mut authority = None;
     let mut message = None;
     let mut operation_id = None;
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--connect" => endpoint = args.next().context("--connect needs an endpoint")?,
+            "--authority" => {
+                authority = Some(
+                    args.next()
+                        .context("--authority needs a UUID")?
+                        .parse::<Uuid>()?,
+                )
+            }
             "--message" => message = Some(args.next().context("--message needs a task")?),
             "--operation-id" => {
                 operation_id = Some(
@@ -39,7 +47,7 @@ async fn main() -> Result<()> {
             "--demo" => return Ok(beamlet_agent::testing::demo::print().await?),
             "--help" | "-h" => {
                 println!(
-                    "beamlet-console [--connect tcp/127.0.0.1:7447] [--message hello [--operation-id UUID]] [--demo]"
+                    "beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--message hello [--operation-id UUID]] [--demo]"
                 );
                 return Ok(());
             }
@@ -58,7 +66,13 @@ async fn main() -> Result<()> {
     // 每次启动使用新的路由 ID, 不复用其他 Console 或旧进程的回复地址
     let console_id = Uuid::new_v4().simple().to_string();
     let inbox = format!("beamlet/v0/console/{console_id}/inbox");
-    let destination = format!("{NODE_INBOX}/{console_id}");
+    let destination = match authority {
+        Some(authority) => format!(
+            "beamlet/v0/authority/{}/submit/{console_id}",
+            authority.simple()
+        ),
+        None => format!("{NODE_INBOX}/{console_id}"),
+    };
     let transport = timeout(
         ROUND_TRIP_TIMEOUT,
         Transport::connect(&endpoint, &inbox, Limits::default()),

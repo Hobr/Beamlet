@@ -1,0 +1,209 @@
+//! Node 组合入口, 网络会话与静态业务角色分别配置
+
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+
+use anyhow::{Context, Result, bail, ensure};
+use beamlet_agent::{Work, id::NodeInstanceId, testing::hello::Task};
+use beamlet_message_zenoh::{Limits, Transport};
+use serde::Deserialize;
+use tokio::{fs, task::JoinSet};
+use uuid::Uuid;
+
+use crate::roles;
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Config {
+    #[serde(default)]
+    listen: Vec<String>,
+    #[serde(default)]
+    connect: Vec<String>,
+    #[serde(default)]
+    authorities: Vec<AuthorityConfig>,
+    #[serde(default)]
+    workers: Vec<WorkerConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthorityConfig {
+    instance: Uuid,
+    workers: Vec<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkerConfig {
+    instance: Uuid,
+    authority: Uuid,
+}
+
+impl Config {
+    fn validate(&self) -> Result<()> {
+        ensure!(
+            !self.listen.is_empty() || !self.connect.is_empty(),
+            "configure at least one listen or connect endpoint"
+        );
+        ensure!(
+            self.authorities.len() + self.workers.len() <= 64,
+            "at most 64 role instances per node"
+        );
+        let mut instances = HashSet::new();
+        for instance in self
+            .authorities
+            .iter()
+            .map(|a| a.instance)
+            .chain(self.workers.iter().map(|w| w.instance))
+        {
+            ensure!(
+                instances.insert(instance),
+                "duplicate role instance: {instance}"
+            );
+        }
+        for authority in &self.authorities {
+            let mut workers = HashSet::new();
+            ensure!(
+                !authority.workers.is_empty(),
+                "authority requires at least one worker"
+            );
+            for worker in &authority.workers {
+                ensure!(
+                    *worker != authority.instance && workers.insert(*worker),
+                    "invalid or duplicate worker binding"
+                );
+                ensure!(
+                    !self.authorities.iter().any(|a| a.instance == *worker),
+                    "worker target is an authority instance"
+                );
+                if let Some(local) = self.workers.iter().find(|w| w.instance == *worker) {
+                    ensure!(
+                        local.authority == authority.instance,
+                        "local worker trusts another authority"
+                    );
+                }
+            }
+        }
+        for worker in &self.workers {
+            ensure!(
+                worker.instance != worker.authority,
+                "worker cannot authorize itself"
+            );
+            if let Some(local) = self
+                .authorities
+                .iter()
+                .find(|a| a.instance == worker.authority)
+            {
+                ensure!(
+                    local.workers.contains(&worker.instance),
+                    "local authority does not configure this worker"
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 从有界 JSON 配置启动共享消息会话及角色, 零角色可作为消息连接节点
+///
+/// # 错误
+/// 配置超限, 字段或角色绑定无效, 会话或角色驱动失败时返回错误
+pub async fn run(path: &str) -> Result<()> {
+    use tokio::io::AsyncReadExt;
+
+    let file = fs::File::open(path)
+        .await
+        .context("opening node configuration")?;
+    let mut bytes = Vec::new();
+    file.take(64 * 1024 + 1).read_to_end(&mut bytes).await?;
+    ensure!(
+        bytes.len() <= 64 * 1024,
+        "node configuration exceeds 64 KiB"
+    );
+    let config: Config = serde_json::from_slice(&bytes).context("decoding node configuration")?;
+    config.validate()?;
+    let subscription = format!("beamlet/v0/node-session/{}/inbox", Uuid::new_v4().simple());
+    let transport = Transport::node(
+        &config.listen,
+        &config.connect,
+        &subscription,
+        Limits::default(),
+    )
+    .await?;
+    let mut tasks = JoinSet::new();
+    // 先声明所有订阅再启动角色, 避免共享会话中的局部启动顺序影响就绪
+    let mut authorities = Vec::new();
+    let mut workers = Vec::new();
+    for authority in config.authorities {
+        let prefix = format!(
+            "beamlet/v0/authority/{}/submit/",
+            authority.instance.simple()
+        );
+        let requests = transport.subscribe(&format!("{prefix}*")).await?;
+        let instance: NodeInstanceId = authority.instance.as_u128().into();
+        let reports = transport.subscribe(&roles::report_inbox(instance)).await?;
+        // 两种地址各有独立有界队列, 由同一 Authority 驱动处理
+        let combined = (requests, reports);
+        let mut local = HashMap::new();
+        for worker in config
+            .workers
+            .iter()
+            .filter(|w| w.authority == authority.instance)
+        {
+            let worker_id = worker.instance.as_u128().into();
+            local.insert(
+                worker_id,
+                Work::<Task, String, String>::new(
+                    instance,
+                    vec![worker_id],
+                    beamlet_agent::Limits::default(),
+                )?,
+            );
+        }
+        authorities.push((combined, authority, local, prefix));
+    }
+    for worker in config.workers {
+        if authorities
+            .iter()
+            .any(|(_, a, _, _)| a.instance == worker.authority)
+        {
+            continue;
+        }
+        let inbox = roles::work_inbox(worker.instance.as_u128().into());
+        workers.push((transport.subscribe(&inbox).await?, worker));
+    }
+    for ((requests, reports), authority, local, prefix) in authorities {
+        tasks.spawn(roles::serve_authority_pair(
+            Arc::new(requests),
+            Some(reports),
+            authority.instance.as_u128().into(),
+            authority
+                .workers
+                .into_iter()
+                .map(|id| id.as_u128().into())
+                .collect(),
+            local,
+            prefix,
+        ));
+    }
+    for (transport, worker) in workers {
+        tasks.spawn(roles::serve_worker(
+            transport,
+            worker.instance.as_u128().into(),
+            worker.authority.as_u128().into(),
+        ));
+    }
+    println!("node ready: shared session; roles={}", tasks.len());
+    tokio::select! {
+        finished = tasks.join_next(), if !tasks.is_empty() => {
+            finished.context("role completion is missing")?.context("role task failed")??;
+            bail!("role stopped unexpectedly");
+        }
+        signal = tokio::signal::ctrl_c() => { signal?; }
+    }
+    tasks.abort_all();
+    while tasks.join_next().await.is_some() {}
+    Ok(())
+}

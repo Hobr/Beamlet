@@ -79,6 +79,43 @@ impl Transport {
         Self::open("client", Vec::new(), vec![endpoint], inbox, limits).await
     }
 
+    /// 按 Node 的静态拓扑创建 peer 会话, 监听和连接与业务角色无关
+    ///
+    /// # 错误
+    /// 拓扑, 会话或订阅配置无效时返回错误
+    pub async fn node(
+        listen: &[String],
+        connect: &[String],
+        inbox: &str,
+        limits: Limits,
+    ) -> Result<Self, Error> {
+        Self::open(
+            "peer",
+            listen.iter().map(String::as_str).collect(),
+            connect.iter().map(String::as_str).collect(),
+            inbox,
+            limits,
+        )
+        .await
+    }
+
+    /// 在同一消息会话上创建独立的有界订阅, 不建立新网络连接
+    ///
+    /// # 错误
+    /// 订阅配置或会话无效时返回错误
+    pub async fn subscribe(&self, inbox: &str) -> Result<Self, Error> {
+        let subscriber = self
+            .session
+            .declare_subscriber(inbox.to_owned())
+            .with(FifoChannel::new(self.limits.receive_capacity))
+            .await?;
+        Ok(Self {
+            subscriber,
+            session: self.session.clone(),
+            limits: self.limits,
+        })
+    }
+
     async fn open(
         mode: &str,
         listen: Vec<&str>,

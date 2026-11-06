@@ -67,6 +67,141 @@ impl Request {
     }
 }
 
+/// 固定 Hello 的跨进程授权编码, 不携带任意执行函数或 Console 回复地址
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dispatch {
+    protocol_version: u16,
+    source_instance_id: Uuid,
+    target_instance_id: Uuid,
+    attempt_id: Uuid,
+    operation: Request,
+}
+
+impl Dispatch {
+    /// 编码已有授权, 不创建新的 Attempt 或选择其他 Work
+    ///
+    /// # 错误
+    /// 领域消息不是 DispatchAttempt 时返回错误
+    pub fn from_delivery(
+        delivery: &model::Delivery<Task, String, String>,
+    ) -> Result<Self, ProtocolError> {
+        let model::Message::DispatchAttempt(attempt) = &delivery.message else {
+            return Err(invalid_message("expected a dispatch attempt"));
+        };
+        Ok(Self {
+            protocol_version: protocol::PROTOCOL_VERSION,
+            source_instance_id: Uuid::from_u128(delivery.source_instance_id.as_u128()),
+            target_instance_id: Uuid::from_u128(delivery.target_instance_id.as_u128()),
+            attempt_id: Uuid::from_u128(attempt.attempt_id.as_u128()),
+            operation: Request {
+                protocol_version: protocol::PROTOCOL_VERSION,
+                operation_id: Uuid::from_u128(attempt.operation.operation_id.as_u128()),
+                task: attempt.operation.task,
+            },
+        })
+    }
+
+    /// 还原原始实例绑定及授权, Work 仍须独立检查接纳规则
+    pub fn delivery(&self) -> model::Delivery<Task, String, String> {
+        model::Delivery::new(
+            self.source_instance_id.as_u128().into(),
+            self.target_instance_id.as_u128().into(),
+            model::Message::DispatchAttempt(model::DispatchAttempt {
+                attempt_id: self.attempt_id.as_u128().into(),
+                operation: self.operation.operation(),
+            }),
+        )
+    }
+
+    /// 编码并检查完整授权的字节预算
+    ///
+    /// # 错误
+    /// 版本, 上限, 大小或 JSON 编码无效时返回错误
+    pub fn to_json(&self, limits: &Limits) -> Result<Vec<u8>, ProtocolError> {
+        check_version(self.protocol_version)?;
+        check_version(self.operation.protocol_version)?;
+        encode(self, limits)
+    }
+
+    /// 在 Work 接纳前检查字节预算, 严格字段与版本
+    ///
+    /// # 错误
+    /// 未知字段, 非 Hello 任务, 错误版本或消息超限时返回错误
+    pub fn from_json(bytes: &[u8], limits: &Limits) -> Result<Self, ProtocolError> {
+        let dispatch: Self = decode(bytes, limits)?;
+        check_version(dispatch.protocol_version)?;
+        check_version(dispatch.operation.protocol_version)?;
+        Ok(dispatch)
+    }
+}
+
+/// 将 Work 已缓存的 Report 编码为原有 v0 信封, 不表示 Authority 已收录
+///
+/// # 错误
+/// 消息种类, 证据内容, 上限或 JSON 编码无效时返回错误
+pub fn encode_report(
+    delivery: &model::Delivery<Task, String, String>,
+    limits: &Limits,
+) -> Result<Vec<u8>, ProtocolError> {
+    let model::Message::SubmitReport(report) = &delivery.message else {
+        return Err(invalid_message("expected a report"));
+    };
+    let response = Response::report(
+        report,
+        delivery.source_instance_id,
+        delivery.target_instance_id,
+    );
+    let ResponseMessage::Report(envelope) = response.message else {
+        return Err(invalid_message("expected a report envelope"));
+    };
+    envelope.to_json(limits)
+}
+
+/// 解码原有 v0 Report, 将 Hello 的字符串结果显式还原为领域数据
+///
+/// # 错误
+/// 非 Report, 非字符串输出, 非法证据或有界协议检查失败时返回错误
+pub fn decode_report(
+    bytes: &[u8],
+    limits: &Limits,
+) -> Result<model::Delivery<Task, String, String>, ProtocolError> {
+    let envelope = Envelope::from_json(bytes, limits)?;
+    let Message::SubmitReport(report) = envelope.message else {
+        return Err(invalid_message("expected a report envelope"));
+    };
+    let effect = match report.effect {
+        protocol::Effect::None => model::Effect::None,
+        protocol::Effect::Observed => model::Effect::Observed,
+        protocol::Effect::Unknown => model::Effect::Unknown,
+    };
+    let result = match report.result {
+        ExecutionResult::Succeeded {
+            output: Value::String(output),
+        } => model::ExecutionResult::Succeeded { output },
+        ExecutionResult::Succeeded { .. } => {
+            return Err(invalid_message("hello output must be a string"));
+        }
+        ExecutionResult::Failed { error } => model::ExecutionResult::Failed { error },
+        ExecutionResult::Rejected { error } => model::ExecutionResult::Rejected { error },
+    };
+    Ok(model::Delivery::new(
+        envelope.source_instance_id,
+        envelope.target_instance_id,
+        model::Message::SubmitReport(model::SubmitReport {
+            report_id: report.report_id,
+            operation_id: report.operation_id,
+            attempt_id: report.attempt_id,
+            effect,
+            result,
+        }),
+    ))
+}
+
+fn invalid_message(message: &str) -> ProtocolError {
+    ProtocolError::Json(serde::de::Error::custom(message))
+}
+
 /// 提交观察或已收录的 Report, 不把交付错误伪装成执行失败
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(
