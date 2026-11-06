@@ -6,7 +6,7 @@ default:
     @just --list
 
 install-dev:
-    cargo binstall prek cargo-deny cargo-nextest cargo-update cargo-about diesel_cli flutter_rust_bridge_codegen -y --force
+    cargo binstall prek cargo-deny cargo-nextest cargo-update cargo-about diesel_cli -y --force
     cargo deny fetch
 
 console *args:

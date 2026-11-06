@@ -45,15 +45,6 @@ direnv allow
 npm i @informalsystems/quint -g
 ```
 
-#### AI (Optional)
-
-```bash
-npm install -g @mindfoldhq/trellis@latest @colbymchenry/codegraph
-trellis init -u <your-name>
-codegraph install
-codegraph init
-```
-
 ### Project
 
 ```bash

@@ -4,11 +4,7 @@ pkgs: rec {
     mold
 
     rustToolchain
-    mold
     cargo-binstall
-
-    flutter
-    dart
 
     just
     just-lsp
