@@ -91,6 +91,8 @@ Worker 的正常 Draining 只保证已接纳 Attempt 均缓存 Report 且发送�
 
 配置模式现已在角色驱动结束后尽力发布公共退出通知, 详见上节. Draining 日志或本地发布完成不能被当作 Client 已收到退出通知.
 
+配置模式的 Node 同时在本地输出每个 Authority/Worker 的生命周期, 不依赖 Client 订阅或通知发送成功. `Starting` 表示配置已校验但尚未就绪, `Running` 表示本地驱动已启动, `请求状态=Draining` 表示 Node 已请求停止新接纳, 不冒充角色已经完成状态切换. 全部本地驱动结束或中止并收回后, 在发布退出通知之前统一输出各角色的 `Stopped` 和排空观察. 每条携带逻辑身份, 运行实例, NodeId 和 NodeInstanceId, 包含本地组合的 Worker; `Stopped` 不证明外部效果停止. 角色数量统计 Authority 和 Worker 的实际总数, 驱动数量单独统计组合任务数. 这些日志不是网络通知, 不增加 Draining 公共协议, 也不从心跳缺失推断退出; 强制终止仍不保证输出最终日志.
+
 ## 本批实现状态
 
 已实现:

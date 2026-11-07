@@ -172,7 +172,7 @@ pub async fn run(path: &str) -> Result<()> {
         let id = AuthorityId::from_u128(authority.id.as_u128());
         let instance = AuthorityInstanceId::from_u128(authority.instance.as_u128());
         println!(
-            "Authority 身份: 逻辑身份={id} 运行实例={instance} 所属 Node 实例={node_instance}"
+            "角色生命周期: Authority 状态=Starting; 逻辑身份={id} 运行实例={instance} NodeId={node_id} NodeInstanceId={node_instance}; 配置已校验, 尚未就绪"
         );
     }
     for worker in &config.workers {
@@ -185,7 +185,9 @@ pub async fn run(path: &str) -> Result<()> {
         ));
         let id = WorkerId::from_u128(worker.id.as_u128());
         let instance = WorkerInstanceId::from_u128(worker.instance.as_u128());
-        println!("Worker 身份: 逻辑身份={id} 运行实例={instance} 所属 Node 实例={node_instance}");
+        println!(
+            "角色生命周期: Worker 状态=Starting; 逻辑身份={id} 运行实例={instance} NodeId={node_id} NodeInstanceId={node_instance}; 配置已校验, 尚未就绪"
+        );
     }
     let subscription = format!("beamlet/v0/node-session/{node_instance}/inbox");
     let transport = Arc::new(
@@ -318,7 +320,18 @@ pub async fn run(path: &str) -> Result<()> {
             (vec![worker.instance], result)
         });
     }
-    let role_count = tasks.len();
+    let role_count = notices.len();
+    let driver_count = tasks.len();
+    for notice in &notices {
+        println!(
+            "角色生命周期: {} 状态=Running; 逻辑身份={} 运行实例={} NodeId={} NodeInstanceId={}; 本地驱动已启动, 不代表远端可达",
+            notice.role,
+            notice.role_id,
+            notice.role_instance_id,
+            notice.node_id,
+            notice.node_instance_id
+        );
+    }
     let mut outcomes: HashMap<Uuid, ExitOutcome> = notices
         .iter()
         .map(|notice| (notice.role_instance_id, ExitOutcome::Unconfirmed))
@@ -329,7 +342,7 @@ pub async fn run(path: &str) -> Result<()> {
         announcements_task
             .spawn(async move { lifecycle::publish_starts(&publisher, starts).await });
     }
-    println!("Node 已就绪: 消息会话共享; 角色数量={role_count}");
+    println!("Node 已就绪: 消息会话共享; 角色数量={role_count}; 驱动数量={driver_count}");
     let failure = tokio::select! {
         finished = tasks.join_next(), if !tasks.is_empty() => {
             Some(finished.context("角色完成记录缺失")
@@ -352,6 +365,16 @@ pub async fn run(path: &str) -> Result<()> {
         "Node 进入 Draining: 停止新接纳; 等待上限={} 毫秒",
         config.drain_timeout_ms
     );
+    for notice in &notices {
+        println!(
+            "角色生命周期: {} 请求状态=Draining; 逻辑身份={} 运行实例={} NodeId={} NodeInstanceId={}; Node 已请求停止新接纳, 不代表角色已完成排空",
+            notice.role,
+            notice.role_id,
+            notice.role_instance_id,
+            notice.node_id,
+            notice.node_instance_id
+        );
+    }
     // 停止对外重播, 共享会话保留到角色退出和发送尝试结束之后
     announcements_task.abort_all();
     while announcements_task.join_next().await.is_some() {}
@@ -385,6 +408,17 @@ pub async fn run(path: &str) -> Result<()> {
         tasks.abort_all();
         while tasks.join_next().await.is_some() {}
         failure = Some(anyhow::anyhow!("Node Draining 到期, 未确认执行或交付"));
+    }
+    for notice in &notices {
+        let outcome = outcomes[&notice.role_instance_id];
+        println!(
+            "角色生命周期: {} 状态=Stopped; 逻辑身份={} 运行实例={} NodeId={} NodeInstanceId={}; 排空观察={outcome}; 本地驱动已结束, 不证明外部效果停止",
+            notice.role,
+            notice.role_id,
+            notice.role_instance_id,
+            notice.node_id,
+            notice.node_instance_id
+        );
     }
     lifecycle::publish_exits(&transport, notices, &outcomes).await;
     if let Some(error) = failure {
