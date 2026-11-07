@@ -19,6 +19,8 @@ use tokio::{
 };
 use uuid::Uuid;
 
+use crate::shutdown::{self, Shutdown};
+
 const NODE_INBOX_PREFIX: &str = "beamlet/v0/node/inbox/";
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -82,31 +84,49 @@ pub(crate) async fn serve_authority(
     local_workers: HashMap<RoleInstanceId, Worker<Task, String, String>>,
     request_prefix: String,
 ) -> Result<()> {
-    serve_authority_pair(
-        transport,
-        None,
-        instance,
-        workers,
-        local_workers,
-        request_prefix,
-    )
+    shutdown::standalone(|control| {
+        serve_authority_pair(
+            transport,
+            None,
+            AuthoritySetup {
+                instance,
+                workers,
+                local_workers,
+                request_prefix,
+            },
+            control,
+        )
+    })
     .await
+}
+
+pub(crate) struct AuthoritySetup {
+    pub instance: RoleInstanceId,
+    pub workers: Vec<RoleInstanceId>,
+    pub local_workers: HashMap<RoleInstanceId, Worker<Task, String, String>>,
+    pub request_prefix: String,
 }
 
 pub(crate) async fn serve_authority_pair(
     transport: Arc<Transport>,
     report_transport: Option<Transport>,
-    instance: RoleInstanceId,
-    workers: Vec<RoleInstanceId>,
-    mut local_workers: HashMap<RoleInstanceId, Worker<Task, String, String>>,
-    request_prefix: String,
+    setup: AuthoritySetup,
+    mut shutdown: Shutdown,
 ) -> Result<()> {
+    let AuthoritySetup {
+        instance,
+        workers,
+        mut local_workers,
+        request_prefix,
+    } = setup;
     let limits = beamlet_agent::Limits::default();
     let mut authority = HelloAuthority::new(instance, workers, limits)?;
     let protocol = ProtocolLimits::default();
     let reports = report_inbox(instance);
     let mut waiters: Vec<Waiter> = Vec::new();
     let mut sends = Sends::new();
+    let mut pending = std::collections::HashSet::new();
+    let mut draining = false;
     let mut tick = interval(Duration::from_millis(100));
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     println!("Authority 已就绪: 实例={instance}");
@@ -116,6 +136,13 @@ pub(crate) async fn serve_authority_pair(
     );
 
     loop {
+        if shutdown.is_draining() && !draining {
+            draining = true;
+            println!(
+                "Authority 进入 Draining: 实例={instance}; 未报告 Operation={}",
+                pending.len()
+            );
+        }
         flush_replies(
             &mut authority,
             &mut waiters,
@@ -125,6 +152,7 @@ pub(crate) async fn serve_authority_pair(
             limits.queue_capacity,
         )?;
         tokio::select! {
+            _ = shutdown.requested(), if !draining => {}
             received = async {
                 if let Some(reports) = &report_transport {
                     tokio::select! {
@@ -144,8 +172,15 @@ pub(crate) async fn serve_authority_pair(
                             continue;
                         }
                     };
+                    let operation = match &delivery.message {
+                        Message::SubmitReport(report) => report.operation_id,
+                        _ => unreachable!("Report 解码只能返回 Report"),
+                    };
                     match authority.receive_report(delivery) {
-                        Ok(disposition) => println!("Authority 已接收 Report: {disposition}"),
+                        Ok(disposition) => {
+                            pending.remove(&operation);
+                            println!("Authority 已接收 Report: {disposition}");
+                        },
                         Err(error) => eprintln!("Report 未收录: {error}"),
                     }
                     continue;
@@ -170,6 +205,13 @@ pub(crate) async fn serve_authority_pair(
                     continue;
                 }
                 let operation = request.operation_id();
+                if shutdown.is_draining() && authority.operation(operation).is_none() {
+                    queue_reply(&mut sends, &transport, console, Response::new(ResponseMessage::SubmissionError {
+                        operation_id: Uuid::from_u128(operation.as_u128()),
+                        error: "NodeShutdown: Authority 处于 Draining; 新 Operation 未接纳, 不生成 Attempt 或 Report".to_owned(),
+                    }), &protocol)?;
+                    continue;
+                }
                 let adopted = authority.operation(operation).and_then(|view| view.adopted_report);
                 let already_waiting = waiters.iter().any(|waiter| waiter.operation == operation && waiter.console == console);
                 if adopted.is_none() && !already_waiting && waiters.len() >= limits.queue_capacity {
@@ -202,6 +244,7 @@ pub(crate) async fn serve_authority_pair(
                     waiters.push(Waiter { operation, console: console.to_owned(), deadline: Instant::now() + REPLY_WAIT });
                 }
                 if submission.admission == Admission::New {
+                    pending.insert(operation);
                     if let Some(worker) = local_workers.get_mut(&submission.dispatch.target_instance_id) {
                         let cached = worker.receive_dispatch(submission.dispatch.clone())?;
                         authority.mark_dispatched(operation)?;
@@ -210,6 +253,7 @@ pub(crate) async fn serve_authority_pair(
                             None => worker.next_report(execute_hello).await?.context("本地 Worker 未产生 Report")?,
                         };
                         authority.receive_report(report)?;
+                        pending.remove(&operation);
                         println!("本地类型化交付: Operation={operation}");
                         continue;
                     }
@@ -233,10 +277,11 @@ pub(crate) async fn serve_authority_pair(
                     (SendPurpose::Reply, Ok(())) => {}
                 }
             }
-            _ = tick.tick() => {}
-            signal = tokio::signal::ctrl_c() => {
-                signal?;
-                return Ok(());
+            _ = tick.tick() => {
+                if draining && pending.is_empty() && waiters.is_empty() && sends.is_empty() {
+                    println!("Authority Draining 完成: 实例={instance}; 已接纳 Operation 均已有 Report, 发送尝试已结束; 不保证跨重启保留");
+                    return Ok(());
+                }
             }
         }
     }
@@ -338,62 +383,87 @@ pub async fn run_worker(
     )
     .await
     .context("Worker 连接超时")??;
-    serve_worker(transport, instance, authority).await
+    shutdown::standalone(|control| serve_worker(transport, instance, authority, control)).await
 }
 
 pub(crate) async fn serve_worker(
     transport: Transport,
     instance: RoleInstanceId,
     authority: RoleInstanceId,
+    mut shutdown: Shutdown,
 ) -> Result<()> {
-    let mut worker = Worker::<Task, String, String>::new(
-        authority,
-        vec![instance],
-        beamlet_agent::Limits::default(),
-    )?;
+    let limits = beamlet_agent::Limits::default();
+    let mut worker = Worker::<Task, String, String>::new(authority, vec![instance], limits)?;
+    let transport = Arc::new(transport);
     let protocol = ProtocolLimits::default();
     let inbox = worker_inbox(instance);
+    let mut sends = Sends::new();
+    let mut draining = false;
+    let mut tick = interval(Duration::from_millis(100));
+    tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     println!("Worker 已就绪: 实例={instance} Authority={authority}");
     loop {
-        let message = tokio::select! {
-            received = transport.recv_message() => received.context("Worker 接收授权失败")?,
-            signal = tokio::signal::ctrl_c() => {
-                signal?;
-                return Ok(());
+        if shutdown.is_draining() && !draining {
+            draining = true;
+            println!(
+                "Worker 进入 Draining: 实例={instance}; 已接纳未完成 Attempt={}",
+                worker.pending()
+            );
+        }
+        tokio::select! {
+            biased;
+            _ = shutdown.requested(), if !draining => {}
+            completed = sends.join_next(), if !sends.is_empty() => {
+                let (_, result) = completed.context("Report 发送完成记录缺失")?.context("Report 发送任务失败")?;
+                if let Err(error) = result {
+                    eprintln!("Report 发送未确认: {error}; 进程存活期间已缓存, 不自动重试; 退出不保证保留");
+                }
             }
-        };
-        ensure!(message.key_expr == inbox, "Worker 消息地址与预期不符");
-        let dispatch = match Dispatch::from_json(&message.payload, &protocol) {
-            Ok(dispatch) => dispatch.delivery(),
-            Err(error) => {
-                eprintln!("授权无效, 未接纳: {error}");
-                continue;
+            completed = worker.next_report(execute_hello), if worker.pending() > 0 && sends.len() < limits.queue_capacity => {
+                let report = completed?.context("Worker 完成记录缺失")?;
+                let Message::SubmitReport(evidence) = &report.message else { bail!("Worker 完成结果不包含 Report"); };
+                println!("Worker 已缓存 Report: Operation={} Attempt={} Report={}", evidence.operation_id, evidence.attempt_id, evidence.report_id);
+                queue_send(&mut sends, &transport, Outgoing {
+                    destination: report_inbox(authority),
+                    bytes: hello::encode_report(&report, &protocol)?,
+                    purpose: SendPurpose::Reply,
+                });
             }
-        };
-        let cached = match worker.receive_dispatch(dispatch) {
-            Ok(cached) => cached,
-            Err(error) => {
-                eprintln!("授权未接纳: {error}");
-                continue;
+            _ = tick.tick() => {
+                if draining && worker.pending() == 0 && sends.is_empty() {
+                    println!("Worker Draining 完成: 实例={instance}; 已接纳 Attempt 均已缓存 Report, 发送尝试已结束; 不保证 Authority 收录或跨重启保留");
+                    return Ok(());
+                }
             }
-        };
-        let report = match cached {
-            Some(report) => report,
-            None => worker
-                .next_report(execute_hello)
-                .await?
-                .context("Worker 接纳后未产生 Report")?,
-        };
-        let Message::SubmitReport(evidence) = &report.message else {
-            anyhow::bail!("Worker 完成结果不包含 Report");
-        };
-        println!(
-            "Worker 已缓存 Report: Operation={} Attempt={} Report={}",
-            evidence.operation_id, evidence.attempt_id, evidence.report_id
-        );
-        let bytes = hello::encode_report(&report, &protocol)?;
-        if let Err(error) = send(&transport, &report_inbox(authority), bytes).await {
-            eprintln!("Report 发送未确认: {error}; 已缓存, 不自动重试");
+            received = transport.recv_message() => {
+                let message = received.context("Worker 接收授权失败")?;
+                ensure!(message.key_expr == inbox, "Worker 消息地址与预期不符");
+                let dispatch = match Dispatch::from_json(&message.payload, &protocol) {
+                    Ok(dispatch) => dispatch.delivery(),
+                    Err(error) => { eprintln!("授权无效, 未接纳: {error}"); continue; }
+                };
+                if sends.len() >= limits.queue_capacity {
+                    eprintln!("Worker Report 发送槽位已满; 本次交付未入队");
+                    continue;
+                }
+                match worker.retained_dispatch(&dispatch) {
+                    Err(error) => { eprintln!("授权未接纳: {error}"); continue; }
+                    Ok(None) if shutdown.is_draining() => {
+                        eprintln!("NodeShutdown: Worker 处于 Draining; 新 Attempt 未接纳, 不生成 Report");
+                        continue;
+                    }
+                    _ => {}
+                }
+                match worker.receive_dispatch(dispatch) {
+                    Ok(Some(report)) => queue_send(&mut sends, &transport, Outgoing {
+                        destination: report_inbox(authority),
+                        bytes: hello::encode_report(&report, &protocol)?,
+                        purpose: SendPurpose::Reply,
+                    }),
+                    Ok(None) => {}
+                    Err(error) => eprintln!("授权未接纳: {error}"),
+                }
+            }
         }
     }
 }
@@ -417,6 +487,10 @@ pub(crate) fn report_inbox(instance: RoleInstanceId) -> String {
 /// # 错误
 /// 配置, 接纳, 内部驱动或收发出现无法处理的错误时返回错误
 pub async fn run_local(endpoint: &str) -> Result<()> {
+    shutdown::standalone(|control| serve_local(endpoint, control)).await
+}
+
+async fn serve_local(endpoint: &str, mut shutdown: Shutdown) -> Result<()> {
     let inbox = format!("{NODE_INBOX_PREFIX}*");
     let transport = Transport::listen(endpoint, &inbox, Limits::default())
         .await
@@ -433,12 +507,14 @@ pub async fn run_local(endpoint: &str) -> Result<()> {
     );
 
     loop {
+        if shutdown.is_draining() {
+            println!("本地角色 Draining 完成: 已接纳执行和回复尝试已结束; 内存记录不保证恢复");
+            return Ok(());
+        }
         let message = tokio::select! {
+            biased;
+            _ = shutdown.requested() => continue,
             received = transport.recv_message() => received.context("接收 Console 消息失败")?,
-            signal = tokio::signal::ctrl_c() => {
-                signal?;
-                return Ok(());
-            }
         };
         let Some(console_id) = message.key_expr.strip_prefix(NODE_INBOX_PREFIX) else {
             eprintln!("已忽略非预期消息地址: {:?}", message.key_expr);
@@ -456,7 +532,15 @@ pub async fn run_local(endpoint: &str) -> Result<()> {
                 continue;
             }
         };
-        let response = submit(&mut agent, &request).await?;
+        let response =
+            if shutdown.is_draining() && agent.operation(request.operation_id()).is_none() {
+                Response::new(ResponseMessage::SubmissionError {
+                    operation_id: Uuid::from_u128(request.operation_id().as_u128()),
+                    error: "NodeShutdown: 新 Operation 未接纳".to_owned(),
+                })
+            } else {
+                submit(&mut agent, &request).await?
+            };
         let bytes = response.to_json(&protocol_limits)?;
         let destination = format!("beamlet/v0/console/{console_id}/inbox");
         let outcome = timeout(SEND_TIMEOUT, async {

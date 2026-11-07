@@ -118,6 +118,11 @@ where
         self.tasks.len()
     }
 
+    /// 已接纳且尚未缓存完成证据的排队或运行任务数量
+    pub fn pending(&self) -> usize {
+        self.workers.values().map(Worker::pending).sum()
+    }
+
     /// 只读访问某个 Worker 的阶段与缓存证据
     pub fn worker(&self, instance: RoleInstanceId) -> Option<&Worker<P, O, E>> {
         self.workers.get(&instance)

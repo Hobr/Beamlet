@@ -19,18 +19,25 @@ use beamlet_agent::{
 };
 use beamlet_message_zenoh::{Limits, Transport};
 use serde::Deserialize;
-use tokio::{fs, task::JoinSet};
+use tokio::{
+    fs,
+    task::JoinSet,
+    time::{Duration, timeout},
+};
 use uuid::Uuid;
 
 use crate::{
     lifecycle::{self, Announcement, Observations},
     roles,
+    shutdown::{self, Phase, Shutdown},
 };
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
     node_id: Uuid,
+    #[serde(default = "default_drain_ms")]
+    drain_timeout_ms: u64,
     #[serde(default)]
     listen: Vec<String>,
     #[serde(default)]
@@ -57,8 +64,16 @@ struct WorkerConfig {
     authority: Uuid,
 }
 
+fn default_drain_ms() -> u64 {
+    shutdown::DEFAULT_DRAIN_MS
+}
+
 impl Config {
     fn validate(&self) -> Result<()> {
+        ensure!(
+            (1..=60_000).contains(&self.drain_timeout_ms),
+            "Draining 期限必须为 1..=60000 毫秒"
+        );
         ensure!(
             !self.listen.is_empty() || !self.connect.is_empty(),
             "至少配置一个监听或连接地址"
@@ -183,6 +198,8 @@ pub async fn run(path: &str) -> Result<()> {
         .await?,
     );
     let mut tasks = JoinSet::new();
+    let (stop, control) = Shutdown::channel();
+    let mut announcements_task = JoinSet::new();
     // 先声明所有订阅再启动角色, 避免共享会话中的局部启动顺序影响就绪
     let mut authorities = Vec::new();
     let mut workers = Vec::new();
@@ -254,23 +271,22 @@ pub async fn run(path: &str) -> Result<()> {
         (observations, announcements, local_announcements),
     ) in authorities
     {
+        let control = control.clone();
         tasks.spawn(async move {
-            tokio::try_join!(
-                roles::serve_authority_pair(
+            tokio::select! {
+                result = roles::serve_authority_pair(
                     Arc::new(requests),
                     Some(reports),
-                    authority.instance.as_u128().into(),
-                    authority
-                        .workers
-                        .into_iter()
-                        .map(|id| id.as_u128().into())
-                        .collect(),
-                    local,
-                    prefix,
-                ),
-                observations.serve(announcements, local_announcements)
-            )
-            .map(|_| ())
+                    roles::AuthoritySetup {
+                        instance: authority.instance.as_u128().into(),
+                        workers: authority.workers.into_iter().map(|id| id.as_u128().into()).collect(),
+                        local_workers: local,
+                        request_prefix: prefix,
+                    },
+                    control,
+                ) => result,
+                result = observations.serve(announcements, local_announcements) => result,
+            }
         });
     }
     for (worker_transport, worker) in workers {
@@ -282,32 +298,78 @@ pub async fn run(path: &str) -> Result<()> {
             worker.authority,
         );
         let publisher = Arc::clone(&transport);
+        let control = control.clone();
         tasks.spawn(async move {
-            tokio::try_join!(
-                lifecycle::maintain(&publisher, announcement),
-                roles::serve_worker(
+            tokio::select! {
+                result = lifecycle::maintain(&publisher, announcement) => result,
+                result = roles::serve_worker(
                     worker_transport,
                     worker.instance.as_u128().into(),
                     worker.authority.as_u128().into(),
-                ),
-            )
-            .map(|_| ())
+                    control,
+                ) => result,
+            }
         });
     }
     let role_count = tasks.len();
     if !notices.is_empty() {
         let publisher = Arc::clone(&transport);
-        tasks.spawn(async move { lifecycle::publish_starts(&publisher, notices).await });
+        announcements_task
+            .spawn(async move { lifecycle::publish_starts(&publisher, notices).await });
     }
     println!("Node 已就绪: 消息会话共享; 角色数量={role_count}");
-    tokio::select! {
+    let failure = tokio::select! {
         finished = tasks.join_next(), if !tasks.is_empty() => {
-            finished.context("Node 后台完成记录缺失")?.context("Node 后台任务失败")??;
-            bail!("Node 后台任务意外停止");
+            Some(finished.context("角色完成记录缺失")
+                .and_then(|result| result.context("角色任务失败"))
+                .and_then(|result| result)
+                .err().unwrap_or_else(|| anyhow::anyhow!("角色意外停止")))
         }
-        signal = tokio::signal::ctrl_c() => { signal?; }
+        finished = announcements_task.join_next(), if !announcements_task.is_empty() => {
+            Some(finished.context("公告完成记录缺失")
+                .and_then(|result| result.context("公告任务失败"))
+                .and_then(|result| result)
+                .err().unwrap_or_else(|| anyhow::anyhow!("公告任务意外停止")))
+        }
+        signal = tokio::signal::ctrl_c() => {
+            signal.context("接收退出信号失败").err()
+        }
+    };
+    stop.send_replace(Phase::Draining);
+    println!(
+        "Node 进入 Draining: 停止新接纳; 等待上限={} 毫秒",
+        config.drain_timeout_ms
+    );
+    // 停止对外重播, 共享会话保留到角色退出和发送尝试结束之后
+    announcements_task.abort_all();
+    while announcements_task.join_next().await.is_some() {}
+    let mut failure = failure;
+    let drained = timeout(Duration::from_millis(config.drain_timeout_ms), async {
+        while let Some(result) = tasks.join_next().await {
+            let result = result
+                .context("Draining 角色任务失败")
+                .and_then(|result| result);
+            if let Err(error) = result {
+                eprintln!("Draining 角色未正常完成: {error}; 不生成失败 Report");
+                if failure.is_none() {
+                    failure = Some(error);
+                }
+            }
+        }
+    })
+    .await;
+    if drained.is_err() {
+        eprintln!(
+            "Node Draining 到期: 剩余角色={}; 执行或交付未确认, 不生成失败 Report; 中止后内存状态不保证恢复",
+            tasks.len()
+        );
+        tasks.abort_all();
+        while tasks.join_next().await.is_some() {}
+        bail!("Node Draining 到期, 未确认执行或交付");
     }
-    tasks.abort_all();
-    while tasks.join_next().await.is_some() {}
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    println!("Node Draining 完成: 角色已停止, 随后关闭消息会话; 不提供跨重启恢复");
     Ok(())
 }

@@ -7,3 +7,4 @@ pub mod memory;
 pub mod node;
 pub mod protocol;
 pub mod roles;
+mod shutdown;

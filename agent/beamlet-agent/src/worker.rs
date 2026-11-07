@@ -66,6 +66,27 @@ where
         Ok(None)
     }
 
+    /// 已接纳且尚未缓存 Report 的排队或运行 Attempt 数量
+    pub fn pending(&self) -> usize {
+        self.executor.pending()
+    }
+
+    /// 不改变状态地校验重复交付, 未知 Attempt 返回空值
+    ///
+    /// # 错误
+    /// 目标, 授权来源, 消息或已有定义不匹配时返回错误
+    pub fn retained_dispatch(
+        &self,
+        dispatch: &Delivery<P, O, E>,
+    ) -> Result<Option<WorkerPhase>, StateError> {
+        dispatch.validate()?;
+        let worker = self
+            .executor
+            .worker(dispatch.target_instance_id)
+            .ok_or(StateError::WrongTarget)?;
+        worker.retained_dispatch(dispatch)
+    }
+
     /// 启动可运行任务, 缓存下一份完成证据后返回待交付的 Report
     ///
     /// 没有任务时返回空值, 调用方不应在空闲时循环轮询

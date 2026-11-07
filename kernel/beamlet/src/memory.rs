@@ -358,15 +358,14 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Worker<P, O, E> {
         })
     }
 
-    /// 将新授权入队, 或返回已保留的相同 Attempt 的状态
-    ///
-    /// 拒绝仅表示本次交付未入队, 不撤销原执行授权
-    /// 入队被拒绝时不生成执行 Report, 也不运行处理函数
+    /// 不修改记录地检查绑定及已保留授权, 未知 Attempt 返回空值
     ///
     /// # 错误
-    /// 实例错误, 消息无效, 身份冲突或记录与队列容量耗尽时返回错误
-    /// 容量耗尽后仍允许查询重复请求
-    pub fn accept(&mut self, envelope: Delivery<P, O, E>) -> Result<WorkerPhase, StateError> {
+    /// 消息, 目标, 来源或已保留内容不匹配时返回错误
+    pub fn retained_dispatch(
+        &self,
+        envelope: &Delivery<P, O, E>,
+    ) -> Result<Option<WorkerPhase>, StateError> {
         envelope.validate()?;
         if envelope.target_instance_id != self.instance {
             return Err(StateError::WrongTarget);
@@ -377,14 +376,29 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Worker<P, O, E> {
         let Message::DispatchAttempt(attempt) = &envelope.message else {
             return Err(StateError::WrongMessage);
         };
-        let id = attempt.attempt_id;
-        if let Some(existing) = self.attempts.get(&id) {
-            return if existing.dispatch == envelope {
-                Ok(existing.phase)
-            } else {
-                Err(StateError::AttemptConflict)
-            };
+        match self.attempts.get(&attempt.attempt_id) {
+            Some(existing) if existing.dispatch == *envelope => Ok(Some(existing.phase)),
+            Some(_) => Err(StateError::AttemptConflict),
+            None => Ok(None),
         }
+    }
+
+    /// 将新授权入队, 或返回已保留的相同 Attempt 的状态
+    ///
+    /// 拒绝仅表示本次交付未入队, 不撤销原执行授权
+    /// 入队被拒绝时不生成执行 Report, 也不运行处理函数
+    ///
+    /// # 错误
+    /// 实例错误, 消息无效, 身份冲突或记录与队列容量耗尽时返回错误
+    /// 容量耗尽后仍允许查询重复请求
+    pub fn accept(&mut self, envelope: Delivery<P, O, E>) -> Result<WorkerPhase, StateError> {
+        if let Some(phase) = self.retained_dispatch(&envelope)? {
+            return Ok(phase);
+        }
+        let Message::DispatchAttempt(attempt) = &envelope.message else {
+            return Err(StateError::WrongMessage);
+        };
+        let id = attempt.attempt_id;
         if self.attempts.len() >= self.limits.max_records {
             return Err(StateError::Capacity);
         }
@@ -468,6 +482,11 @@ impl<P: Clone + Eq, O: Clone + Eq, E: Clone + Eq> Worker<P, O, E> {
         record.report = Some(report.report_id);
         self.reports.insert(report.report_id, envelope);
         Ok(())
+    }
+
+    /// 尚在队列或运行中, 未缓存完成证据的 Attempt 数量
+    pub fn pending(&self) -> usize {
+        self.queue.len() + self.running
     }
 
     /// 返回已接纳 Attempt 的当前去重状态
