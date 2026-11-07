@@ -11,6 +11,7 @@ pkgs: rec {
 
     samply
     heaptrack
+    minica
 
     temurin-bin
     quint
