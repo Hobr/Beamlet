@@ -24,7 +24,7 @@ async fn run() -> Result<()> {
             arguments.len() == 2,
             "--config 需要且仅接受一个 JSON 路径, 不能与角色参数混用"
         );
-        return beamlet_node::node::run(&arguments[1]).await;
+        return beamlet_node::node::run(Some(&arguments[1]), None).await;
     }
     let mut listen = None;
     let mut connect = None;
@@ -75,7 +75,8 @@ async fn run() -> Result<()> {
                      beamlet-node --role authority --instance UUID --worker UUID [--worker UUID ...] [--listen ENDPOINT]\n\
                      beamlet-node --role worker --instance UUID --authority UUID [--connect ENDPOINT]\n\
                      ENDPOINT 为连接或监听地址, 默认为 tcp/127.0.0.1:7447; PATH.json 为配置文件路径. 每轮部署必须使用新的实例 UUID\n\
-                     默认 local 入口同样发布 Authority/Worker 启动和退出通知; 逻辑身份随机生成, 不跨启动保留"
+                     未指定配置或独立角色时使用默认配置: 1 个 Authority, 1 个 Worker; --role local 仅为兼容参数\n\
+                     默认配置支持 --listen 和角色生命周期通知; 逻辑身份随机生成, 不跨启动保留"
                 );
                 return Ok(());
             }
@@ -93,7 +94,7 @@ async fn run() -> Result<()> {
                     && workers.is_empty(),
                 "本地模式仅支持 --listen"
             );
-            roles::run_local(listen.as_deref().unwrap_or(default_endpoint)).await
+            beamlet_node::node::run(None, listen.as_deref()).await
         }
         "authority" => {
             ensure!(

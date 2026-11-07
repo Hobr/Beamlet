@@ -480,14 +480,6 @@ pub(crate) fn report_inbox(instance: RoleInstanceId) -> String {
     )
 }
 
-/// 启动默认本地 Hello 演示, 复用 Node 组合及角色生命周期流程
-///
-/// # 错误
-/// 配置, 接纳, 内部驱动或收发出现无法处理的错误时返回错误
-pub async fn run_local(endpoint: &str) -> Result<()> {
-    crate::node::run_local(endpoint).await
-}
-
 fn response_for(
     delivery: &Delivery<Task, String, String>,
     operation: OperationId,

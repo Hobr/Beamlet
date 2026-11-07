@@ -68,6 +68,29 @@ fn default_drain_ms() -> u64 {
     shutdown::DEFAULT_DRAIN_MS
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        let authority = Uuid::new_v4();
+        let worker = Uuid::new_v4();
+        Self {
+            node_id: Uuid::new_v4(),
+            drain_timeout_ms: default_drain_ms(),
+            listen: vec!["tcp/127.0.0.1:7447".to_owned()],
+            connect: Vec::new(),
+            authorities: vec![AuthorityConfig {
+                id: Uuid::new_v4(),
+                instance: authority,
+                workers: vec![worker],
+            }],
+            workers: vec![WorkerConfig {
+                id: Uuid::new_v4(),
+                instance: worker,
+                authority,
+            }],
+        }
+    }
+}
+
 impl Config {
     fn validate(&self) -> Result<()> {
         ensure!(
@@ -144,48 +167,33 @@ impl Config {
     }
 }
 
-/// 从有界 JSON 配置启动共享消息会话及角色, 零角色可作为消息连接节点
+/// 从可选 JSON 路径启动 Node, 无路径时默认承载一个 Authority 和一个本地 Worker
+///
+/// `listen` 只可覆盖默认配置的监听地址. 显式文件读取失败不会回退默认配置.
 ///
 /// # 错误
-/// 配置超限, 字段或角色绑定无效, 会话或角色驱动失败时返回错误
-pub async fn run(path: &str) -> Result<()> {
+/// 配置读取失败, 超限, 字段或角色绑定无效, 会话或角色驱动失败时返回错误
+pub async fn run(path: Option<&str>, listen: Option<&str>) -> Result<()> {
     use tokio::io::AsyncReadExt;
 
-    let file = fs::File::open(path).await.context("打开 Node 配置失败")?;
-    let mut bytes = Vec::new();
-    file.take(64 * 1024 + 1).read_to_end(&mut bytes).await?;
-    ensure!(bytes.len() <= 64 * 1024, "Node 配置超过 64 KiB");
-    let config: Config = serde_json::from_slice(&bytes).context("解析 Node 配置失败")?;
-    run_config(config, None).await
-}
-
-pub(crate) async fn run_local(endpoint: &str) -> Result<()> {
-    let authority = Uuid::new_v4();
-    let worker = Uuid::new_v4();
-    println!("Node 默认本地模式: 复用共享会话及生命周期流程; 本次逻辑身份随机生成, 不跨启动保留");
-    run_config(
-        Config {
-            node_id: Uuid::new_v4(),
-            drain_timeout_ms: default_drain_ms(),
-            listen: vec![endpoint.to_owned()],
-            connect: Vec::new(),
-            authorities: vec![AuthorityConfig {
-                id: Uuid::new_v4(),
-                instance: authority,
-                workers: vec![worker],
-            }],
-            workers: vec![WorkerConfig {
-                id: Uuid::new_v4(),
-                instance: worker,
-                authority,
-            }],
-        },
-        Some(roles::NODE_INBOX_PREFIX),
-    )
-    .await
-}
-
-async fn run_config(config: Config, request_prefix: Option<&str>) -> Result<()> {
+    let (config, request_prefix) = if let Some(path) = path {
+        ensure!(listen.is_none(), "--config 不能与 --listen 混用");
+        let file = fs::File::open(path).await.context("打开 Node 配置失败")?;
+        let mut bytes = Vec::new();
+        file.take(64 * 1024 + 1).read_to_end(&mut bytes).await?;
+        ensure!(bytes.len() <= 64 * 1024, "Node 配置超过 64 KiB");
+        let config: Config = serde_json::from_slice(&bytes).context("解析 Node 配置失败")?;
+        (config, None)
+    } else {
+        let mut config = Config::default();
+        if let Some(endpoint) = listen {
+            config.listen = vec![endpoint.to_owned()];
+        }
+        println!(
+            "Node 使用默认配置: 1 个 Authority, 1 个 Worker; 本次逻辑身份随机生成, 不跨启动保留"
+        );
+        (config, Some(roles::NODE_INBOX_PREFIX))
+    };
     config.validate()?;
     let node_id = NodeId::from_u128(config.node_id.as_u128());
     let node_instance = NodeInstanceId::from_u128(Uuid::new_v4().as_u128());

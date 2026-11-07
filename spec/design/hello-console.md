@@ -8,7 +8,7 @@ Node 组合模式已支持共享消息会话及多个 Authority/Worker, 见 [Nod
 
 ## 运行
 
-启动本地组合模式的 Node, 默认行为保持不变:
+无配置路径时启动默认配置: 1 个 Authority 和 1 个本地 Worker. 默认配置与文件配置共用同一个 `run` 入口, 不再区分 `run_local`:
 
 ```bash
 cargo run -p beamlet-node --offline --locked
@@ -32,7 +32,7 @@ just node
 just console --subscribe
 ```
 
-Console 可看到本地 Authority 和 Worker 的启动通知. 保持 Console 运行, 在 Node 终端按 Ctrl-C, 可观察到这两个角色的退出通知. 通知尽力发送, 不承诺强杀时可达; `已发布` 日志不等于 Client 已收到. 默认入口复用 Node 的共享会话, 公共通知及 Draining 协调流程, 同 Node 的执行交付仍为类型化交付. 本次逻辑身份和运行实例均随机生成, 不跨启动保留; 需要固定逻辑身份时使用配置模式. 显式旧独立 `--role authority`/`--role worker` CLI 暂不提供公共通知.
+Console 可看到本地 Authority 和 Worker 的启动通知. 保持 Console 运行, 在 Node 终端按 Ctrl-C, 可观察到这两个角色的退出通知. 通知尽力发送, 不承诺强杀时可达; `已发布` 日志不等于 Client 已收到. 默认配置与文件配置使用同一套共享会话, 公共通知及 Draining 协调流程, 同 Node 的执行交付仍为类型化交付. `--listen` 可覆盖默认监听地址, `--role local` 仅为兼容参数. 显式配置文件无法读取或内容无效时直接报错, 不静默回退默认配置. 本次逻辑身份和运行实例均随机生成, 不跨启动保留; 需要固定逻辑身份时使用配置模式. 显式旧独立 `--role authority`/`--role worker` CLI 暂不提供公共通知.
 
 也可直接启动 Console, 输入 `hello` 后按 Enter. 每条输入创建新的 Operation; 相同任务不代表相同请求. 不再将任意输入文本回显为结果. `Hello` 大小写兼容.
 
