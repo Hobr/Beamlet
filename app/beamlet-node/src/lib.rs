@@ -6,5 +6,6 @@ mod lifecycle;
 pub mod memory;
 pub mod node;
 pub mod protocol;
+mod report_delivery;
 pub mod roles;
 mod shutdown;

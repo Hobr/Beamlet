@@ -5,11 +5,12 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use anyhow::{Context, Result, bail, ensure};
 use beamlet_agent::{
     Admission, Authority, StateError, Worker,
-    id::{OperationId, RoleInstanceId},
+    id::{OperationId, ReportId, RoleInstanceId},
     model::{Delivery, DispatchAttempt, Effect, ExecutionResult, Message, SubmitReport},
     testing::{
         hello::{self, Dispatch, Request, Response, ResponseMessage, Task},
         protocol::Limits as ProtocolLimits,
+        receipt::{self, ReportRetained},
     },
 };
 use beamlet_message_zenoh::{Limits, Transport};
@@ -19,7 +20,10 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::shutdown::{self, Shutdown};
+use crate::{
+    report_delivery::{ReportDeliveries, SEND_BUDGET},
+    shutdown::{self, Shutdown},
+};
 
 pub(crate) const NODE_INBOX_PREFIX: &str = "beamlet/v0/node/inbox/";
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
@@ -38,6 +42,8 @@ struct Waiter {
 enum SendPurpose {
     Dispatch(OperationId),
     Reply,
+    Receipt,
+    Report(ReportId),
 }
 
 struct Outgoing {
@@ -174,10 +180,20 @@ pub(crate) async fn serve_authority_pair(
                         Message::SubmitReport(report) => report.operation_id,
                         _ => unreachable!("Report 解码只能返回 Report"),
                     };
+                    let receipt = ReportRetained::for_report(&delivery)?;
                     match authority.receive_report(delivery) {
                         Ok(disposition) => {
                             pending.remove(&operation);
                             println!("Authority 已接收 Report: {disposition}");
+                            if sends.len() < limits.queue_capacity {
+                                queue_send(&mut sends, &transport, Outgoing {
+                                    destination: receipt.topic(),
+                                    bytes: receipt.to_json()?,
+                                    purpose: SendPurpose::Receipt,
+                                });
+                            } else {
+                                eprintln!("Report 已收录, 回执发送槽位已满: Report={}; 等待原证据重投, 不回滚收录", receipt.report_id);
+                            }
                         },
                         Err(error) => eprintln!("Report 未收录: {error}"),
                     }
@@ -250,7 +266,9 @@ pub(crate) async fn serve_authority_pair(
                             Some(report) => report,
                             None => worker.next_report(execute_hello).await?.context("本地 Worker 未产生 Report")?,
                         };
+                        let receipt = ReportRetained::for_report(&report)?;
                         authority.receive_report(report)?;
+                        println!("本地 Report 收录已确认: Report={}; 类型化返回, 不走网络回执, 不表示持久化", receipt.report_id);
                         pending.remove(&operation);
                         println!("本地类型化交付: Operation={operation}");
                         continue;
@@ -273,6 +291,9 @@ pub(crate) async fn serve_authority_pair(
                     (SendPurpose::Dispatch(operation), Err(error)) => eprintln!("授权发送未确认: Operation={operation}; {error}; 保留原记录, 不重试或创建新授权"),
                     (SendPurpose::Reply, Err(error)) => eprintln!("Console 回复未确认: {error}; 证据已保留, 不重试"),
                     (SendPurpose::Reply, Ok(())) => {}
+                    (SendPurpose::Receipt, Ok(())) => println!("Report 收录回执已发出; 不等待回执的回执, 不表示持久化"),
+                    (SendPurpose::Receipt, Err(error)) => eprintln!("Report 收录回执发送未确认: {error}; 原证据仍已保留, 合法重复可再次回复"),
+                    (SendPurpose::Report(_), _) => bail!("Authority 不应包含 Worker Report 发送任务"),
                 }
             }
             _ = tick.tick() => {
@@ -349,20 +370,29 @@ fn queue_send(sends: &mut Sends, transport: &Arc<Transport>, outgoing: Outgoing)
     // 有界发送任务共享同一会话, 不持有 Authority 状态或锁
     let transport = Arc::clone(transport);
     sends.spawn(async move {
-        let result = send(&transport, &outgoing.destination, outgoing.bytes).await;
+        let budget = match &outgoing.purpose {
+            SendPurpose::Receipt | SendPurpose::Report(_) => SEND_BUDGET,
+            _ => SEND_TIMEOUT,
+        };
+        let result = send(&transport, &outgoing.destination, outgoing.bytes, budget).await;
         (outgoing.purpose, result)
     });
 }
 
-async fn send(transport: &Transport, destination: &str, bytes: Vec<u8>) -> Result<()> {
-    timeout(SEND_TIMEOUT, async {
+async fn send(
+    transport: &Transport,
+    destination: &str,
+    bytes: Vec<u8>,
+    budget: Duration,
+) -> Result<()> {
+    timeout(budget, async {
         let sender = transport.sender(destination).await?;
         sender.wait_for_receiver().await?;
         sender.send(bytes).await?;
         Ok::<_, anyhow::Error>(())
     })
     .await
-    .context("发送超时; 不自动重试")?
+    .context("消息发送超时")?
 }
 
 /// 启动只执行绑定 Authority 授权的静态 Worker 进程
@@ -381,11 +411,14 @@ pub async fn run_worker(
     )
     .await
     .context("Worker 连接超时")??;
-    shutdown::standalone(|control| serve_worker(transport, instance, authority, control)).await
+    let receipts = transport.subscribe(&receipt::inbox(instance)).await?;
+    shutdown::standalone(|control| serve_worker(transport, receipts, instance, authority, control))
+        .await
 }
 
 pub(crate) async fn serve_worker(
     transport: Transport,
+    receipts: Transport,
     instance: RoleInstanceId,
     authority: RoleInstanceId,
     mut shutdown: Shutdown,
@@ -395,6 +428,8 @@ pub(crate) async fn serve_worker(
     let transport = Arc::new(transport);
     let protocol = ProtocolLimits::default();
     let inbox = worker_inbox(instance);
+    let receipt_inbox = receipt::inbox(instance);
+    let mut deliveries = ReportDeliveries::new(limits);
     let mut sends = Sends::new();
     let mut draining = false;
     let mut tick = interval(Duration::from_millis(100));
@@ -404,33 +439,64 @@ pub(crate) async fn serve_worker(
         if shutdown.is_draining() && !draining {
             draining = true;
             println!(
-                "Worker 进入 Draining: 实例={instance}; 已接纳未完成 Attempt={}",
-                worker.pending()
+                "Worker 进入 Draining: 实例={instance}; 已接纳未完成 Attempt={}; 未确认 Report={}",
+                worker.pending(),
+                deliveries.unconfirmed()
+            );
+        }
+        deliveries.refresh();
+        while sends.len() < limits.queue_capacity {
+            let Some((report, bytes)) = deliveries.next_send() else {
+                break;
+            };
+            queue_send(
+                &mut sends,
+                &transport,
+                Outgoing {
+                    destination: report_inbox(authority),
+                    bytes,
+                    purpose: SendPurpose::Report(report),
+                },
             );
         }
         tokio::select! {
             biased;
             _ = shutdown.requested(), if !draining => {}
             completed = sends.join_next(), if !sends.is_empty() => {
-                let (_, result) = completed.context("Report 发送完成记录缺失")?.context("Report 发送任务失败")?;
+                let (purpose, result) = completed.context("Report 发送完成记录缺失")?.context("Report 发送任务失败")?;
+                let SendPurpose::Report(report) = purpose else { bail!("Worker 发送任务必须绑定 Report"); };
+                deliveries.sent(report);
                 if let Err(error) = result {
-                    eprintln!("Report 发送未确认: {error}; 进程存活期间已缓存, 不自动重试; 退出不保证保留");
+                    eprintln!("Report 本次发送未确认: Report={report}; {error}; 仅在原交付预算内重投, 不重跑");
                 }
             }
             completed = worker.next_report(execute_hello), if worker.pending() > 0 && sends.len() < limits.queue_capacity => {
                 let report = completed?.context("Worker 完成记录缺失")?;
                 let Message::SubmitReport(evidence) = &report.message else { bail!("Worker 完成结果不包含 Report"); };
                 println!("Worker 已缓存 Report: Operation={} Attempt={} Report={}", evidence.operation_id, evidence.attempt_id, evidence.report_id);
-                queue_send(&mut sends, &transport, Outgoing {
-                    destination: report_inbox(authority),
-                    bytes: hello::encode_report(&report, &protocol)?,
-                    purpose: SendPurpose::Reply,
-                });
+                deliveries.retain(&report, &protocol)?;
             }
             _ = tick.tick() => {
-                if draining && worker.pending() == 0 && sends.is_empty() {
-                    println!("Worker Draining 完成: 实例={instance}; 已接纳 Attempt 均已缓存 Report, 发送尝试已结束; 不保证 Authority 收录或跨重启保留");
+                if draining && worker.pending() == 0 && deliveries.unconfirmed() == 0 && sends.is_empty() {
+                    println!("Worker Draining 完成: 实例={instance}; Report 均已获得 Authority 收录回执, 发送尝试已结束; 不保证跨重启保留");
                     return Ok(());
+                }
+            }
+            received = receipts.recv_message() => {
+                match received {
+                    Ok(message) => {
+                        let result = (|| {
+                            let receipt = ReportRetained::from_json(&message.payload)?;
+                            ensure!(message.key_expr == receipt_inbox && message.key_expr == receipt.topic(), "Report 收录回执实际路由不符");
+                            if deliveries.acknowledge(&receipt)? {
+                                println!("Worker 已确认 Authority 收录 Report: Operation={} Attempt={} Report={}; 不表示已采用或持久化", receipt.operation_id, receipt.attempt_id, receipt.report_id);
+                            }
+                            Ok::<_, anyhow::Error>(())
+                        })();
+                        if let Err(error) = result { eprintln!("已忽略 Report 收录回执: {error}"); }
+                    }
+                    Err(error @ (beamlet_message_zenoh::Error::UnexpectedDelete | beamlet_message_zenoh::Error::MessageTooLarge)) => eprintln!("已忽略 Report 收录回执: {error}"),
+                    Err(error) => return Err(error).context("接收 Report 收录回执失败"),
                 }
             }
             received = transport.recv_message() => {
@@ -440,24 +506,20 @@ pub(crate) async fn serve_worker(
                     Ok(dispatch) => dispatch.delivery(),
                     Err(error) => { eprintln!("授权无效, 未接纳: {error}"); continue; }
                 };
-                if sends.len() >= limits.queue_capacity {
-                    eprintln!("Worker Report 发送槽位已满; 本次交付未入队");
-                    continue;
-                }
                 match worker.retained_dispatch(&dispatch) {
                     Err(error) => { eprintln!("授权未接纳: {error}"); continue; }
                     Ok(None) if shutdown.is_draining() => {
                         eprintln!("NodeShutdown: Worker 处于 Draining; 新 Attempt 未接纳, 不生成 Report");
                         continue;
                     }
+                    Ok(None) if !deliveries.has_capacity(worker.pending()) => {
+                        eprintln!("Worker 执行或活动 Report 交付槽位已满; 本次新 Attempt 未入队");
+                        continue;
+                    }
                     _ => {}
                 }
                 match worker.receive_dispatch(dispatch) {
-                    Ok(Some(report)) => queue_send(&mut sends, &transport, Outgoing {
-                        destination: report_inbox(authority),
-                        bytes: hello::encode_report(&report, &protocol)?,
-                        purpose: SendPurpose::Reply,
-                    }),
+                    Ok(Some(report)) => deliveries.retain(&report, &protocol)?,
                     Ok(None) => {}
                     Err(error) => eprintln!("授权未接纳: {error}"),
                 }

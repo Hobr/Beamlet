@@ -304,7 +304,12 @@ pub async fn run(path: Option<&str>, listen: Option<&str>) -> Result<()> {
             continue;
         }
         let inbox = roles::worker_inbox(worker.instance.as_u128().into());
-        workers.push((transport.subscribe(&inbox).await?, worker));
+        let receipts = beamlet_agent::testing::receipt::inbox(worker.instance.as_u128().into());
+        workers.push((
+            transport.subscribe(&inbox).await?,
+            transport.subscribe(&receipts).await?,
+            worker,
+        ));
     }
     for (
         (requests, reports),
@@ -338,7 +343,7 @@ pub async fn run(path: Option<&str>, listen: Option<&str>) -> Result<()> {
             (instances, result)
         });
     }
-    for (worker_transport, worker) in workers {
+    for (worker_transport, receipt_transport, worker) in workers {
         let announcement = Announcement::started(
             config.node_id,
             Uuid::from_u128(node_instance.as_u128()),
@@ -353,6 +358,7 @@ pub async fn run(path: Option<&str>, listen: Option<&str>) -> Result<()> {
                 result = lifecycle::maintain(&publisher, announcement) => result,
                 result = roles::serve_worker(
                     worker_transport,
+                    receipt_transport,
                     worker.instance.as_u128().into(),
                     worker.authority.as_u128().into(),
                     control,
