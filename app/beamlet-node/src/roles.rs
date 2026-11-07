@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
 use beamlet_agent::{
-    Admission, Agent, AgentError, Authority, StateError, Worker,
+    Admission, Authority, StateError, Worker,
     id::{OperationId, RoleInstanceId},
     model::{Delivery, DispatchAttempt, Effect, ExecutionResult, Message, SubmitReport},
     testing::{
@@ -21,10 +21,8 @@ use uuid::Uuid;
 
 use crate::shutdown::{self, Shutdown};
 
-const NODE_INBOX_PREFIX: &str = "beamlet/v0/node/inbox/";
+pub(crate) const NODE_INBOX_PREFIX: &str = "beamlet/v0/node/inbox/";
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
-
-type HelloAgent = Agent<Task, String, String>;
 
 type HelloAuthority = Authority<Task, String, String>;
 
@@ -482,129 +480,12 @@ pub(crate) fn report_inbox(instance: RoleInstanceId) -> String {
     )
 }
 
-/// 启动原有的本地 Hello 演示, Authority 与 Worker 仍在同一进程
+/// 启动默认本地 Hello 演示, 复用 Node 组合及角色生命周期流程
 ///
 /// # 错误
 /// 配置, 接纳, 内部驱动或收发出现无法处理的错误时返回错误
 pub async fn run_local(endpoint: &str) -> Result<()> {
-    shutdown::standalone(|control| serve_local(endpoint, control)).await
-}
-
-async fn serve_local(endpoint: &str, mut shutdown: Shutdown) -> Result<()> {
-    let inbox = format!("{NODE_INBOX_PREFIX}*");
-    let transport = Transport::listen(endpoint, &inbox, Limits::default())
-        .await
-        .context("启动 Node 监听失败")?;
-    let authority = Uuid::new_v4().as_u128().into();
-    let worker = Uuid::new_v4().as_u128().into();
-    let runtime_limits = beamlet_agent::Limits::default();
-    let mut agent = HelloAgent::new(authority, vec![worker], runtime_limits)?;
-    let protocol_limits = ProtocolLimits::default();
-    println!("Node 正在监听: {endpoint}");
-    println!(
-        "内存 Authority={authority} Worker={worker}; Operation 保留上限={}",
-        runtime_limits.max_records
-    );
-
-    loop {
-        if shutdown.is_draining() {
-            println!("本地角色 Draining 完成: 已接纳执行和回复尝试已结束; 内存记录不保证恢复");
-            return Ok(());
-        }
-        let message = tokio::select! {
-            biased;
-            _ = shutdown.requested() => continue,
-            received = transport.recv_message() => received.context("接收 Console 消息失败")?,
-        };
-        let Some(console_id) = message.key_expr.strip_prefix(NODE_INBOX_PREFIX) else {
-            eprintln!("已忽略非预期消息地址: {:?}", message.key_expr);
-            continue;
-        };
-        // 路由 ID 只用于区分 Console, 不作为认证凭证或任意回复地址
-        if console_id.len() != 32 || !console_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            eprintln!("已忽略无效 Console 路由: {console_id:?}");
-            continue;
-        }
-        let request = match Request::from_json(&message.payload, &protocol_limits) {
-            Ok(request) => request,
-            Err(error) => {
-                eprintln!("Console[{console_id}]Operation 无效, 未接纳: {error}");
-                continue;
-            }
-        };
-        let response =
-            if shutdown.is_draining() && agent.operation(request.operation_id()).is_none() {
-                Response::new(ResponseMessage::SubmissionError {
-                    operation_id: Uuid::from_u128(request.operation_id().as_u128()),
-                    error: "NodeShutdown: 新 Operation 未接纳".to_owned(),
-                })
-            } else {
-                submit(&mut agent, &request).await?
-            };
-        let bytes = response.to_json(&protocol_limits)?;
-        let destination = format!("beamlet/v0/console/{console_id}/inbox");
-        let outcome = timeout(SEND_TIMEOUT, async {
-            let reply = transport.sender(&destination).await?;
-            reply.wait_for_receiver().await?;
-            reply.send(bytes).await
-        })
-        .await;
-        match outcome {
-            Ok(Ok(())) => println!("Node -> Console[{console_id}]: 回复已发出"),
-            Ok(Err(error)) => {
-                eprintln!("回复 Console[{console_id}]失败, 不重试: {error}");
-            }
-            Err(_) => {
-                eprintln!("回复 Console[{console_id}]超时, 不重试");
-            }
-        }
-    }
-}
-
-async fn submit(agent: &mut HelloAgent, request: &Request) -> Result<Response> {
-    let operation_id = request.operation_id();
-    let submission = match agent.submit(request.operation(), Uuid::new_v4().as_u128().into()) {
-        Ok(submission) => submission,
-        Err(AgentError::State(
-            error @ (StateError::Capacity
-            | StateError::QueueFull
-            | StateError::OperationConflict
-            | StateError::AttemptConflict),
-        )) => {
-            let phase = agent
-                .operation(operation_id)
-                .map(|view| view.phase.to_string())
-                .unwrap_or_else(|| "未接纳".to_owned());
-            return Ok(Response::new(ResponseMessage::SubmissionError {
-                operation_id: Uuid::from_u128(operation_id.as_u128()),
-                error: format!("{error}; 已保留阶段={phase}; 不自动重试"),
-            }));
-        }
-        Err(error) => return Err(error.into()),
-    };
-    let Message::DispatchAttempt(attempt) = &submission.dispatch.message else {
-        bail!("提交后未保留 Attempt");
-    };
-    println!(
-        "Authority: Operation={operation_id} Attempt={} 接纳结果={}",
-        attempt.attempt_id, submission.admission
-    );
-
-    if let Some(report_id) = agent
-        .operation(operation_id)
-        .and_then(|view| view.adopted_report)
-    {
-        let retained = agent.report(report_id).context("已采用的 Report 缺失")?;
-        return response_for(retained, operation_id);
-    }
-
-    // 取消网络等待不能丢弃此 Agent; 证据先收录, 再尝试交付 Console
-    let Some(delivery) = agent.next_report(execute_hello).await? else {
-        return Ok(Response::new(ResponseMessage::Pending {
-            operation_id: Uuid::from_u128(operation_id.as_u128()),
-        }));
-    };
-    response_for(&delivery, operation_id)
+    crate::node::run_local(endpoint).await
 }
 
 fn response_for(

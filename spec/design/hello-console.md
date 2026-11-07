@@ -20,6 +20,20 @@ cargo run -p beamlet-node --offline --locked
 cargo run -p beamlet-console --offline --locked -- --message hello
 ```
 
+默认入口同样支持角色生命周期订阅, 不必先编写配置或指定 Authority:
+
+```bash
+# 终端 A
+just node
+```
+
+```bash
+# 终端 B
+just console --subscribe
+```
+
+Console 可看到本地 Authority 和 Worker 的启动通知. 保持 Console 运行, 在 Node 终端按 Ctrl-C, 可观察到这两个角色的退出通知. 通知尽力发送, 不承诺强杀时可达; `已发布` 日志不等于 Client 已收到. 默认入口复用 Node 的共享会话, 公共通知及 Draining 协调流程, 同 Node 的执行交付仍为类型化交付. 本次逻辑身份和运行实例均随机生成, 不跨启动保留; 需要固定逻辑身份时使用配置模式. 显式旧独立 `--role authority`/`--role worker` CLI 暂不提供公共通知.
+
 也可直接启动 Console, 输入 `hello` 后按 Enter. 每条输入创建新的 Operation; 相同任务不代表相同请求. 不再将任意输入文本回显为结果. `Hello` 大小写兼容.
 
 正常输出包含:
@@ -97,7 +111,7 @@ cargo run -p beamlet-console --offline --locked -- \
 
 ## 处理路径
 
-本地组合模式继续使用 `Agent::submit` 和 `Agent::next_report`; 分进程模式使用已有的独立 Authority/Worker 驱动:
+本地组合与分进程模式复用独立 Authority/Worker 驱动; 本地组合直接进行类型化交付, 不强制序列化或回环网络:
 
 1. Console 生成或读取稳定 Operation ID, 将固定 Hello 请求编码一次.
 2. Authority 在接纳前检查消息大小, 严格 JSON 字段, 协议版本和固定任务种类.

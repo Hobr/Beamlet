@@ -74,7 +74,8 @@ async fn run() -> Result<()> {
                      beamlet-node [--role local] [--listen ENDPOINT] [--demo]\n\
                      beamlet-node --role authority --instance UUID --worker UUID [--worker UUID ...] [--listen ENDPOINT]\n\
                      beamlet-node --role worker --instance UUID --authority UUID [--connect ENDPOINT]\n\
-                     ENDPOINT 为连接或监听地址, 默认为 tcp/127.0.0.1:7447; PATH.json 为配置文件路径. 每轮部署必须使用新的实例 UUID"
+                     ENDPOINT 为连接或监听地址, 默认为 tcp/127.0.0.1:7447; PATH.json 为配置文件路径. 每轮部署必须使用新的实例 UUID\n\
+                     默认 local 入口同样发布 Authority/Worker 启动和退出通知; 逻辑身份随机生成, 不跨启动保留"
                 );
                 return Ok(());
             }

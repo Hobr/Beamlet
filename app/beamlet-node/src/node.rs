@@ -156,6 +156,36 @@ pub async fn run(path: &str) -> Result<()> {
     file.take(64 * 1024 + 1).read_to_end(&mut bytes).await?;
     ensure!(bytes.len() <= 64 * 1024, "Node 配置超过 64 KiB");
     let config: Config = serde_json::from_slice(&bytes).context("解析 Node 配置失败")?;
+    run_config(config, None).await
+}
+
+pub(crate) async fn run_local(endpoint: &str) -> Result<()> {
+    let authority = Uuid::new_v4();
+    let worker = Uuid::new_v4();
+    println!("Node 默认本地模式: 复用共享会话及生命周期流程; 本次逻辑身份随机生成, 不跨启动保留");
+    run_config(
+        Config {
+            node_id: Uuid::new_v4(),
+            drain_timeout_ms: default_drain_ms(),
+            listen: vec![endpoint.to_owned()],
+            connect: Vec::new(),
+            authorities: vec![AuthorityConfig {
+                id: Uuid::new_v4(),
+                instance: authority,
+                workers: vec![worker],
+            }],
+            workers: vec![WorkerConfig {
+                id: Uuid::new_v4(),
+                instance: worker,
+                authority,
+            }],
+        },
+        Some(roles::NODE_INBOX_PREFIX),
+    )
+    .await
+}
+
+async fn run_config(config: Config, request_prefix: Option<&str>) -> Result<()> {
     config.validate()?;
     let node_id = NodeId::from_u128(config.node_id.as_u128());
     let node_instance = NodeInstanceId::from_u128(Uuid::new_v4().as_u128());
@@ -206,10 +236,13 @@ pub async fn run(path: &str) -> Result<()> {
     let mut authorities = Vec::new();
     let mut workers = Vec::new();
     for authority in config.authorities {
-        let prefix = format!(
-            "beamlet/v0/authority/{}/submit/",
-            authority.instance.simple()
-        );
+        let prefix = match request_prefix {
+            Some(prefix) => prefix.to_owned(),
+            None => format!(
+                "beamlet/v0/authority/{}/submit/",
+                authority.instance.simple()
+            ),
+        };
         let requests = transport.subscribe(&format!("{prefix}*")).await?;
         let instance: RoleInstanceId =
             AuthorityInstanceId::from_u128(authority.instance.as_u128()).into();

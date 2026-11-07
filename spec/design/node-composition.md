@@ -52,7 +52,7 @@ Authority 使用本地单调时钟记录收到有效递增序号的时间, 每 2
 
 统一使用 Client, 不新增 Observer 身份或另一种业务角色. Client 可以提交 Operation, 也可以只读订阅角色通知, 两种能力可以同时使用. Client 不发布自己的启动, 心跳或退出通知. 当前 Console 仍使用随机回复会话区分业务请求, 这不是生命周期身份公告.
 
-配置模式的 Node 为自己承载的每个 Authority 和 Worker 向 `beamlet/v0/lifecycle/roles/<authority|worker>/<role-instance-simple>` 发布 `kind: "role_started"` 启动通知和 `kind: "role_exited"` 退出通知. 严格 JSON 包含 `protocol_version: 0`, `kind`, `role`, `node_id`, `node_instance_id`, `role_id`, `role_instance_id`; 退出通知另带必需的 `outcome`, 启动通知不带该字段. 角色枚举仅有 Authority 和 Worker, 单条最多 4096 字节. 本地组合与远端独立角色均对外可见, 与 Authority 内部的 Worker 公告/心跳收件箱分开. 同 Node 的业务执行交付仍为类型化交付, 不为公共通知强制改走网络.
+配置模式和默认 `local` 入口的 Node 为自己承载的每个 Authority 和 Worker 向 `beamlet/v0/lifecycle/roles/<authority|worker>/<role-instance-simple>` 发布 `kind: "role_started"` 启动通知和 `kind: "role_exited"` 退出通知. 严格 JSON 包含 `protocol_version: 0`, `kind`, `role`, `node_id`, `node_instance_id`, `role_id`, `role_instance_id`; 退出通知另带必需的 `outcome`, 启动通知不带该字段. 角色枚举仅有 Authority 和 Worker, 单条最多 4096 字节. 本地组合与远端独立角色均对外可见, 与 Authority 内部的 Worker 公告/心跳收件箱分开. 同 Node 的业务执行交付仍为类型化交付, 不为公共通知强制改走网络.
 
 公共启动事实在角色任务启动后发布, 每 2 秒尝试重播相同内容, 便于晚加入的 Client 观察. 每个 Node 仅一个独立发布任务, 配置最多 64 个角色, 每次发送预算 250 毫秒, 不等待 Client 存在, 不缓存逐 Client 的待发消息. 错过周期时跳过, 实际重播间隔还受调度和整轮发送耗时影响. 这是易失性尽力发布, 无收录 ACK, 不承诺必达或历史重放. 启动重播不证明角色目前在线, 也不替代心跳, 状态快照或身份认证.
 
@@ -67,13 +67,13 @@ cargo run -p beamlet-console --offline -- \
 
 Client 严格检查消息版本, 种类, 字段和实际路由. 按运行实例保留最多 256 个生命周期记录, 启动和退出共用同一实例槽位. 相同通知重播不重复显示, 同运行实例的归属变化拒绝覆盖. 同一逻辑身份的新运行实例分别记录, 不推断哪一个是当前实例. 满后拒绝新增记录, 不静默淘汰旧身份. 非法通知不会被当作 Report 或改变提交目标. 当前公共编解码暂位于 Agent 的可选 `test-support` 原型 Adapter, 不是完整 Client SDK 或已承诺兼容的公共协议.
 
-配置模式在 Draining 结束并停止本地角色驱动之后, 释放共享消息会话之前尽力发布各个 Authority/Worker 的退出通知. `outcome: "drained"` 表示对应本地驱动正常完成排空; `outcome: "unconfirmed"` 表示其排空或交付未确认, 可能来自期限到达, 内部错误或任务异常. 一个 Node 中正常排空与未确认的独立角色可以获得不同结果, 不把 Node 的非零退出状态一概套给全部角色. 同 Node 的本地 Worker 随所属 Authority 组合驱动退出, 保守沿用该组合的排空结果. `drained` 不保证远端已收录 Report; `unconfirmed` 也不是业务执行失败或外部效果停止的证明.
+这两种入口在 Draining 结束并停止本地角色驱动之后, 释放共享消息会话之前尽力发布各个 Authority/Worker 的退出通知. `outcome: "drained"` 表示对应本地驱动正常完成排空; `outcome: "unconfirmed"` 表示其排空或交付未确认, 可能来自期限到达, 内部错误或任务异常. 一个 Node 中正常排空与未确认的独立角色可以获得不同结果, 不把 Node 的非零退出状态一概套给全部角色. 同 Node 的本地 Worker 随所属 Authority 组合驱动退出, 保守沿用该组合的排空结果. `drained` 不保证远端已收录 Report; `unconfirmed` 也不是业务执行失败或外部效果停止的证明.
 
 退出通知沿用启动时的完整身份绑定和公共路由, 不创建 Operation, Attempt 或 Report. Node 先停止启动公告重播, 结束或中止剩余本地驱动, 再发布退出通知. 每条发送预算 250 毫秒, 全 Node 共用额外 2 秒预算; 不等待 Client 存在或收录, 不重试, 无历史保留. 因此进程退出总时长可能超过 `drain_timeout_ms` 最多约 2 秒的通知预算, 仍受运行时调度影响. 超时路径保持非零退出, 发送成功只表示本地发布尝试完成. 网络会话的最终释放不保证底层缓冲已被远端接收.
 
 Client 收到退出通知后将该运行实例保留为已退出, 同实例迟到启动通知不得回退终态; 重复同结果退出静默去重, 冲突退出结果拒绝覆盖. 可以先收到退出而未收到启动, 该退出仍占用一个实例槽位并保留终态. 同一逻辑身份的其他运行实例完全独立, 旧实例退出不能改变新实例. 槽位满后仍允许更新已保留实例的退出, 不淘汰已退出终态以接收新身份. Client 的已退出表示收到本地驱动退出声明, 不代表所有外部效果已经停止, 也不是认证事实.
 
-强制终止或断电可能完全没有退出通知, 晚加入的 Client 也不保证获知历史退出; 不得从启动事实或心跳缺失伪造退出结论. 当前公共通知没有认证, 仅限受信测试网络. Authority 内部的 Worker 心跳观察仍独立, 本批没有将公共退出通知变成调度控制或自动接管. 旧 CLI 演示模式仍不提供公共生命周期通知.
+强制终止或断电可能完全没有退出通知, 晚加入的 Client 也不保证获知历史退出; 不得从启动事实或心跳缺失伪造退出结论. 当前公共通知没有认证, 仅限受信测试网络. Authority 内部的 Worker 心跳观察仍独立, 本批没有将公共退出通知变成调度控制或自动接管. 显式 `--role authority` 和 `--role worker` 的旧独立 CLI 仍不提供公共生命周期通知. 默认 `local` 已复用 Node 组合流程, 不再走缺少公共通知的独立循环.
 
 ## Node 统一 Draining: 当前实现
 
@@ -87,11 +87,11 @@ Worker 的正常 Draining 只保证已接纳 Attempt 均缓存 Report 且发送�
 
 配置可选 `drain_timeout_ms`, 默认 10000, 范围为 1..=60000 毫秒, 在建连前校验. 期限覆盖 Node 内全部角色的共同排空, 不被重复请求延长. 未报告 Operation, 未完成执行或等待发送可使期限到达; 到期记录未确认, 中止剩余本地驱动并以非零状态退出. 不把未知转换为执行失败或 `Effect::None`, 不自动改派, 不承诺中止 future 能撤销已产生的外部效果. 该期限受 Tokio 调度及任务是否让出执行权影响, 不是硬实时强杀保证. 角色内部错误也会触发其余角色 Draining, 已失败角色本身不承诺继续保留内存状态.
 
-旧独立 Authority/Worker CLI 复用同一协调方式和默认期限; 旧 local CLI 等待当前已接纳执行及回复尝试结束后退出. 固定 Hello 本身没有长耗时或外部效果, 当前真实进程验收覆盖等待迟到证据和 Report 发送中的退出, 不能推广为任意外部任务停止或跨重启恢复保证. 正常空闲角色可以立即完成 Draining, 不提供固定的额外查询宽限窗口. 外部强杀不经过本流程.
+旧独立 Authority/Worker CLI 复用同一协调方式和默认期限. 默认 `local` CLI 直接复用 Node 的角色组合, 公共通知及 Draining 流程, 保留原提交地址; 自动生成本次 Node/Authority/Worker 的逻辑和运行身份, 不提供跨启动稳定身份. 固定逻辑身份仍需显式配置. 固定 Hello 本身没有长耗时或外部效果, 当前真实进程验收覆盖等待迟到证据和 Report 发送中的退出, 不能推广为任意外部任务停止或跨重启恢复保证. 正常空闲角色可以立即完成 Draining, 不提供固定的额外查询宽限窗口. 外部强杀不经过本流程.
 
-配置模式现已在角色驱动结束后尽力发布公共退出通知, 详见上节. Draining 日志或本地发布完成不能被当作 Client 已收到退出通知.
+配置模式和默认 `local` 入口现已在角色驱动结束后尽力发布公共退出通知, 详见上节. Draining 日志或本地发布完成不能被当作 Client 已收到退出通知.
 
-配置模式的 Node 同时在本地输出每个 Authority/Worker 的生命周期, 不依赖 Client 订阅或通知发送成功. `Starting` 表示配置已校验但尚未就绪, `Running` 表示本地驱动已启动, `请求状态=Draining` 表示 Node 已请求停止新接纳, 不冒充角色已经完成状态切换. 全部本地驱动结束或中止并收回后, 在发布退出通知之前统一输出各角色的 `Stopped` 和排空观察. 每条携带逻辑身份, 运行实例, NodeId 和 NodeInstanceId, 包含本地组合的 Worker; `Stopped` 不证明外部效果停止. 角色数量统计 Authority 和 Worker 的实际总数, 驱动数量单独统计组合任务数. 这些日志不是网络通知, 不增加 Draining 公共协议, 也不从心跳缺失推断退出; 强制终止仍不保证输出最终日志.
+配置模式和默认 `local` 入口的 Node 同时在本地输出每个 Authority/Worker 的生命周期, 不依赖 Client 订阅或通知发送成功. `Starting` 表示配置已校验但尚未就绪, `Running` 表示本地驱动已启动, `请求状态=Draining` 表示 Node 已请求停止新接纳, 不冒充角色已经完成状态切换. 全部本地驱动结束或中止并收回后, 在发布退出通知之前统一输出各角色的 `Stopped` 和排空观察. 每条携带逻辑身份, 运行实例, NodeId 和 NodeInstanceId, 包含本地组合的 Worker; `Stopped` 不证明外部效果停止. 角色数量统计 Authority 和 Worker 的实际总数, 驱动数量单独统计组合任务数. 这些日志不是网络通知, 不增加 Draining 公共协议, 也不从心跳缺失推断退出; 强制终止仍不保证输出最终日志.
 
 ## 本批实现状态
 
