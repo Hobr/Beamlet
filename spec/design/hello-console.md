@@ -107,7 +107,7 @@ cargo run -p beamlet-console --offline --locked -- \
 
 新 Operation 按静态列表轮转, 两个 Worker 终端应分别出现 `Worker 已执行 hello` 日志. 使用上面的 `--operation-id` 命令重复提交时, 应复用原有 Attempt 和 Report, 不新增执行日志. 也可以仅配置一个 `--worker` 运行最小的三进程闭环.
 
-停止一个 Worker 不会触发故障转移: 分配给它的请求保持待定, 不自动改派另一个 Worker. 分配给仍运行 Worker 的新请求仍可完成. 若原始派发尚在等待订阅就绪, Worker 在该次 10 秒发送等待结束前首次连接, 原消息仍可能被交付; 这是同一次发送, 不是自动重投.
+停止一个 Worker 不会触发故障转移: 分配给它的请求保持待定, 不自动改派另一个 Worker. 分配给仍运行 Worker 的新请求仍可完成. 授权只在原预算内重投, 最多 3 次, 每次 500 毫秒, 等待回执间隔 1 秒, 总观察期限 5 秒; 若原 Worker 在尚未耗尽时可达, 原授权仍可能被交付, 不产生新 Attempt.
 
 ## 处理路径
 
@@ -115,11 +115,11 @@ cargo run -p beamlet-console --offline --locked -- \
 
 1. Console 生成或读取稳定 Operation ID, 将固定 Hello 请求编码一次.
 2. Authority 在接纳前检查消息大小, 严格 JSON 字段, 协议版本和固定任务种类.
-3. `Authority::submit` 保留授权, 只有新接纳请求才向指定 Worker 发送原始 DispatchAttempt. 发送确认单独记录, 不代表 Worker 接纳.
-4. `Worker::receive_dispatch` 检查实例及授权绑定; `Worker::next_report` 执行普通 `hello()` 函数, 缓存 Report 后尝试发送. Authority 通过 `receive_report` 校验并收录证据, 成功后向 Worker 回复独立收录回执; 本地类型化成功返回直接确认.
+3. `Authority::submit` 保留原授权, 在有界预算内重投完全相同的 DispatchAttempt, 收到匹配接纳回执或合法 Report 后停止后续重投. 发送返回不代表 Worker 接纳.
+4. `Worker::receive_dispatch` 检查实例及授权绑定, 成功接纳后回复 Attempt 回执, 不代表开始执行; `Worker::next_report` 执行普通 `hello()` 函数, 缓存 Report 后尝试发送. Authority 通过 `receive_report` 校验并收录证据, 成功后向 Worker 回复独立收录回执; 本地类型化成功返回直接确认.
 5. Authority 向等待的 Console 专用地址发送已收录的证据副本. 交付失败不移除已保留的结果, 也不自动重新执行.
 
-已完成 Operation 的重复提交直接读取原有 Report, 不生成第二次执行. 仍无证据的原有请求返回 Pending, 不自动重新派发或创建新 Attempt. 预期的提交错误独立于执行 Report 返回, 并附带当前保留状态; Worker 拒绝入队时 Authority 可能已经接纳. 驱动或内部状态错误停止 Node, 不伪造普通失败证据.
+已完成 Operation 的重复提交直接读取原有 Report, 不生成第二次执行. 仍无证据的原有请求返回 Pending, 不重置原授权投递预算或创建新 Attempt. 预期的提交错误独立于执行 Report 返回, 并附带当前保留状态; Worker 拒绝入队时 Authority 可能已经接纳. 驱动或内部状态错误停止 Node, 不伪造普通失败证据.
 
 ## 编码与边界
 
@@ -143,11 +143,11 @@ Console 请求是当前 Node 连接上的固定演示包装:
 
 分进程 Authority 的等待回复记录和后台发送任务各自最多 256 个. 添加后台发送任务前检查上限, 避免离线 Worker 或消失的 Console 阻塞接收循环. 等待记录满时返回独立提交错误; 发送任务已满时不再提交本次请求, Console 可能等待超时. 两者均不生成失败 Report 或新授权. 这些应用上限不涵盖 Zenoh 自身所有内部缓冲区.
 
-分进程 Authority 等待约 5 秒仍无 Report 时, 准备返回 Pending 并释放本次等待记录, 不取消执行或结束原有发送等待. 授权和 Console 回复发送各自最多等待 10 秒; Report 与收录回执的每次发送预算为 500 毫秒; 背压或发送任务占满时不保证 Pending 在 Console 截止时间前送达. 没有 Console 等待时收到的迟到 Report 仍被收录, 后续使用原 Operation ID 可读取该证据.
+分进程 Authority 等待约 5 秒仍无 Report 时, 准备返回 Pending 并释放本次等待记录, 不取消执行或结束原有发送等待. Console 回复发送最多等待 10 秒; 授权, Report 与两种回执的每次发送预算为 500 毫秒; 背压或发送任务占满时不保证 Pending 在 Console 截止时间前送达. 没有 Console 等待时收到的迟到 Report 仍被收录, 后续使用原 Operation ID 可读取该证据.
 
-Console 的 10 秒结果等待超时不取消 Worker, 不证明未接纳或没有效果, 不自动重新提交. 有需要时可在同一仍运行的 Authority 上使用原 Operation ID 再次提交. 尚未完成请求的重复提交不会自动重发原 DispatchAttempt. Worker 对尚未确认收录的 Report 最多发送 3 次相同内容, 发送结束后等待回执 1 秒, 另有 5 秒总观察期限. 重复 Attempt 不重置交付预算, 耗尽只记录未确认, 不重新执行. 正常 Worker Draining 现在要求所有 Report 获得匹配回执; 缺少回执会等待共同退出期限, 到期非零退出. 这仍不是必达或跨重启可靠交付保证.
+Console 的 10 秒结果等待超时不取消 Worker, 不证明未接纳或没有效果, 不自动重新提交. 有需要时可在同一仍运行的 Authority 上使用原 Operation ID 再次提交. 尚未完成请求的重复提交不重置原 DispatchAttempt 的重投预算. Worker 对尚未确认收录的 Report 最多发送 3 次相同内容, 发送结束后等待回执 1 秒, 另有 5 秒总观察期限. 重复 Attempt 不重置交付预算, 耗尽只记录未确认, 不重新执行. 正常 Worker Draining 现在要求所有 Report 获得匹配回执; 缺少回执会等待共同退出期限, 到期非零退出. 这仍不是必达或跨重启可靠交付保证.
 
-Authority 重启会丢失全部请求和收录证据; Worker 重启会丢失其执行记录和报告缓存. 原 Operation ID 不提供跨重启去重或恢复保证. 本批只实现 Report 的易失性有界交付记录, 不包含持久化 Outbox, Operation/Attempt 的独立接纳回执或自动重投, 身份认证, 能力注册, 真实 Tool 或 LLM.
+Authority 重启会丢失全部请求和收录证据; Worker 重启会丢失其执行记录和报告缓存. 原 Operation ID 不提供跨重启去重或恢复保证. 本批实现 Attempt 接纳回执及原授权有界重投, Report 收录回执及原证据有界重投, 不包含持久化 Outbox, Operation 的独立接纳回执及其自动重投, 身份认证, 能力注册, 真实 Tool 或 LLM.
 
 ## 接收路径选择
 

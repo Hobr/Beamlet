@@ -45,12 +45,12 @@ Report 的字段含义:
 
 ### 响应不是新的业务动作
 
-提交与回报可以返回关联原业务 ID 的 ACK 或错误. ACK 仅表示本次进程在内存中完成了相应接收, 不表示落盘, 执行成功或取得未来恢复保证. 下面描述的是接口语义, 不代表三段网络回执都已实现: 当前 Node 只实现 Report 收录回执和易失性有界重投, Operation/Attempt 独立接纳回执仍未实现, 详见 [三段回执契约](receipts.md). 本文通用内存驱动本身仍不负责网络重投.
+提交与回报可以返回关联原业务 ID 的 ACK 或错误. ACK 仅表示本次进程在内存中完成了相应接收, 不表示落盘, 执行成功或取得未来恢复保证. 下面描述的是接口语义, 不代表三段网络回执都已实现: 当前 Node 实现 Attempt 接纳和 Report 收录回执及其易失性有界重投, Operation 独立接纳回执仍未实现, 详见 [三段回执契约](receipts.md). 本文通用内存驱动本身仍不负责网络重投.
 
 - SubmitOperation 被接纳: 返回 operation_id 与唯一的 attempt_id; 同一进程内的相同重复提交返回已有关联.
 - SubmitReport 被接纳: 表示已进入本 Authority 的内存记录, 不等于无条件采用为业务成功.
 
-DispatchAttempt 首版不要求独立接纳 ACK. Authority 只能声称"已发出", 不能据此显示"Worker 已接纳"或"正在执行".
+通用内存驱动本身不发网络 ACK; Node Adapter 已接入独立 Attempt 接纳回执. 仅有发送返回时 Authority 只能声称"已发出", 收到匹配接纳回执可声称"Worker 已接纳", 仍不能据此声称"正在执行".
 
 结果查询是 Authority 的本地接口或测试入口, 按 OperationId 读取内存视图; 首版不另建跨节点查询协议.
 

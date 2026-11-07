@@ -8,6 +8,7 @@ use beamlet_agent::{
     id::{OperationId, ReportId, RoleInstanceId},
     model::{Delivery, DispatchAttempt, Effect, ExecutionResult, Message, SubmitReport},
     testing::{
+        attempt_receipt::{self, AttemptAccepted},
         hello::{self, Dispatch, Request, Response, ResponseMessage, Task},
         protocol::Limits as ProtocolLimits,
         receipt::{self, ReportRetained},
@@ -21,6 +22,7 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
+    attempt_delivery::AttemptDeliveries,
     report_delivery::{ReportDeliveries, SEND_BUDGET},
     shutdown::{self, Shutdown},
 };
@@ -43,6 +45,7 @@ enum SendPurpose {
     Dispatch(OperationId),
     Reply,
     Receipt,
+    AttemptReceipt,
     Report(ReportId),
 }
 
@@ -127,6 +130,9 @@ pub(crate) async fn serve_authority_pair(
     let mut authority = HelloAuthority::new(instance, workers, limits)?;
     let protocol = ProtocolLimits::default();
     let reports = report_inbox(instance);
+    let receipt_inbox = attempt_receipt::inbox(instance);
+    let receipts = transport.subscribe(&receipt_inbox).await?;
+    let mut attempts = AttemptDeliveries::new(limits);
     let mut waiters: Vec<Waiter> = Vec::new();
     let mut sends = Sends::new();
     let mut pending = std::collections::HashSet::new();
@@ -155,8 +161,39 @@ pub(crate) async fn serve_authority_pair(
             &protocol,
             limits.queue_capacity,
         )?;
+        while sends.len() < limits.queue_capacity {
+            let Some((operation, destination, bytes)) = attempts.next_send() else {
+                break;
+            };
+            queue_send(
+                &mut sends,
+                &transport,
+                Outgoing {
+                    destination,
+                    bytes,
+                    purpose: SendPurpose::Dispatch(operation),
+                },
+            );
+        }
         tokio::select! {
             _ = shutdown.requested(), if !draining => {}
+            received = receipts.recv_message() => {
+                match received {
+                    Ok(message) => {
+                        let result = (|| {
+                            let receipt = AttemptAccepted::from_json(&message.payload)?;
+                            ensure!(message.key_expr == receipt_inbox && message.key_expr == receipt.topic(), "Attempt 回执实际路由不符");
+                            if attempts.acknowledge(&receipt)? {
+                                println!("Authority 已确认 Worker 接纳: Operation={} Attempt={}; 不表示执行已开始或完成", receipt.operation_id, receipt.attempt_id);
+                            }
+                            Ok::<_,anyhow::Error>(())
+                        })();
+                        if let Err(error) = result { eprintln!("已忽略 Attempt 接纳回执: {error}"); }
+                    }
+                    Err(error @ (beamlet_message_zenoh::Error::UnexpectedDelete | beamlet_message_zenoh::Error::MessageTooLarge)) => eprintln!("已忽略 Attempt 接纳回执: {error}"),
+                    Err(error) => return Err(error).context("接收 Attempt 回执失败"),
+                }
+            }
             received = async {
                 if let Some(reports) = &report_transport {
                     tokio::select! {
@@ -184,7 +221,8 @@ pub(crate) async fn serve_authority_pair(
                     match authority.receive_report(delivery) {
                         Ok(disposition) => {
                             pending.remove(&operation);
-                            println!("Authority 已接收 Report: {disposition}");
+                            attempts.reported(operation);
+                            println!("Authority 已接收 Report: {disposition}; 停止原授权重投");
                             if sends.len() < limits.queue_capacity {
                                 queue_send(&mut sends, &transport, Outgoing {
                                     destination: receipt.topic(),
@@ -236,6 +274,13 @@ pub(crate) async fn serve_authority_pair(
                     queue_reply(&mut sends, &transport, console, response, &protocol)?;
                     continue;
                 }
+                if authority.operation(operation).is_none() && !attempts.has_capacity() {
+                    queue_reply(&mut sends, &transport, console, Response::new(ResponseMessage::SubmissionError {
+                        operation_id: Uuid::from_u128(operation.as_u128()),
+                        error: "Attempt 交付槽位已满; 新 Operation 未接纳".to_owned(),
+                    }), &protocol)?;
+                    continue;
+                }
                 let submission = match authority.submit(request.operation(), Uuid::new_v4().as_u128().into()) {
                     Ok(submission) => submission,
                     Err(error @ (StateError::Capacity | StateError::QueueFull | StateError::OperationConflict | StateError::AttemptConflict)) => {
@@ -261,6 +306,7 @@ pub(crate) async fn serve_authority_pair(
                     pending.insert(operation);
                     if let Some(worker) = local_workers.get_mut(&submission.dispatch.target_instance_id) {
                         let cached = worker.receive_dispatch(submission.dispatch.clone())?;
+                        println!("本地 Attempt 接纳已确认: Operation={operation}; 类型化返回, 不表示执行完成");
                         authority.mark_dispatched(operation)?;
                         let report = match cached {
                             Some(report) => report,
@@ -273,26 +319,26 @@ pub(crate) async fn serve_authority_pair(
                         println!("本地类型化交付: Operation={operation}");
                         continue;
                     }
-                    let bytes = Dispatch::from_delivery(&submission.dispatch)?.to_json(&protocol)?;
-                    queue_send(&mut sends, &transport, Outgoing {
-                        destination: worker_inbox(submission.dispatch.target_instance_id),
-                        bytes,
-                        purpose: SendPurpose::Dispatch(operation),
-                    });
+                    attempts.retain(&submission.dispatch, &protocol)?;
                 }
             }
             completed = sends.join_next(), if !sends.is_empty() => {
                 let (purpose, result) = completed.context("发送完成记录缺失")?.context("发送任务失败")?;
                 match (purpose, result) {
                     (SendPurpose::Dispatch(operation), Ok(())) => {
+                        attempts.sent(operation);
                         authority.mark_dispatched(operation)?;
-                        println!("Authority 已发出授权: Operation={operation}; 尚无证据确认 Worker 接纳");
+                        println!("Authority 已发出授权: Operation={operation}; 本次发送完成本身不证明 Worker 接纳");
                     }
-                    (SendPurpose::Dispatch(operation), Err(error)) => eprintln!("授权发送未确认: Operation={operation}; {error}; 保留原记录, 不重试或创建新授权"),
+                    (SendPurpose::Dispatch(operation), Err(error)) => {
+                        attempts.sent(operation);
+                        eprintln!("授权本次发送未确认: Operation={operation}; {error}; 仅在原预算内重投, 不创建新授权");
+                    },
                     (SendPurpose::Reply, Err(error)) => eprintln!("Console 回复未确认: {error}; 证据已保留, 不重试"),
                     (SendPurpose::Reply, Ok(())) => {}
                     (SendPurpose::Receipt, Ok(())) => println!("Report 收录回执已发出; 不等待回执的回执, 不表示持久化"),
                     (SendPurpose::Receipt, Err(error)) => eprintln!("Report 收录回执发送未确认: {error}; 原证据仍已保留, 合法重复可再次回复"),
+                    (SendPurpose::AttemptReceipt, _) => bail!("Authority 不应发送 Attempt 接纳回执"),
                     (SendPurpose::Report(_), _) => bail!("Authority 不应包含 Worker Report 发送任务"),
                 }
             }
@@ -371,7 +417,10 @@ fn queue_send(sends: &mut Sends, transport: &Arc<Transport>, outgoing: Outgoing)
     let transport = Arc::clone(transport);
     sends.spawn(async move {
         let budget = match &outgoing.purpose {
-            SendPurpose::Receipt | SendPurpose::Report(_) => SEND_BUDGET,
+            SendPurpose::Receipt
+            | SendPurpose::AttemptReceipt
+            | SendPurpose::Dispatch(_)
+            | SendPurpose::Report(_) => SEND_BUDGET,
             _ => SEND_TIMEOUT,
         };
         let result = send(&transport, &outgoing.destination, outgoing.bytes, budget).await;
@@ -464,10 +513,15 @@ pub(crate) async fn serve_worker(
             _ = shutdown.requested(), if !draining => {}
             completed = sends.join_next(), if !sends.is_empty() => {
                 let (purpose, result) = completed.context("Report 发送完成记录缺失")?.context("Report 发送任务失败")?;
-                let SendPurpose::Report(report) = purpose else { bail!("Worker 发送任务必须绑定 Report"); };
-                deliveries.sent(report);
-                if let Err(error) = result {
-                    eprintln!("Report 本次发送未确认: Report={report}; {error}; 仅在原交付预算内重投, 不重跑");
+                match purpose {
+                    SendPurpose::Report(report) => {
+                        deliveries.sent(report);
+                        if let Err(error) = result { eprintln!("Report 本次发送未确认: Report={report}; {error}; 仅在原交付预算内重投, 不重跑"); }
+                    }
+                    SendPurpose::AttemptReceipt => {
+                        if let Err(error) = result { eprintln!("Attempt 回执发送未确认: {error}; 合法重复授权可再次回复"); }
+                    }
+                    _ => bail!("Worker 发送任务种类错误"),
                 }
             }
             completed = worker.next_report(execute_hello), if worker.pending() > 0 && sends.len() < limits.queue_capacity => {
@@ -518,9 +572,16 @@ pub(crate) async fn serve_worker(
                     }
                     _ => {}
                 }
+                let receipt = AttemptAccepted::for_dispatch(&dispatch)?;
                 match worker.receive_dispatch(dispatch) {
-                    Ok(Some(report)) => deliveries.retain(&report, &protocol)?,
-                    Ok(None) => {}
+                    Ok(report) => {
+                        if let Some(report) = report { deliveries.retain(&report, &protocol)?; }
+                        if sends.len() < limits.queue_capacity {
+                            queue_send(&mut sends, &transport, Outgoing {
+                                destination: receipt.topic(), bytes: receipt.to_json()?, purpose: SendPurpose::AttemptReceipt,
+                            });
+                        } else { eprintln!("Attempt 已接纳, 回执发送槽位已满; 不回滚接纳"); }
+                    }
                     Err(error) => eprintln!("授权未接纳: {error}"),
                 }
             }

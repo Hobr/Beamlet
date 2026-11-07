@@ -7,18 +7,30 @@
 | 回执 | 方向 | 允许确认的事实 | 不允许推断 | 本批状态 |
 | --- | --- | --- | --- | --- |
 | Operation 接纳 | Authority -> Client | 指定 Authority 已校验并保留不可变 Operation 及其原接纳结果 | Worker 已接纳, 开始执行, 最终成功 | 仅定义契约, 未实现独立回执 |
-| Attempt 接纳 | Worker -> Authority | 指定 Worker 已校验并接纳该 Authority 的原 Attempt | 执行已开始或完成, 没有外部效果, 已产生 Report | 仅定义契约, 未实现独立回执 |
+| Attempt 接纳 | Worker -> Authority | 指定 Worker 已校验并接纳该 Authority 的原 Attempt | 执行已开始或完成, 没有外部效果, 已产生 Report | 已实现, 含原授权有界重投 |
 | Report 收录 | Authority -> Worker | 指定 Authority 已校验并保留完整 Report | 已采用为 Operation 最终结果, 业务成功, 已持久化 | 本批实现 |
 
 接收方必须先校验并保留, 再回复. 拒绝, 解析失败, 身份或内容冲突不能发出肯定回执. 相同身份和完整内容的重复消息复用已保留事实, 可以再次回复相同回执; 相同身份配不同内容仍须拒绝. 不为回执创建新的 Operation, Attempt 或 Report 身份.
 
 Operation 回执须绑定提交关联键, Authority 运行实例及 Operation; 未来 Authority 生成 OperationId 时应同时回传 SubmissionKey 与原接纳映射. 当前 Console 仍提供 OperationId, 没有 SubmissionKey, 不把该未来契约宣称为已实现. `Pending` 是当前保留请求的观察, 最终 Report 是执行证据, 二者不等于独立即时接纳回执.
 
-Attempt 回执须绑定 Authority/Worker 运行实例, OperationId 和 AttemptId, 不接受仅按 OperationId 的模糊确认. 将来如有授权重投, 只能重发原授权的身份和完整内容, 不能把回执超时变为新的执行授权或改派依据.
+Attempt 回执须绑定 Authority/Worker 运行实例, OperationId 和 AttemptId, 不接受仅按 OperationId 的模糊确认. 当前授权重投只能重发原授权的身份和完整内容, 不能把回执超时变为新的执行授权或改派依据.
 
 Report 回执须绑定 Authority/Worker 运行实例, OperationId, AttemptId 和 ReportId. 回执只确认收录, 无论该 Report 是首次采用, 附加证据还是相同证据的重复收录. Report 不得因不是最终结果或已经超过 Console 等待窗口而失去收录资格.
 
 回执缺失意味着交付未确认, 不证明未接纳, 未执行或无效果. 回执到达不等于持久化; 收到回执后接收方仍可能崩溃并失去全部易失性记录. 回执本身不再要求回执, 避免无限确认链.
+
+## Attempt 回执与有界授权交付
+
+严格 JSON `protocol_version: 0`, `kind: "attempt_accepted"`, 字段为 `source_instance_id` (Worker), `target_instance_id` (Authority), `operation_id`, `attempt_id`. 单条最多 4096 字节, 拒绝未知字段, 种类或版本. 发送至 `beamlet/v0/authority/<authority-instance-simple>/receipts`, 使用同 Session 的独立有界订阅. Authority 校验实际路由及原授权的完整身份绑定, 未知或冲突回执不改变状态. 静态绑定不是网络认证.
+
+Worker 必须在 `receive_dispatch` 成功后才尝试回复. 合法重复无论处于排队, 运行还是完成阶段均可重复回复同一接纳事实, 不重复执行; 内容冲突, 容量拒绝或 Draining 拒绝新授权均不回复肯定回执. 回执发送任务与 Report 共享最多 256 个发送槽位, 每次预算 500 毫秒, 满时不回滚原接纳也不积累无界待发任务. Worker 不主动重投回执, 由 Authority 重投原授权触发再次回复.
+
+Authority 新接纳时预留交付容量, 活动原授权最多 256 项, 完整去重记录最多 1024 项. 容量满时在新 Operation 接纳前拒绝, 不产生孤立的新授权. 每份授权最多尝试发送 3 次, 每次预算 500 毫秒, 发送完成后等待 1 秒再决定重投, 另有 5 秒总观察期限. 匹配失败同样消耗次数. 发送任务结束, 回执, Console 查询或 Draining 都不重置期限和预算. 耗尽后释放额外字节与活动槽位, 保留原绑定及未确认观察, 不自动改派或重新授权, 不无限后台重试. 仍可接收迟到的匹配回执.
+
+有效回执停止后续授权重投, 不代表 Operation 完成. 合法 Report 先到时必须先经过 Authority 原有证据校验和保留, 成功后也停止后续授权重投, 不等待迟到接纳回执. 无效 Report 不停止重投. Report 已收录后的迟到回执不回退状态. 已启动的发送任务可能仍完成, 接收方仍以相同身份去重; 不保证撤销已经交给传输层的消息.
+
+Authority Draining 仍在原预算内发送已接纳授权并接收回执和 Report, 不接纳新 Operation. 即使已有接纳回执, 没有 Report 的 Operation 仍保持待定并可导致共同退出期限到达. 同 Node 的 Worker 类型化接纳成功返回直接确认, 不建立多余网络回执或重投队列. Operation 独立接纳回执仍未实现.
 
 ## Report 回执原型协议
 
@@ -38,7 +50,7 @@ Report 回执须绑定 Authority/Worker 运行实例, OperationId, AttemptId 和
 
 发送至 `beamlet/v0/worker/<worker-instance-simple>/receipts`, 与 Attempt 收件箱分开, 共享同一 Zenoh Session. Worker 必须同时验证实际路由, 来源和目标运行实例, 以及本地待确认 Report 的全部身份; 未知或不匹配回执不新增记录, 不清除其他待确认项. 相同有效回执去重. 静态绑定校验不是发送方认证, 原型仍限定在受信测试网络.
 
-公共编解码位于 Agent 的可选 `test-support` Adapter, 不是新增纯 Kernel 执行授权消息或稳定 Client SDK. 旧 Report JSON 及 Console 请求/响应保持不变. 本批未编码 Operation/Attempt 的肯定回执, 不为它们添加占位消息.
+公共编解码位于 Agent 的可选 `test-support` Adapter, 不是新增纯 Kernel 执行授权消息或稳定 Client SDK. 旧 Report JSON 及 Console 请求/响应保持不变. 目前只编码 Attempt/Report 回执, Operation 肯定回执仍未实现.
 
 ## 有界 Report 交付
 
