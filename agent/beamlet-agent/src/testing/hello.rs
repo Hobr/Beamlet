@@ -15,7 +15,7 @@ pub enum Task {
     Hello,
 }
 
-/// Console 向当前连接的 Node 提交的不可变请求, 不绑定未来重启的实例
+/// Dispatch 内的不可变 Operation 编码; Client 提交使用 submission::Submission
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {

@@ -4,8 +4,9 @@ use std::{env, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
 use beamlet_agent::testing::{
-    hello::{Request, Response, ResponseMessage},
+    hello::ResponseMessage,
     protocol::{ExecutionResult, Limits as ProtocolLimits, Message},
+    submission::{Submission, SubmissionReply},
 };
 use beamlet_message_zenoh::{Limits, Sender, Transport};
 use tokio::{
@@ -34,7 +35,7 @@ async fn run() -> Result<()> {
     let mut endpoint = String::from("tcp/127.0.0.1:7447");
     let mut authority = None;
     let mut message = None;
-    let mut operation_id = None;
+    let mut submission_key = None;
     let mut subscribe = false;
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -49,19 +50,19 @@ async fn run() -> Result<()> {
                 )
             }
             "--message" => message = Some(args.next().context("--message 需要任务名称")?),
-            "--operation-id" => {
-                operation_id = Some(
+            "--submission-key" => {
+                submission_key = Some(
                     args.next()
-                        .context("--operation-id 需要 UUID")?
+                        .context("--submission-key 需要 UUID")?
                         .parse::<Uuid>()
-                        .context("Operation UUID 无效")?,
+                        .context("SubmissionKey UUID 无效")?,
                 );
             }
             "--subscribe" => subscribe = true,
             "--demo" => return Ok(beamlet_agent::testing::demo::print().await?),
             "--help" | "-h" => {
                 println!(
-                    "用法: beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--subscribe] [--message hello [--operation-id UUID]] [--demo]\n--subscribe 启用只读角色启动/退出通知; 输入结束后继续订阅, Ctrl-C 退出"
+                    "用法: beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--subscribe] [--message hello [--submission-key UUID]] [--demo]\n--subscribe 启用只读角色启动/退出通知; 输入结束后继续订阅, Ctrl-C 退出"
                 );
                 return Ok(());
             }
@@ -69,12 +70,12 @@ async fn run() -> Result<()> {
         }
     }
 
-    if operation_id.is_some() && message.is_none() {
-        bail!("--operation-id 必须与 --message hello 一起使用");
+    if submission_key.is_some() && message.is_none() {
+        bail!("--submission-key 必须与 --message hello 一起使用");
     }
     let request = message
         .as_deref()
-        .map(|command| hello_request(command, operation_id))
+        .map(|command| hello_request(command, submission_key))
         .transpose()?;
 
     // 每次启动使用新的路由 ID, 不复用其他 Console 或旧进程的回复地址
@@ -112,9 +113,9 @@ async fn run() -> Result<()> {
     println!("Console 已连接: {endpoint} (会话 {console_id})");
     let business = async {
         if let Some(request) = request {
-            return exchange(&transport, &sender, &request).await;
+            return exchange(&transport, &sender, &request, authority).await;
         }
-        interactive(&transport, &sender).await?;
+        interactive(&transport, &sender, authority).await?;
         if subscribe {
             std::future::pending::<Result<()>>().await
         } else {
@@ -133,7 +134,11 @@ async fn run() -> Result<()> {
     }
 }
 
-async fn interactive(transport: &Transport, sender: &Sender<'_>) -> Result<()> {
+async fn interactive(
+    transport: &Transport,
+    sender: &Sender<'_>,
+    authority: Option<Uuid>,
+) -> Result<()> {
     println!("输入 hello 后按回车, 每次生成新 Operation; Ctrl-D 结束输入");
     let mut input = BufReader::new(io::stdin());
     loop {
@@ -162,73 +167,87 @@ async fn interactive(transport: &Transport, sender: &Sender<'_>) -> Result<()> {
                 continue;
             }
         };
-        exchange(transport, sender, &request).await?;
+        exchange(transport, sender, &request, authority).await?;
     }
 }
 
-fn hello_request(command: &str, operation_id: Option<Uuid>) -> Result<Request> {
+fn hello_request(command: &str, submission_key: Option<Uuid>) -> Result<Submission> {
     ensure!(
         command.trim().eq_ignore_ascii_case("hello"),
         "当前仅支持固定任务 hello, 不再原样回显输入"
     );
-    Ok(Request::hello(operation_id.unwrap_or_else(Uuid::new_v4)))
+    Ok(Submission::hello(
+        submission_key.unwrap_or_else(Uuid::new_v4),
+    ))
 }
 
-async fn exchange(transport: &Transport, sender: &Sender<'_>, request: &Request) -> Result<()> {
+async fn exchange(
+    transport: &Transport,
+    sender: &Sender<'_>,
+    request: &Submission,
+    expected_authority: Option<Uuid>,
+) -> Result<()> {
     let limits = ProtocolLimits::default();
     let bytes = request.to_json(&limits)?;
-    println!("Operation: {}", request.operation_id());
+    println!("SubmissionKey: {}", request.submission_key);
     timeout(ROUND_TRIP_TIMEOUT, async {
-        sender.wait_for_receiver().await?;
-        sender.send(bytes).await?;
-        let bytes = transport.recv().await?;
-        let response = Response::from_json(&bytes, &limits)?;
-        match response.message() {
-            ResponseMessage::Report(delivery) => {
-                let Message::SubmitReport(report) = &delivery.message else {
-                    bail!("响应不包含 Report");
-                };
-                ensure!(
-                    report.operation_id == request.operation_id(),
-                    "收到其他 Operation 的 Report"
-                );
-                println!("Attempt: {}", report.attempt_id);
-                println!("Report: {}", report.report_id);
-                match &report.result {
-                    ExecutionResult::Succeeded { output } => {
-                        println!("状态: 成功; Effect: {}", report.effect);
-                        println!("输出: {output}");
+        let mut attempts = 0;
+        let mut next = tokio::time::Instant::now();
+        let mut binding = None;
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep_until(next), if binding.is_none() && attempts < 3 => {
+                    attempts += 1;
+                    println!("提交尝试: 次数={attempts}/3; 使用原 SubmissionKey");
+                    let sent = timeout(Duration::from_millis(500), async {
+                        sender.wait_for_receiver().await?;
+                        sender.send(bytes.clone()).await
+                    }).await;
+                    if !matches!(sent, Ok(Ok(()))) { eprintln!("提交本次发送未确认; 使用原 SubmissionKey, 尝试次数={attempts}/3"); }
+                    next = tokio::time::Instant::now() + Duration::from_secs(1);
+                }
+                received = transport.recv() => {
+                    let bytes = match received {
+                        Ok(bytes) => bytes,
+                        Err(error @ (beamlet_message_zenoh::Error::UnexpectedDelete | beamlet_message_zenoh::Error::MessageTooLarge)) => { eprintln!("已忽略非法提交回复: {error}"); continue; }
+                        Err(error) => return Err(error.into()),
+                    };
+                    let reply = match SubmissionReply::from_json(&bytes, &limits) {
+                        Ok(reply) => reply,
+                        Err(error) => { eprintln!("已忽略非法提交回复: {error}"); continue; }
+                    };
+                    if reply.submission_key != request.submission_key || expected_authority.is_some_and(|id| id != reply.authority_instance_id) {
+                        eprintln!("已忽略其他提交或 Authority 的回复"); continue;
                     }
-                    ExecutionResult::Failed { error } => {
-                        bail!("执行失败; Effect: {}; 原因: {error}", report.effect);
+                    if let Some(error) = reply.error { bail!("提交返回错误, 不是 Report: {error}"); }
+                    let current = (reply.authority_instance_id, reply.operation_id.context("接纳缺少 Operation")?, reply.attempt_id.context("接纳缺少 Attempt")?);
+                    if let Some(previous) = binding {
+                        if previous != current { eprintln!("已忽略与原接纳映射冲突的回复"); continue; }
+                    } else {
+                        binding = Some(current);
+                        println!("Operation: {}", current.1);
+                        println!("Attempt: {}", current.2);
+                        println!("状态: 已接纳; Authority={}; 不代表开始执行或完成", current.0);
                     }
-                    ExecutionResult::Rejected { error } => {
-                        bail!("执行前拒绝; Effect: {}; 原因: {error}", report.effect);
+                    let Some(response) = reply.response else { continue; };
+                    match response.message() {
+                        ResponseMessage::Report(delivery) => {
+                            let Message::SubmitReport(report) = &delivery.message else { bail!("响应不包含 Report"); };
+                            println!("Report: {}", report.report_id);
+                            match &report.result {
+                                ExecutionResult::Succeeded { output } => { println!("状态: 成功; Effect: {}", report.effect); println!("输出: {output}"); }
+                                ExecutionResult::Failed { error } => bail!("执行失败; Effect: {}; 原因: {error}", report.effect),
+                                ExecutionResult::Rejected { error } => bail!("执行前拒绝; Effect: {}; 原因: {error}", report.effect),
+                                _ => bail!("不支持的执行结果"),
+                            }
+                        }
+                        ResponseMessage::Pending { .. } => println!("状态: 待定; 不创建新授权"),
+                        ResponseMessage::SubmissionError { error, .. } => bail!("提交返回错误, 不是 Report: {error}"),
+                        _ => bail!("不支持的响应消息"),
                     }
-                    _ => bail!("不支持的执行结果"),
+                    return Ok::<_,anyhow::Error>(());
                 }
             }
-            ResponseMessage::Pending { operation_id } => {
-                ensure!(
-                    operation_id.as_u128() == request.operation_id().as_u128(),
-                    "待定响应属于其他 Operation"
-                );
-                println!("状态: 待定; 不自动重试或创建新授权");
-            }
-            ResponseMessage::SubmissionError {
-                operation_id,
-                error,
-            } => {
-                ensure!(
-                    operation_id.as_u128() == request.operation_id().as_u128(),
-                    "提交响应属于其他 Operation"
-                );
-                bail!("提交返回错误, 不是 Report: {error}");
-            }
-            _ => bail!("不支持的响应消息"),
         }
-        Ok::<_, anyhow::Error>(())
-    })
-    .await
-    .context("等待结果超时; Operation 可能已保留或正在执行, 不自动重试")?
+    }).await.context("等待结果超时; 提交可能已接纳或正在执行, 重投预算不再延长; 查询须复用原 SubmissionKey")?
 }

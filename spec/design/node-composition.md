@@ -105,15 +105,15 @@ Worker 的正常 Draining 要求已接纳 Attempt 均缓存 Report, 全部生成
 - 配置模式提供有界 Worker 启动公告, 实例归属及心跳在线/可疑观察; 本地类型化记录, 远端独立订阅, 不影响业务执行语义.
 - 配置模式为 Authority/Worker 提供统一对外启动和退出通知, 本地与远端一致; Client 可选只读订阅, 与业务提交并行, 不发布 Client 生命周期消息. Client 保留实例退出终态, 正常排空和未确认退出分开显示.
 - Node 统一协调有界 Draining, 拒绝新身份, 继续处理已接纳执行与 Report; 到期非零退出并保留未确认语义, 不是持久恢复.
-- Report 收录回执与有界同证据重投, 重复消息不重置预算, Worker 正常退出等待收录确认. Attempt 接纳回执和原授权有界重投已实现, Report 先到同样停止授权重投. Operation 回执仅已定义契约, 未实现独立协议. 两段交付预算与状态边界见 [回执契约](receipts.md).
+- Report 收录回执与有界同证据重投, 重复消息不重置预算, Worker 正常退出等待收录确认. Attempt 接纳回执和原授权有界重投已实现, Report 先到同样停止授权重投. Authority 生成 OperationId 和 SubmissionKey 去重已在 Console 原型中实现, 含独立 Operation 接纳回执及原提交有界重投. 三段交付预算与状态边界见 [回执契约](receipts.md).
 - 纯 Kernel 定义独立的 Node/Authority/Worker 稳定与运行身份类型, 领域交付只绑定 RoleInstanceId. 组合配置区分稳定 id 与角色运行 instance; Node 每次启动生成新运行 ID. Worker 命名迁移已完成.
 
 未实现, 不应由上述目标推断已经具备:
 
 - 角色运行 ID 的自动生成与公告驱动的实例解析, 稳定逻辑身份路由; 旧 CLI 演示不提供完整的稳定身份配置.
 - 生命周期通知的收录确认, 历史查询及跨重启保留; 无暂停恢复保证.
-- Authority 生成 OperationId, SubmissionKey 与独立 Client SDK. 当前演示仍使用 Console 提供的 OperationId.
-- Operation 接纳回执及其交付策略; 跨重启持久化, 在线调度与动态信任注册.
+- 独立于传输的 Client SDK, 当前提交编解码仍在 test-support Adapter, Console 暂只接 Zenoh.
+- 跨重启持久化, 在线调度与动态信任注册.
 
 后续按身份及命名, 生命周期, 有限确认交付, Client 契约逐批实现. 不把未来目标混入当前交付保证.
 

@@ -9,9 +9,10 @@ use beamlet_agent::{
     model::{Delivery, DispatchAttempt, Effect, ExecutionResult, Message, SubmitReport},
     testing::{
         attempt_receipt::{self, AttemptAccepted},
-        hello::{self, Dispatch, Request, Response, ResponseMessage, Task},
+        hello::{self, Dispatch, Response, ResponseMessage, Task},
         protocol::Limits as ProtocolLimits,
         receipt::{self, ReportRetained},
+        submission::{Submission, SubmissionReply},
     },
 };
 use beamlet_message_zenoh::{Limits, Transport};
@@ -38,6 +39,7 @@ const REPLY_WAIT: Duration = Duration::from_secs(5);
 struct Waiter {
     operation: OperationId,
     console: String,
+    binding: SubmissionReply,
     deadline: Instant,
 }
 
@@ -45,6 +47,7 @@ enum SendPurpose {
     Dispatch(OperationId),
     Reply,
     Receipt,
+    SubmissionReceipt,
     AttemptReceipt,
     Report(ReportId),
 }
@@ -133,6 +136,7 @@ pub(crate) async fn serve_authority_pair(
     let receipt_inbox = attempt_receipt::inbox(instance);
     let receipts = transport.subscribe(&receipt_inbox).await?;
     let mut attempts = AttemptDeliveries::new(limits);
+    let mut submissions: HashMap<Uuid, (Submission, SubmissionReply)> = HashMap::new();
     let mut waiters: Vec<Waiter> = Vec::new();
     let mut sends = Sends::new();
     let mut pending = std::collections::HashSet::new();
@@ -204,7 +208,11 @@ pub(crate) async fn serve_authority_pair(
                     transport.recv_message().await
                 }
             } => {
-                let message = received.context("Authority 接收消息失败")?;
+                let message = match received {
+                    Ok(message) => message,
+                    Err(error @ (beamlet_message_zenoh::Error::UnexpectedDelete | beamlet_message_zenoh::Error::MessageTooLarge)) => { eprintln!("已忽略非法提交或 Report: {error}"); continue; }
+                    Err(error) => return Err(error).context("Authority 接收消息失败"),
+                };
                 if message.key_expr == reports {
                     let delivery = match hello::decode_report(&message.payload, &protocol) {
                         Ok(delivery) => delivery,
@@ -244,63 +252,65 @@ pub(crate) async fn serve_authority_pair(
                     eprintln!("已忽略无效 Console 路由: {console:?}");
                     continue;
                 }
-                let request = match Request::from_json(&message.payload, &protocol) {
+                let request = match Submission::from_json(&message.payload, &protocol) {
                     Ok(request) => request,
                     Err(error) => {
-                        eprintln!("Operation 无效, 未接纳: {error}");
+                        eprintln!("提交无效, 本次未处理: {error}");
                         continue;
                     }
                 };
-                // 先检查发送任务上限, 不在无界后台任务中接纳更多请求
-                if sends.len() >= limits.queue_capacity {
-                    eprintln!("Operation 未提交: 发送任务已满; Operation={}", request.operation_id());
+                if sends.len() + 2 > limits.queue_capacity {
+                    eprintln!("提交发送槽位已满; 本次未处理, 不创建身份");
                     continue;
                 }
-                let operation = request.operation_id();
-                if shutdown.is_draining() && authority.operation(operation).is_none() {
-                    queue_reply(&mut sends, &transport, console, Response::new(ResponseMessage::SubmissionError {
-                        operation_id: Uuid::from_u128(operation.as_u128()),
-                        error: "NodeShutdown: Authority 处于 Draining; 新 Operation 未接纳, 不生成 Attempt 或 Report".to_owned(),
-                    }), &protocol)?;
+                let key = request.submission_key;
+                let existing = submissions.get(&key);
+                let rejection = if let Some((retained, _)) = existing {
+                    (retained != &request).then_some("SubmissionKey 与已保留定义冲突")
+                } else if shutdown.is_draining() {
+                    Some("NodeShutdown: 新提交未接纳")
+                } else if submissions.len() >= limits.max_records || !attempts.has_capacity() {
+                    Some("提交记录或 Attempt 交付槽位已满; 新提交未接纳")
+                } else { None };
+                if let Some(error) = rejection {
+                    queue_submission(&mut sends, &transport, console, SubmissionReply::rejected(key, Uuid::from_u128(instance.as_u128()), error.to_owned()), &protocol)?;
                     continue;
                 }
+                let operation = existing.map(|(_,binding)| binding.operation_id.expect("接纳映射必须包含 Operation"))
+                    .unwrap_or_else(Uuid::new_v4);
+                let operation = beamlet_agent::id::OperationId::from_u128(operation.as_u128());
                 let adopted = authority.operation(operation).and_then(|view| view.adopted_report);
                 let already_waiting = waiters.iter().any(|waiter| waiter.operation == operation && waiter.console == console);
                 if adopted.is_none() && !already_waiting && waiters.len() >= limits.queue_capacity {
-                    let response = Response::new(ResponseMessage::SubmissionError {
-                        operation_id: Uuid::from_u128(operation.as_u128()),
-                        error: format!("等待回复记录已满; 已保留阶段={}; 不自动重试", authority.operation(operation).map(|view| view.phase.to_string()).unwrap_or_else(|| "未接纳".to_owned())),
-                    });
-                    queue_reply(&mut sends, &transport, console, response, &protocol)?;
+                    if let Some((_, binding)) = existing {
+                        queue_submission(&mut sends, &transport, console, binding.clone(), &protocol)?;
+                        queue_reply(&mut sends, &transport, console, binding, Response::new(ResponseMessage::Pending { operation_id: Uuid::from_u128(operation.as_u128()) }), &protocol)?;
+                    } else {
+                        queue_submission(&mut sends, &transport, console, SubmissionReply::rejected(key, Uuid::from_u128(instance.as_u128()), "等待回复记录已满; 新提交未接纳".to_owned()), &protocol)?;
+                    }
                     continue;
                 }
-                if authority.operation(operation).is_none() && !attempts.has_capacity() {
-                    queue_reply(&mut sends, &transport, console, Response::new(ResponseMessage::SubmissionError {
-                        operation_id: Uuid::from_u128(operation.as_u128()),
-                        error: "Attempt 交付槽位已满; 新 Operation 未接纳".to_owned(),
-                    }), &protocol)?;
-                    continue;
-                }
-                let submission = match authority.submit(request.operation(), Uuid::new_v4().as_u128().into()) {
+                let submission = match authority.submit(request.operation(Uuid::from_u128(operation.as_u128())), Uuid::new_v4().as_u128().into()) {
                     Ok(submission) => submission,
                     Err(error @ (StateError::Capacity | StateError::QueueFull | StateError::OperationConflict | StateError::AttemptConflict)) => {
-                        let response = Response::new(ResponseMessage::SubmissionError {
-                            operation_id: Uuid::from_u128(operation.as_u128()),
-                            error: format!("{error}; 已保留阶段={}; 不自动重试", authority.operation(operation).map(|view| view.phase.to_string()).unwrap_or_else(|| "未接纳".to_owned())),
-                        });
-                        queue_reply(&mut sends, &transport, console, response, &protocol)?;
+                        queue_submission(&mut sends, &transport, console, SubmissionReply::rejected(key, Uuid::from_u128(instance.as_u128()), error.to_string()), &protocol)?;
                         continue;
                     }
                     Err(error) => return Err(error.into()),
                 };
-                println!("Authority 已接纳: Operation={operation} Worker={} 接纳结果={}", submission.dispatch.target_instance_id, submission.admission);
+                let Message::DispatchAttempt(dispatch) = &submission.dispatch.message else { bail!("接纳结果缺少 Attempt"); };
+                let binding = SubmissionReply::accepted(key, Uuid::from_u128(instance.as_u128()), Uuid::from_u128(operation.as_u128()), Uuid::from_u128(dispatch.attempt_id.as_u128()));
+                // 单一驱动同步完成映射和接纳, 在发布回执或执行前没有 await
+                submissions.entry(key).or_insert_with(|| (request, binding.clone()));
+                queue_submission(&mut sends, &transport, console, binding.clone(), &protocol)?;
+                println!("Authority 已接纳: SubmissionKey={key} Operation={operation} Worker={} 接纳结果={}", submission.dispatch.target_instance_id, submission.admission);
                 if let Some(report_id) = adopted {
                     let report = authority.report(report_id).context("已采用的 Report 缺失")?;
-                    queue_reply(&mut sends, &transport, console, response_for(report, operation)?, &protocol)?;
+                    queue_reply(&mut sends, &transport, console, &binding, response_for(report, operation)?, &protocol)?;
                     continue;
                 }
                 if !already_waiting {
-                    waiters.push(Waiter { operation, console: console.to_owned(), deadline: Instant::now() + REPLY_WAIT });
+                    waiters.push(Waiter { operation, console: console.to_owned(), binding, deadline: Instant::now() + REPLY_WAIT });
                 }
                 if submission.admission == Admission::New {
                     pending.insert(operation);
@@ -338,6 +348,8 @@ pub(crate) async fn serve_authority_pair(
                     (SendPurpose::Reply, Ok(())) => {}
                     (SendPurpose::Receipt, Ok(())) => println!("Report 收录回执已发出; 不等待回执的回执, 不表示持久化"),
                     (SendPurpose::Receipt, Err(error)) => eprintln!("Report 收录回执发送未确认: {error}; 原证据仍已保留, 合法重复可再次回复"),
+                    (SendPurpose::SubmissionReceipt, Err(error)) => eprintln!("Operation 回执发送未确认: {error}; 接纳映射保留, 原 key 重投可再次回复"),
+                    (SendPurpose::SubmissionReceipt, Ok(())) => {},
                     (SendPurpose::AttemptReceipt, _) => bail!("Authority 不应发送 Attempt 接纳回执"),
                     (SendPurpose::Report(_), _) => bail!("Authority 不应包含 Worker Report 发送任务"),
                 }
@@ -388,7 +400,14 @@ fn flush_replies(
                 operation_id: Uuid::from_u128(waiter.operation.as_u128()),
             })
         };
-        queue_reply(sends, transport, &waiter.console, response, protocol)?;
+        queue_reply(
+            sends,
+            transport,
+            &waiter.console,
+            &waiter.binding,
+            response,
+            protocol,
+        )?;
     }
     Ok(())
 }
@@ -397,7 +416,24 @@ fn queue_reply(
     sends: &mut Sends,
     transport: &Arc<Transport>,
     console: &str,
+    binding: &SubmissionReply,
     response: Response,
+    protocol: &ProtocolLimits,
+) -> Result<()> {
+    queue_submission(
+        sends,
+        transport,
+        console,
+        binding.with_response(response),
+        protocol,
+    )
+}
+
+fn queue_submission(
+    sends: &mut Sends,
+    transport: &Arc<Transport>,
+    console: &str,
+    reply: SubmissionReply,
     protocol: &ProtocolLimits,
 ) -> Result<()> {
     queue_send(
@@ -405,8 +441,12 @@ fn queue_reply(
         transport,
         Outgoing {
             destination: format!("beamlet/v0/console/{console}/inbox"),
-            bytes: response.to_json(protocol)?,
-            purpose: SendPurpose::Reply,
+            bytes: reply.to_json(protocol)?,
+            purpose: if reply.response.is_none() {
+                SendPurpose::SubmissionReceipt
+            } else {
+                SendPurpose::Reply
+            },
         },
     );
     Ok(())
@@ -417,7 +457,8 @@ fn queue_send(sends: &mut Sends, transport: &Arc<Transport>, outgoing: Outgoing)
     let transport = Arc::clone(transport);
     sends.spawn(async move {
         let budget = match &outgoing.purpose {
-            SendPurpose::Receipt
+            SendPurpose::SubmissionReceipt
+            | SendPurpose::Receipt
             | SendPurpose::AttemptReceipt
             | SendPurpose::Dispatch(_)
             | SendPurpose::Report(_) => SEND_BUDGET,

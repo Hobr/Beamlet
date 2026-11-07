@@ -7,3 +7,4 @@ pub mod lifecycle;
 pub mod memory;
 pub mod protocol;
 pub mod receipt;
+pub mod submission;

@@ -6,19 +6,33 @@
 
 | 回执 | 方向 | 允许确认的事实 | 不允许推断 | 本批状态 |
 | --- | --- | --- | --- | --- |
-| Operation 接纳 | Authority -> Client | 指定 Authority 已校验并保留不可变 Operation 及其原接纳结果 | Worker 已接纳, 开始执行, 最终成功 | 仅定义契约, 未实现独立回执 |
+| Operation 接纳 | Authority -> Client | 指定 Authority 已校验并保留不可变 Operation 及其原接纳结果 | Worker 已接纳, 开始执行, 最终成功 | 已实现, 含原提交有界重投 |
 | Attempt 接纳 | Worker -> Authority | 指定 Worker 已校验并接纳该 Authority 的原 Attempt | 执行已开始或完成, 没有外部效果, 已产生 Report | 已实现, 含原授权有界重投 |
 | Report 收录 | Authority -> Worker | 指定 Authority 已校验并保留完整 Report | 已采用为 Operation 最终结果, 业务成功, 已持久化 | 本批实现 |
 
 接收方必须先校验并保留, 再回复. 拒绝, 解析失败, 身份或内容冲突不能发出肯定回执. 相同身份和完整内容的重复消息复用已保留事实, 可以再次回复相同回执; 相同身份配不同内容仍须拒绝. 不为回执创建新的 Operation, Attempt 或 Report 身份.
 
-Operation 回执须绑定提交关联键, Authority 运行实例及 Operation; 未来 Authority 生成 OperationId 时应同时回传 SubmissionKey 与原接纳映射. 当前 Console 仍提供 OperationId, 没有 SubmissionKey, 不把该未来契约宣称为已实现. `Pending` 是当前保留请求的观察, 最终 Report 是执行证据, 二者不等于独立即时接纳回执.
+Operation 回执绑定 SubmissionKey, Authority 运行实例, Authority 创建的 OperationId 及原 AttemptId. `Pending` 是当前保留请求的观察, 最终 Report 是执行证据, 二者不等于独立即时接纳回执.
 
 Attempt 回执须绑定 Authority/Worker 运行实例, OperationId 和 AttemptId, 不接受仅按 OperationId 的模糊确认. 当前授权重投只能重发原授权的身份和完整内容, 不能把回执超时变为新的执行授权或改派依据.
 
 Report 回执须绑定 Authority/Worker 运行实例, OperationId, AttemptId 和 ReportId. 回执只确认收录, 无论该 Report 是首次采用, 附加证据还是相同证据的重复收录. Report 不得因不是最终结果或已经超过 Console 等待窗口而失去收录资格.
 
 回执缺失意味着交付未确认, 不证明未接纳, 未执行或无效果. 回执到达不等于持久化; 收到回执后接收方仍可能崩溃并失去全部易失性记录. 回执本身不再要求回执, 避免无限确认链.
+
+## Operation 接纳与原提交交付
+
+Console 使用严格 JSON `Submission { protocol_version: 0, submission_key, task: "hello" }`, 不接受 Client 指定 OperationId. `--submission-key UUID` 仅与 `--message hello` 使用; 未指定时生成新 key. 原 `--operation-id` 参数及旧请求不再接受, 不能把旧 OperationId 静默解释成提交键. Dispatch 内完整 Operation 与 Worker Report 编码保持不变.
+
+每个 Authority 驱动同步校验并调用领域接纳, 在任何 await, 回执发布或执行前建立提交映射. 映射包含完整解码定义和原 Operation/Attempt, 最多 1024 条, 不淘汰终态记录. 同 Authority 同 key 同定义复用原接纳, 不推进调度或创建新授权; 不同定义冲突. 当前仅有固定 Hello 定义, 不支持的任务在解码时拒绝. 新 key 即使内容相同仍分配新 OperationId. 不同 Authority 不共享映射.
+
+`SubmissionReply` 严格包装 `protocol_version`, `submission_key`, `authority_instance_id`, `operation_id`, `attempt_id`, `response`, `error`. 肯定回执含原映射, `response` 和 `error` 为 null. 结果携带相同映射及现有 Response, 因而合法 Report 或 Pending 先到也能关联接纳, 停止提交重投. 校验 Report 内 Operation/Attempt 及目标 Authority 与外层一致. 提交错误不生成 Report 或虚构业务身份; 不据此推翻之前的接纳事实. 全包装上限 64 KiB, 拒绝未知字段, 版本及结构冲突.
+
+Console 专用回复路由不变. 显式 `--authority` 校验目标运行实例; 默认入口首份合法映射绑定本次观察的 Authority. 这是静态绑定, 不是身份认证. 错 key, 错 Authority, 非法结果或冲突映射不确认. Authority 成功保留后立刻安排独立接纳回执, 重复提交可再次回复. 回执与其他发送共享 256 个槽位, 每次 500 毫秒, 失败不回滚接纳. 每次处理提交前预留最多两个发送槽位; 等待记录满或无槽位时不接纳新的提交, 原记录仍保留.
+
+每次 Console exchange 编码一次, 最多发送 3 次相同字节, 每次匹配及发送共用 500 毫秒预算, 结束后间隔 1 秒. 从 exchange 开始的总观察预算 10 秒; 建连和入口就绪各有独立 10 秒预算. 同 key 重投不延长 Authority 的等待窗口, Attempt 或 Report 交付预算. 收到肯定映射后停止提交重投, 继续等待结果; 只有接纳而无 Report 不能宣称完成. 耗尽不创建新 key 或授权. 用户后来显式查询属于新的有界观察, 仍须使用原 key 和仍运行的 Authority.
+
+Draining 拒绝未保留的新 key, 仍回复已有映射及证据. Authority 重启会丢失提交映射及 Operation; 旧 key 不保证跨重启去重. 显式旧运行实例不会自动解析到新实例. 不提供持久提交箱, 跨重启恢复或通用 Client SDK.
 
 ## Attempt 回执与有界授权交付
 
@@ -30,7 +44,7 @@ Authority 新接纳时预留交付容量, 活动原授权最多 256 项, 完整�
 
 有效回执停止后续授权重投, 不代表 Operation 完成. 合法 Report 先到时必须先经过 Authority 原有证据校验和保留, 成功后也停止后续授权重投, 不等待迟到接纳回执. 无效 Report 不停止重投. Report 已收录后的迟到回执不回退状态. 已启动的发送任务可能仍完成, 接收方仍以相同身份去重; 不保证撤销已经交给传输层的消息.
 
-Authority Draining 仍在原预算内发送已接纳授权并接收回执和 Report, 不接纳新 Operation. 即使已有接纳回执, 没有 Report 的 Operation 仍保持待定并可导致共同退出期限到达. 同 Node 的 Worker 类型化接纳成功返回直接确认, 不建立多余网络回执或重投队列. Operation 独立接纳回执仍未实现.
+Authority Draining 仍在原预算内发送已接纳授权并接收回执和 Report, 不接纳新 Operation. 即使已有接纳回执, 没有 Report 的 Operation 仍保持待定并可导致共同退出期限到达. 同 Node 的 Worker 类型化接纳成功返回直接确认, 不建立多余网络回执或重投队列.
 
 ## Report 回执原型协议
 
@@ -50,7 +64,7 @@ Authority Draining 仍在原预算内发送已接纳授权并接收回执和 Rep
 
 发送至 `beamlet/v0/worker/<worker-instance-simple>/receipts`, 与 Attempt 收件箱分开, 共享同一 Zenoh Session. Worker 必须同时验证实际路由, 来源和目标运行实例, 以及本地待确认 Report 的全部身份; 未知或不匹配回执不新增记录, 不清除其他待确认项. 相同有效回执去重. 静态绑定校验不是发送方认证, 原型仍限定在受信测试网络.
 
-公共编解码位于 Agent 的可选 `test-support` Adapter, 不是新增纯 Kernel 执行授权消息或稳定 Client SDK. 旧 Report JSON 及 Console 请求/响应保持不变. 目前只编码 Attempt/Report 回执, Operation 肯定回执仍未实现.
+公共编解码位于 Agent 的可选 `test-support` Adapter, 不是新增纯 Kernel 执行授权消息或稳定 Client SDK. 旧 Report 和 Dispatch JSON 保持不变, Console 提交及回复迁移至 Submission/SubmissionReply.
 
 ## 有界 Report 交付
 
