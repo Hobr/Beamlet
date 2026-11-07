@@ -8,6 +8,8 @@ Node 是组合与生命周期容器, 不是业务执行角色. Client 提交意�
 
 同 Node 的绑定角色使用类型化交付, 保留接纳与证据校验步骤, 不绕网络或 JSON. 跨 Node 通过 Adapter 编码交付. 连接必须实际提供路由可达性, 不承诺任意拓扑天然互通.
 
+Agent Loop, Codemode 及其派生 Operation 的待实现组合契约见 [Operation 组合与 Agent Loop](operation-composition.md). 该契约不新增参与方或 Task 生命周期, 不改变下述已实现状态.
+
 ## 身份与请求
 
 目标稳定身份为 NodeId, AuthorityId, WorkerId; 每次启动独立生成 NodeInstanceId, AuthorityInstanceId, WorkerInstanceId. 角色重启不得复用旧运行身份. 公告与心跳只表达观察, 不自动建立信任或授权.
