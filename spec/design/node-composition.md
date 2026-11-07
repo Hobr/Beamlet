@@ -48,11 +48,11 @@ Authority 使用本地单调时钟记录收到有效递增序号的时间, 每 2
 
 心跳不改变静态轮转调度, 可疑 Worker 仍可能被选中, 相关 Operation 保持原有等待和 Pending 语义. 心跳超时不删除绑定, Attempt 或 Report, 不证明执行停止或无效果, 不自动创建新 Attempt 或改派. Draining 已实现如下, 对外退出通知尚未实现.
 
-## Client 可选启动通知订阅: 当前实现
+## Client 可选生命周期通知订阅: 当前实现
 
 统一使用 Client, 不新增 Observer 身份或另一种业务角色. Client 可以提交 Operation, 也可以只读订阅角色通知, 两种能力可以同时使用. Client 不发布自己的启动, 心跳或退出通知. 当前 Console 仍使用随机回复会话区分业务请求, 这不是生命周期身份公告.
 
-配置模式的 Node 为自己承载的每个 Authority 和 Worker 向 `beamlet/v0/lifecycle/roles/<authority|worker>/<role-instance-simple>` 发布 `kind: "role_started"` 通知. 严格 JSON 包含 `protocol_version: 0`, `kind`, `role`, `node_id`, `node_instance_id`, `role_id`, `role_instance_id`. 角色枚举仅有 Authority 和 Worker, 单条最多 4096 字节. 本地组合与远端独立角色均对外可见, 与 Authority 内部的 Worker 公告/心跳收件箱分开. 同 Node 的业务执行交付仍为类型化交付, 不为公共通知强制改走网络.
+配置模式的 Node 为自己承载的每个 Authority 和 Worker 向 `beamlet/v0/lifecycle/roles/<authority|worker>/<role-instance-simple>` 发布 `kind: "role_started"` 启动通知和 `kind: "role_exited"` 退出通知. 严格 JSON 包含 `protocol_version: 0`, `kind`, `role`, `node_id`, `node_instance_id`, `role_id`, `role_instance_id`; 退出通知另带必需的 `outcome`, 启动通知不带该字段. 角色枚举仅有 Authority 和 Worker, 单条最多 4096 字节. 本地组合与远端独立角色均对外可见, 与 Authority 内部的 Worker 公告/心跳收件箱分开. 同 Node 的业务执行交付仍为类型化交付, 不为公共通知强制改走网络.
 
 公共启动事实在角色任务启动后发布, 每 2 秒尝试重播相同内容, 便于晚加入的 Client 观察. 每个 Node 仅一个独立发布任务, 配置最多 64 个角色, 每次发送预算 250 毫秒, 不等待 Client 存在, 不缓存逐 Client 的待发消息. 错过周期时跳过, 实际重播间隔还受调度和整轮发送耗时影响. 这是易失性尽力发布, 无收录 ACK, 不承诺必达或历史重放. 启动重播不证明角色目前在线, 也不替代心跳, 状态快照或身份认证.
 
@@ -65,9 +65,15 @@ cargo run -p beamlet-console --offline -- \
 
 同一 Console 可输入 `hello` 提交并接收 Report, 同时显示公告. 输入 EOF 后保持订阅, Ctrl-C 退出. 加上 `--message hello` 则在一次提交完成后退出, 只接收该进程存活期间到达的通知, 不等待通知列表完整. 不开启订阅时保留原有提交行为.
 
-Client 严格检查消息版本, 种类, 字段和实际路由. 按运行实例保留最多 256 个启动事实, 相同内容重播不重复显示, 同运行实例的归属变化拒绝覆盖. 同一逻辑身份的新运行实例分别记录, 不推断哪一个是当前实例. 满后拒绝新增记录, 不静默淘汰旧身份. 非法通知不会被当作 Report 或改变提交目标. 当前公共编解码暂位于 Agent 的可选 `test-support` 原型 Adapter, 不是完整 Client SDK 或已承诺兼容的公共协议.
+Client 严格检查消息版本, 种类, 字段和实际路由. 按运行实例保留最多 256 个生命周期记录, 启动和退出共用同一实例槽位. 相同通知重播不重复显示, 同运行实例的归属变化拒绝覆盖. 同一逻辑身份的新运行实例分别记录, 不推断哪一个是当前实例. 满后拒绝新增记录, 不静默淘汰旧身份. 非法通知不会被当作 Report 或改变提交目标. 当前公共编解码暂位于 Agent 的可选 `test-support` 原型 Adapter, 不是完整 Client SDK 或已承诺兼容的公共协议.
 
-本批只实现启动通知与只读订阅. Authority/Worker 的对外退出通知仍须在 Draining 及在途证据处理完成后接入; 强制终止可能没有退出通知, 不能从启动事实或心跳缺失伪造退出结论.
+配置模式在 Draining 结束并停止本地角色驱动之后, 释放共享消息会话之前尽力发布各个 Authority/Worker 的退出通知. `outcome: "drained"` 表示对应本地驱动正常完成排空; `outcome: "unconfirmed"` 表示其排空或交付未确认, 可能来自期限到达, 内部错误或任务异常. 一个 Node 中正常排空与未确认的独立角色可以获得不同结果, 不把 Node 的非零退出状态一概套给全部角色. 同 Node 的本地 Worker 随所属 Authority 组合驱动退出, 保守沿用该组合的排空结果. `drained` 不保证远端已收录 Report; `unconfirmed` 也不是业务执行失败或外部效果停止的证明.
+
+退出通知沿用启动时的完整身份绑定和公共路由, 不创建 Operation, Attempt 或 Report. Node 先停止启动公告重播, 结束或中止剩余本地驱动, 再发布退出通知. 每条发送预算 250 毫秒, 全 Node 共用额外 2 秒预算; 不等待 Client 存在或收录, 不重试, 无历史保留. 因此进程退出总时长可能超过 `drain_timeout_ms` 最多约 2 秒的通知预算, 仍受运行时调度影响. 超时路径保持非零退出, 发送成功只表示本地发布尝试完成. 网络会话的最终释放不保证底层缓冲已被远端接收.
+
+Client 收到退出通知后将该运行实例保留为已退出, 同实例迟到启动通知不得回退终态; 重复同结果退出静默去重, 冲突退出结果拒绝覆盖. 可以先收到退出而未收到启动, 该退出仍占用一个实例槽位并保留终态. 同一逻辑身份的其他运行实例完全独立, 旧实例退出不能改变新实例. 槽位满后仍允许更新已保留实例的退出, 不淘汰已退出终态以接收新身份. Client 的已退出表示收到本地驱动退出声明, 不代表所有外部效果已经停止, 也不是认证事实.
+
+强制终止或断电可能完全没有退出通知, 晚加入的 Client 也不保证获知历史退出; 不得从启动事实或心跳缺失伪造退出结论. 当前公共通知没有认证, 仅限受信测试网络. Authority 内部的 Worker 心跳观察仍独立, 本批没有将公共退出通知变成调度控制或自动接管. 旧 CLI 演示模式仍不提供公共生命周期通知.
 
 ## Node 统一 Draining: 当前实现
 
@@ -83,7 +89,7 @@ Worker 的正常 Draining 只保证已接纳 Attempt 均缓存 Report 且发送�
 
 旧独立 Authority/Worker CLI 复用同一协调方式和默认期限; 旧 local CLI 等待当前已接纳执行及回复尝试结束后退出. 固定 Hello 本身没有长耗时或外部效果, 当前真实进程验收覆盖等待迟到证据和 Report 发送中的退出, 不能推广为任意外部任务停止或跨重启恢复保证. 正常空闲角色可以立即完成 Draining, 不提供固定的额外查询宽限窗口. 外部强杀不经过本流程.
 
-公共退出通知及 Client 已退出状态尚未实现, Draining 日志不能被当作 Client 已收到退出通知. 下一批需在停止公告重播和角色排空之后, 关闭网络之前接入实例绑定的退出通知.
+配置模式现已在角色驱动结束后尽力发布公共退出通知, 详见上节. Draining 日志或本地发布完成不能被当作 Client 已收到退出通知.
 
 ## 本批实现状态
 
@@ -95,14 +101,14 @@ Worker 的正常 Draining 只保证已接纳 Attempt 均缓存 Report 且发送�
 - 64 KiB 配置读取上限, 严格未知字段检查, 重复角色身份和冲突本地绑定在建连前拒绝.
 
 - 配置模式提供有界 Worker 启动公告, 实例归属及心跳在线/可疑观察; 本地类型化记录, 远端独立订阅, 不影响业务执行语义.
-- 配置模式为 Authority/Worker 提供统一对外启动公告, 本地与远端一致; Client 可选只读订阅, 与业务提交并行, 不发布 Client 生命周期消息.
+- 配置模式为 Authority/Worker 提供统一对外启动和退出通知, 本地与远端一致; Client 可选只读订阅, 与业务提交并行, 不发布 Client 生命周期消息. Client 保留实例退出终态, 正常排空和未确认退出分开显示.
 - Node 统一协调有界 Draining, 拒绝新身份, 继续处理已接纳执行与 Report; 到期非零退出并保留未确认语义, 不是持久恢复.
 - 纯 Kernel 定义独立的 Node/Authority/Worker 稳定与运行身份类型, 领域交付只绑定 RoleInstanceId. 组合配置区分稳定 id 与角色运行 instance; Node 每次启动生成新运行 ID. Worker 命名迁移已完成.
 
 未实现, 不应由上述目标推断已经具备:
 
 - 角色运行 ID 的自动生成与公告驱动的实例解析, 稳定逻辑身份路由; 旧 CLI 演示不提供完整的稳定身份配置.
-- Authority/Worker 的公共退出通知, Client 已退出状态; 无暂停恢复保证.
+- 生命周期通知的收录确认, 历史查询及跨重启保留; 无暂停恢复保证.
 - Authority 生成 OperationId, SubmissionKey 与独立 Client SDK. 当前演示仍使用 Console 提供的 OperationId.
 - 接纳回执与确认重投, 跨重启持久化, 在线调度与动态信任注册.
 

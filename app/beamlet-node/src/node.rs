@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use beamlet_agent::{
     Worker,
     id::{
@@ -14,7 +14,7 @@ use beamlet_agent::{
     },
     testing::{
         hello::Task,
-        lifecycle::{Role, RoleStarted},
+        lifecycle::{ExitOutcome, Role, RoleNotice},
     },
 };
 use beamlet_message_zenoh::{Limits, Transport};
@@ -162,7 +162,7 @@ pub async fn run(path: &str) -> Result<()> {
     println!("Node 身份: 逻辑身份={node_id} 运行实例={node_instance}");
     let mut notices = Vec::new();
     for authority in &config.authorities {
-        notices.push(RoleStarted::new(
+        notices.push(RoleNotice::new(
             Role::Authority,
             config.node_id,
             Uuid::from_u128(node_instance.as_u128()),
@@ -176,7 +176,7 @@ pub async fn run(path: &str) -> Result<()> {
         );
     }
     for worker in &config.workers {
-        notices.push(RoleStarted::new(
+        notices.push(RoleNotice::new(
             Role::Worker,
             config.node_id,
             Uuid::from_u128(node_instance.as_u128()),
@@ -272,8 +272,13 @@ pub async fn run(path: &str) -> Result<()> {
     ) in authorities
     {
         let control = control.clone();
+        let mut instances: Vec<Uuid> = local
+            .keys()
+            .map(|id| Uuid::from_u128(id.as_u128()))
+            .collect();
+        instances.push(authority.instance);
         tasks.spawn(async move {
-            tokio::select! {
+            let result = tokio::select! {
                 result = roles::serve_authority_pair(
                     Arc::new(requests),
                     Some(reports),
@@ -286,7 +291,8 @@ pub async fn run(path: &str) -> Result<()> {
                     control,
                 ) => result,
                 result = observations.serve(announcements, local_announcements) => result,
-            }
+            };
+            (instances, result)
         });
     }
     for (worker_transport, worker) in workers {
@@ -300,7 +306,7 @@ pub async fn run(path: &str) -> Result<()> {
         let publisher = Arc::clone(&transport);
         let control = control.clone();
         tasks.spawn(async move {
-            tokio::select! {
+            let result = tokio::select! {
                 result = lifecycle::maintain(&publisher, announcement) => result,
                 result = roles::serve_worker(
                     worker_transport,
@@ -308,21 +314,27 @@ pub async fn run(path: &str) -> Result<()> {
                     worker.authority.as_u128().into(),
                     control,
                 ) => result,
-            }
+            };
+            (vec![worker.instance], result)
         });
     }
     let role_count = tasks.len();
+    let mut outcomes: HashMap<Uuid, ExitOutcome> = notices
+        .iter()
+        .map(|notice| (notice.role_instance_id, ExitOutcome::Unconfirmed))
+        .collect();
     if !notices.is_empty() {
         let publisher = Arc::clone(&transport);
+        let starts = notices.clone();
         announcements_task
-            .spawn(async move { lifecycle::publish_starts(&publisher, notices).await });
+            .spawn(async move { lifecycle::publish_starts(&publisher, starts).await });
     }
     println!("Node 已就绪: 消息会话共享; 角色数量={role_count}");
     let failure = tokio::select! {
         finished = tasks.join_next(), if !tasks.is_empty() => {
             Some(finished.context("角色完成记录缺失")
                 .and_then(|result| result.context("角色任务失败"))
-                .and_then(|result| result)
+                .and_then(|(_, result)| result)
                 .err().unwrap_or_else(|| anyhow::anyhow!("角色意外停止")))
         }
         finished = announcements_task.join_next(), if !announcements_task.is_empty() => {
@@ -348,7 +360,14 @@ pub async fn run(path: &str) -> Result<()> {
         while let Some(result) = tasks.join_next().await {
             let result = result
                 .context("Draining 角色任务失败")
-                .and_then(|result| result);
+                .and_then(|(instances, result)| {
+                    if result.is_ok() {
+                        for instance in instances {
+                            outcomes.insert(instance, ExitOutcome::Drained);
+                        }
+                    }
+                    result
+                });
             if let Err(error) = result {
                 eprintln!("Draining 角色未正常完成: {error}; 不生成失败 Report");
                 if failure.is_none() {
@@ -365,8 +384,9 @@ pub async fn run(path: &str) -> Result<()> {
         );
         tasks.abort_all();
         while tasks.join_next().await.is_some() {}
-        bail!("Node Draining 到期, 未确认执行或交付");
+        failure = Some(anyhow::anyhow!("Node Draining 到期, 未确认执行或交付"));
     }
+    lifecycle::publish_exits(&transport, notices, &outcomes).await;
     if let Some(error) = failure {
         return Err(error);
     }

@@ -382,7 +382,7 @@ async fn heartbeats(transport: &Transport, announcement: &Announcement) -> Resul
 
 pub(crate) async fn publish_starts(
     transport: &Transport,
-    notices: Vec<beamlet_agent::testing::lifecycle::RoleStarted>,
+    notices: Vec<beamlet_agent::testing::lifecycle::RoleNotice>,
 ) -> Result<()> {
     let messages = notices
         .into_iter()
@@ -411,6 +411,45 @@ pub(crate) async fn publish_starts(
             println!("角色启动公告发布恢复; 未确认 Client 收录");
         }
         publication_failed = failed;
+    }
+}
+
+pub(crate) async fn publish_exits(
+    transport: &Transport,
+    notices: Vec<beamlet_agent::testing::lifecycle::RoleNotice>,
+    outcomes: &HashMap<Uuid, beamlet_agent::testing::lifecycle::ExitOutcome>,
+) {
+    use beamlet_agent::testing::lifecycle::ExitOutcome;
+
+    // 全 Node 共用两秒发布预算, 不等待 Client 匹配或收录, 不重试
+    let result = timeout(Duration::from_secs(2), async {
+        for notice in notices {
+            let outcome = outcomes
+                .get(&notice.role_instance_id)
+                .copied()
+                .unwrap_or(ExitOutcome::Unconfirmed);
+            let notice = notice.exited(outcome);
+            let result = timeout(Duration::from_millis(250), async {
+                let bytes = notice.to_json()?;
+                transport.sender(&notice.topic()).await?.send(bytes).await?;
+                Ok::<_, anyhow::Error>(())
+            })
+            .await;
+            match result {
+                Ok(Ok(())) => println!(
+                    "{} 退出通知已发布: 实例={}; 排空观察={outcome}; 未确认 Client 收录",
+                    notice.role, notice.role_instance_id
+                ),
+                _ => eprintln!(
+                    "{} 退出通知发布未确认: 实例={}; 不重试",
+                    notice.role, notice.role_instance_id
+                ),
+            }
+        }
+    })
+    .await;
+    if result.is_err() {
+        eprintln!("角色退出通知发布预算到期; 部分通知可能未送达, 不延长 Draining");
     }
 }
 

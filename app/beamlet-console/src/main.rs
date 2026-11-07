@@ -61,7 +61,7 @@ async fn run() -> Result<()> {
             "--demo" => return Ok(beamlet_agent::testing::demo::print().await?),
             "--help" | "-h" => {
                 println!(
-                    "用法: beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--subscribe] [--message hello [--operation-id UUID]] [--demo]\n--subscribe 启用只读角色启动通知; 输入结束后继续订阅, Ctrl-C 退出"
+                    "用法: beamlet-console [--connect tcp/127.0.0.1:7447] [--authority UUID] [--subscribe] [--message hello [--operation-id UUID]] [--demo]\n--subscribe 启用只读角色启动/退出通知; 输入结束后继续订阅, Ctrl-C 退出"
                 );
                 return Ok(());
             }
